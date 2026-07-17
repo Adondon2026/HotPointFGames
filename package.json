@@ -1,0 +1,10 @@
+{
+  "name": "chuan-mahjong-nearby-tests",
+  "private": true,
+  "scripts": {
+    "test:ddz": "playwright test tests/ddz-ui.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2"
+  }
+}
