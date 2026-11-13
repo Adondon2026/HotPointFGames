@@ -32,7 +32,7 @@ try:
     assert g.STATE['phase']=='finished'
     with g.LOCK: g.bump();g.bump()
     p=acct('profile',t=a['accountToken'])['profile'];q=acct('profile',t=b['accountToken'])['profile']
-    assert (p['games'],p['wins'],p['points'])==(1,1,3),p;assert (q['games'],q['wins'],q['points'])==(1,0,1),q
+    assert (p['games'],p['wins'],p['points'])==(1,1,3),p;assert (q['games'],q['wins'],q['points'])==(1,0,0),q
     assert act(t,'reset')['ok'];assert acct('profile',t=a['accountToken'])['profile']['games']==1
     assert act(t,'start')['ok'];assert act(t,'reset')['ok'];assert acct('profile',t=a['accountToken'])['profile']['games']==1
     assert api('/api/invite')['urls'] is not None

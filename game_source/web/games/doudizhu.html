@@ -1,31 +1,32 @@
-    <div id="ddzGame" class="hidden">
-      <div class="stage">
-        <div class="stage-kicker" id="ddzKicker">叫地主</div>
-        <div class="stage-main" id="ddzMain">等待叫分</div>
-        <div class="stage-sub" id="ddzSub"></div>
-      </div>
-      <div class="ddz-small-row hidden" id="ddzBottom"></div>
-      <div class="notice ddz-trick" id="ddzLastPlay">尚未出牌</div>
-
-      <div class="muted" style="margin-top:13px">你的手牌</div>
-      <div class="ddz-hand" id="ddzHand"></div>
-      <div class="selection-hint" id="ddzSelection">点牌选择</div>
-
-      <div id="ddzBidPanel" class="hidden">
-        <div class="actions four">
-          <button class="secondary" data-ddz-bid="0">不叫</button>
-          <button data-ddz-bid="1">1 分</button>
-          <button data-ddz-bid="2">2 分</button>
-          <button data-ddz-bid="3">3 分</button>
+    <div id="ddzGame" class="hidden ddz-table">
+      <header class="ddz-topline">
+        <div><span id="ddzKicker">斗地主</span><strong id="ddzMain">叫地主</strong></div>
+        <div class="ddz-top-actions">
+          <button class="ddz-text-button hidden" id="ddzBottomToggle" aria-expanded="false">底牌 · 3</button>
+          <button class="ddz-text-button" id="ddzHistoryToggle" aria-expanded="false">记录</button>
+          <button class="ddz-text-button" id="ddzRulesBtn">规则</button>
         </div>
+        <div id="ddzBottom" class="ddz-small-row hidden" aria-label="地主底牌"></div>
+        <div id="ddzHistory" class="hidden ddz-history" role="region" aria-label="行动记录"><div class="ddz-history-head"><strong>本局记录</strong><button id="ddzHistoryClose" class="ddz-text-button">关闭</button></div><div id="ddzHistoryList"></div></div>
+      </header>
+      <div class="ddz-opponent" id="ddzLeft"></div>
+      <div class="ddz-opponent" id="ddzRight"></div>
+      <div class="ddz-center" aria-live="polite">
+        <div id="ddzLastPlay" class="ddz-trick">等待叫分</div>
+        <div id="ddzEventLine" class="ddz-event-line"></div>
       </div>
-
-      <div id="ddzPlayPanel" class="hidden">
-        <div class="actions three">
-          <button class="green" id="ddzPlayBtn">出牌</button>
-          <button class="secondary" id="ddzPassBtn">不出</button>
-          <button class="secondary" id="ddzHintBtn">提示</button>
+      <section class="ddz-own">
+        <div class="ddz-own-head"><strong id="ddzSub">等待</strong><span id="ddzMyInfo"></span></div>
+        <div class="ddz-hand" id="ddzHand" aria-label="你的手牌"></div>
+        <div class="ddz-control-line">
+          <div id="ddzBidPanel" class="hidden">
+            <div class="actions four"><button class="secondary" data-ddz-bid="0">不叫</button><button data-ddz-bid="1">1 分</button><button data-ddz-bid="2">2 分</button><button data-ddz-bid="3">3 分</button></div>
+          </div>
+          <div id="ddzPlayPanel" class="hidden">
+            <div class="actions three"><button class="green" id="ddzPlayBtn">出牌</button><button class="secondary" id="ddzPassBtn">不出</button><button class="secondary" id="ddzHintBtn">提示</button></div>
+          </div>
+          <span class="selection-hint" id="ddzSelection"></span>
         </div>
-      </div>
+      </section>
     </div>
 

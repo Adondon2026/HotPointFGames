@@ -50,8 +50,10 @@ test('three players can see cards, bid points and bid history without render err
 
     await pages[bidderIndex].getByRole('button', { name: '1 分', exact: true }).click();
     for (const page of pages) {
-      await expect(page.locator('#ddzLastPlay')).toContainText(`${names[bidderIndex]}：1 分`);
-      await expect(page.locator('#ddzMain')).toContainText('当前 1 分');
+      await page.locator('#ddzHistoryToggle').click();
+      await expect(page.locator('#ddzHistoryList')).toContainText(`${names[bidderIndex]} 叫 1 分`);
+      await page.locator('#ddzHistoryClose').click();
+      await expect(page.locator('#ddzLastPlay')).toContainText('当前 1 分');
     }
     expect(consoleErrors).toEqual([]);
   } finally {

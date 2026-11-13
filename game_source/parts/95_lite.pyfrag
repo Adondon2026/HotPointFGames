@@ -17,6 +17,11 @@ def _db():
     db.executescript('''CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE COLLATE NOCASE, salt TEXT NOT NULL, pin_hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS results(match_id TEXT NOT NULL,user_id TEXT NOT NULL,game TEXT NOT NULL,won INTEGER NOT NULL,points INTEGER NOT NULL,raw INTEGER NOT NULL,ended INTEGER NOT NULL,PRIMARY KEY(match_id,user_id));''')
+    # One-time, additive schema change. Historical results stay as recorded;
+    # old records cannot reliably be classified as solo or friends.
+    with db:
+        if 'queue' not in {r[1] for r in db.execute('PRAGMA table_info(results)')}:
+            db.execute("ALTER TABLE results ADD COLUMN queue TEXT NOT NULL DEFAULT 'legacy'")
     try:
         with db:
             yield db
@@ -35,10 +40,10 @@ def _account_user(db, token):
 def _profile(db, uid):
     user = db.execute('SELECT id,name FROM users WHERE id=?',(uid,)).fetchone()
     if not user: return None
-    totals = db.execute('SELECT COUNT(*) AS games,COALESCE(SUM(won),0) AS wins,COALESCE(SUM(points),0) AS points FROM results WHERE user_id=?',(uid,)).fetchone()
-    stats = [dict(r) for r in db.execute('SELECT game,COUNT(*) AS games,SUM(won) AS wins,SUM(points) AS points FROM results WHERE user_id=? GROUP BY game',(uid,))]
-    recent = [dict(r) for r in db.execute('SELECT game,won,points,raw,ended FROM results WHERE user_id=? ORDER BY ended DESC LIMIT 12',(uid,))]
-    return {**dict(user), **dict(totals), 'stats':stats,'recent':recent}
+    totals = db.execute("SELECT COUNT(*) AS games,COALESCE(SUM(won),0) AS wins,COALESCE(SUM(points),0) AS points FROM results WHERE user_id=? AND queue!='practice'",(uid,)).fetchone()
+    stats = [dict(r) for r in db.execute("SELECT game,COUNT(*) AS games,SUM(won) AS wins,SUM(points) AS points FROM results WHERE user_id=? AND queue!='practice' GROUP BY game",(uid,))]
+    recent = [dict(r) for r in db.execute('SELECT game,won,points,raw,ended,queue FROM results WHERE user_id=? ORDER BY ended DESC LIMIT 12',(uid,))]
+    return {**dict(user), **dict(totals), 'stats':stats,'recent':recent,'practice':dict(db.execute("SELECT COUNT(*) AS games,COALESCE(SUM(won),0) AS wins FROM results WHERE user_id=? AND queue='practice'",(uid,)).fetchone())}
 
 def account_request(data, ip):
     kind = data.get('type'); token = str(data.get('accountToken',''))[:256]
@@ -76,13 +81,16 @@ def _settle_match():
     mode=STATE['mode']; players=STATE['players']; key={'ddz':'ddzScore','chuanma':'cmScore','draw':'score','cards':'life','dice':'diceCount'}[mode]
     best=max((int(p.get(key,0)) for p in players),default=0)
     rows=[]
+    practice=STATE.get('matchQueue')=='practice' or any(p.get('isBot') for p in players)
+    queue='practice' if practice else 'friends'
     for p in players:
         uid=p.get('accountId')
         if not uid or p.get('isBot'): continue
         raw=int(p.get(key,0)); won=(raw>0 if mode=='ddz' else (raw==best and (mode!='draw' or not any(p.get('isBot') for p in players) or raw>0)) if mode in ('draw','chuanma') else p['id']==STATE.get('winnerId'))
-        rows.append((STATE['matchId'],uid,mode,int(won),3 if won else 1,raw,int(time.time())))
+        # All tied top scores are winners in these games; no separate draw state yet.
+        rows.append((STATE['matchId'],uid,mode,int(won),0 if practice else 3 if won else 0,raw,int(time.time()),queue))
     if rows:
-        with _db() as db: db.executemany('INSERT OR IGNORE INTO results VALUES(?,?,?,?,?,?,?)',rows)
+        with _db() as db: db.executemany('INSERT OR IGNORE INTO results(match_id,user_id,game,won,points,raw,ended,queue) VALUES(?,?,?,?,?,?,?,?)',rows)
     STATE['settledMatchId']=STATE['matchId']
 
 _original_bump=bump
@@ -95,6 +103,7 @@ def _lite_action(self,player,action,data):
     if action=='rename' and player.get('accountId'): return {'error':'账户昵称固定；可退出后换账户'},409
     if action=='start' and STATE['phase']=='lobby':
         previous=STATE.get('matchId'); STATE['matchId']=secrets.token_hex(16)
+        STATE['matchQueue']='practice' if any(p.get('isBot') for p in STATE['players']) or sum(not p.get('isBot') for p in STATE['players'])==1 else 'friends'
         result=_original_action(self,player,action,data)
         if result[1]!=200: STATE['matchId']=previous
         return result
@@ -145,7 +154,10 @@ def public_state(player_id,draw_since=-1,draw_revision=-1):
     _settle_match()
     p=player_by_id(player_id); uid=p.get('accountId') if p else None
     if uid:
-        with _db() as db: result['profile']=_profile(db,uid)
+        with _db() as db:
+            result['profile']=_profile(db,uid)
+            row=db.execute('SELECT won,points,raw,queue FROM results WHERE match_id=? AND user_id=?',(STATE.get('matchId'),uid)).fetchone()
+            result['myResult']=dict(row) if row and STATE['phase']=='finished' else None
     else: result['profile']=None
     return result
 

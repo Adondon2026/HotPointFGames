@@ -30,6 +30,7 @@ jobs:
           python game_source/tests/smoke_test.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py
+          python game_source/tests/test_table.py
       - name: Upload importable game files
         uses: actions/upload-artifact@v4
         with:

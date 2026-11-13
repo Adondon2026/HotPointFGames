@@ -32,6 +32,9 @@ def fresh_ddz():
         "message": "",
         "botDueAt": 0.0,
         "botActionCount": 0,
+        "events": [],
+        "eventSeq": 0,
+        "dealId": secrets.token_hex(8),
     }
 
 def ddz_deck():
@@ -378,7 +381,17 @@ def ddz_hand_strength(hand):
     score += max((len(run) for run in ddz_run_candidates(groups, 5, 1)), default=0) * 0.25
     return score
 
-def schedule_ddz_bot(delay=0.85):
+def ddz_event(kind, player=None, **extra):
+    """Public, ordered actions; never store unrevealed cards here."""
+    d=STATE['ddz']; d.setdefault('dealId', secrets.token_hex(8))
+    d['eventSeq']=d.get('eventSeq',0)+1
+    event={'seq':d['eventSeq'],'kind':kind,**extra}
+    if player: event.update(playerId=player['id'],playerName=player['name'])
+    d.setdefault('events',[]).append(event)
+    # A full normal deal fits comfortably; keep a bounded replay tail.
+    d['events']=d['events'][-160:]
+
+def schedule_ddz_bot(delay=1.15):
     ddz = STATE.get("ddz", {})
     current = player_by_id(STATE.get("turnPlayerId"))
     if STATE.get("mode") == "ddz" and STATE.get("phase") in ("ddz_bidding", "ddz_play") and current and current.get("isBot"):
@@ -393,6 +406,7 @@ def apply_ddz_bid(player, score):
         return {"error": "叫分无效"}, 400
     if score and score <= ddz["highestBid"]:
         return {"error": "叫分必须高于当前最高分"}, 409
+    ddz_event("bid", player, score=score)
     ddz["bidHistory"].append({"playerId": player["id"], "playerName": player["name"], "score": score})
     ddz["bidCount"] += 1
     if score > ddz["highestBid"]:
@@ -427,6 +441,7 @@ def apply_ddz_play(player, selected):
         "playerId": player["id"], "playerName": player["name"],
         "cards": selected, "combo": combo,
     }
+    ddz_event("play", player, cards=selected, comboLabel=combo["label"])
     ddz["trickLeaderId"] = player["id"]
     ddz["passCount"] = 0
     ddz["message"] = f"{player['name']} 出了 {combo['label']}"
@@ -450,6 +465,7 @@ def apply_ddz_pass(player):
     ddz = STATE["ddz"]
     if not ddz["lastPlay"]:
         return {"error": "你是本轮首家，必须出牌"}, 409
+    ddz_event("pass", player)
     ddz["passCount"] += 1
     ddz["message"] = f"{player['name']} 不出"
     player["ddzHintCursor"] = 0
@@ -458,6 +474,7 @@ def apply_ddz_pass(player):
         ddz["lastPlay"] = None
         ddz["passCount"] = 0
         ddz["message"] = "其余两家都不出，重新领出"
+        ddz_event("trick", player_by_id(STATE["turnPlayerId"]))
     else:
         STATE["turnPlayerId"] = next_seat_id(player["id"])
     bump()
@@ -574,6 +591,7 @@ def finalize_ddz_landlord():
     ddz["trickLeaderId"] = landlord["id"]
     ddz["passCount"] = 0
     ddz["message"] = f"{landlord['name']} 成为地主"
+    ddz_event("landlord", landlord, cards=list(ddz["bottom"]), score=ddz["baseBid"])
     STATE["phase"] = "ddz_play"
     STATE["turnPlayerId"] = landlord["id"]
     bump()
@@ -618,6 +636,8 @@ def ddz_public(player_id):
     landlord = player_by_id(ddz.get("landlordId"))
     last = ddz.get("lastPlay")
     return {
+        "dealId": ddz.get("dealId", "legacy"),
+        "events": list(ddz.get("events", [])),
         "highestBid": ddz.get("highestBid", 0),
         "bidHistory": list(ddz.get("bidHistory", [])),
         "landlordId": ddz.get("landlordId"),
