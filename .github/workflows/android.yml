@@ -58,6 +58,7 @@ jobs:
           python game_source/tests/test_other_tables.py
           python game_source/tests/test_feedback.py
           python game_source/tests/test_army.py
+          python game_source/tests/test_army_feedback.py
           python tools/sync_game_source.py
           python tests/test_android_bridge.py
       - name: Build Android APK

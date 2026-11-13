@@ -121,6 +121,26 @@ def _army_action(self,player,action,data):
     army_commit(g);return {},200
 Handler.handle_action=_army_action
 
+# Public presentation frames: only what this viewer knew at that moment.
+def _army_visible_frame(frame, owner):
+    return {'pieces':[{'node':p['node'],'id':p['id'],'owner':p['owner'],
+                       'rank':p['rank'] if p['owner']==owner or owner in p.get('revealed_to',[]) else 'UNKNOWN',
+                       'carrying_flag':p.get('carrying_flag',False)} for p in frame['pieces']],
+            'ground_flags':frame['ground_flags']}
+
+def _army_presentation(g, owner):
+    result=[]
+    for node_id in g.active_replay_ids[-6:]:
+        n=g.replay_nodes[node_id]; e=n['event']; parent=n['parent_id']
+        before=g.initial_replay_frame if parent is None else g.replay_nodes[parent]['frame']
+        if not before or not e: continue
+        result.append({'id':node_id,'parent':parent,'player':e['player'],
+                       'src':e['src'],'dst':e['dst'],'result':e['result'],
+                       'battle':e.get('defender_id') is not None,
+                       'path':n['frame']['last_move_trace']['path'],
+                       'before':_army_visible_frame(before,owner),'after':_army_visible_frame(n['frame'],owner)})
+    return result
+
 _army_public_base=public_state
 def public_state(player_id,draw_since=-1,draw_revision=-1):
     view=_army_public_base(player_id,draw_since,draw_revision)
@@ -135,7 +155,7 @@ def public_state(player_id,draw_since=-1,draw_revision=-1):
     if g.phase=='play' and g.turn==owner and not g.pending_request:
         v['legal']=[{'src':g._node_json(src),'dst':[g._node_json(dst) for dst in _ARMY_NODES if _army_legal(g,owner,src,dst)]} for src,p in g.board.items() if p['owner']==owner]
     else:v['legal']=[]
-    v['match']=STATE.get('matchId');view['army']=v;return view
+    v['match']=STATE.get('matchId');v['presentation']=_army_presentation(g,owner);view['army']=v;return view
 
 _army_tick_base=update_timers
 def update_timers():
