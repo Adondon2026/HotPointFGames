@@ -22,7 +22,12 @@
 
 ## 构建 Android APK
 
-推荐 GitHub Actions：Actions → Android build → Run workflow；构建成功后在该运行的 Artifacts 下载 APK 或单文件游戏包。无需在本机安装 Android SDK。
+推荐 GitHub Actions：
+
+- 游戏规则、UI 或词库更新：Actions → Game files，构建后在 Artifacts 下载可导入的 .py / .txt，无需编译 Android。
+- Android 宿主更新：Actions → Android build → Run workflow，构建成功后在 Artifacts 下载 APK。宿主源码变更时也会自动触发。
+
+两种构建均无需在本机安装 Android SDK。
 
 本地可使用 JDK 17、Android SDK Platform 36.1、Python 3.13 和仓库自带 Gradle Wrapper：
 

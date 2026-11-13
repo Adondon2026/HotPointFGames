@@ -1,0 +1,37 @@
+name: Game files
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'game_source/**'
+      - '.github/workflows/game.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'game_source/**'
+      - '.github/workflows/game.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Test and build
+        run: python game_source/tests/smoke_test.py
+      - name: Upload importable game files
+        uses: actions/upload-artifact@v4
+        with:
+          name: HotPointFGames-game-files
+          path: |
+            game_source/dist/game_hall_lan_v6_2.py
+            game_source/dist/game_hall_lan_v6_2.txt
+          if-no-files-found: error
