@@ -19,3 +19,6 @@ Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；�
 
 ## 开发
 `python build.py` 生成单文件；`python tests/smoke_test.py`、`python tests/test_lite.py`、`python tests/test_bots.py`、`python tests/test_table.py` 验证核心功能。机器人由服务端根据公开信息和自身手牌/骰子行动；无需网络或 AI 模型。用户仍需通过局域网连接才能与朋友联机。
+
+## 斗地主竖屏智能两排
+竖屏手牌较多自动两排，尽量不拆同点数与大小王；出牌后保留原行，剩余牌可舒适放入单排时合并。横屏继续单排，旋转保留选择。

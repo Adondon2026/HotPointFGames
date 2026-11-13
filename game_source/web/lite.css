@@ -30,3 +30,23 @@ body[data-game="ddz"][data-view="game"] #gameCard{background:transparent;border:
 @media(max-width:380px) and (orientation:portrait){.ddz-table{padding:9px;gap:7px}.ddz-table .ddz-text-button{padding:5px 5px}.ddz-table .ddz-mini{width:29px;height:43px;font-size:12px}.ddz-table .ddz-card{width:49px;flex-basis:49px;margin-left:-20px}}
 .lite-result-details{border-top:1px solid var(--line);padding:12px 0;margin:12px 0}.lite-result-details summary{cursor:pointer;color:var(--muted);font-size:14px;padding:8px 2px}.lite-result-details p{font-size:13px;line-height:1.5}.lite-result-note{font-size:17px;color:var(--green);font-weight:600}.lite-result-details .lite-history-row b{color:var(--text);font-weight:500}
 @media(orientation:landscape) and (max-height:500px){.ddz-table{min-height:calc(100dvh - 46px)}}
+
+/* DDZ hand: balanced rank-preserving rows on portrait, single row on landscape. */
+.ddz-table #ddzHand{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:0}
+.ddz-hand-row{display:flex;align-items:flex-end;justify-content:safe center;min-width:100%;width:max-content;padding:0;box-sizing:border-box;isolation:isolate}
+.ddz-table #ddzHand.ddz-two-rows{overflow:hidden;touch-action:pan-y;gap:12px;padding-top:15px;padding-bottom:4px}
+.ddz-table .ddz-two-rows .ddz-hand-row{width:100%;min-width:0;--card-w:52px;justify-content:center}
+.ddz-table .ddz-two-rows .ddz-card{width:var(--card-w);flex-basis:var(--card-w);height:70px;margin-left:min(0px,calc((100% - var(--card-w)) / var(--intervals) - var(--card-w)));padding:5px 3px;flex-shrink:0}
+.ddz-table .ddz-two-rows .ddz-card:first-child{margin-left:0}
+.ddz-table .ddz-two-rows .ddz-card .rank{font-size:16px}
+.ddz-table .ddz-two-rows .ddz-card .suit{font-size:18px}
+.ddz-table .ddz-two-rows .ddz-card.joker-black .rank,.ddz-table .ddz-two-rows .ddz-card.joker-red .rank{font-size:12px;writing-mode:vertical-rl;text-orientation:upright;letter-spacing:-1px}
+@media(max-width:380px) and (orientation:portrait){.ddz-table .ddz-two-rows .ddz-hand-row{--card-w:46px}.ddz-table .ddz-two-rows .ddz-card{height:64px}.ddz-table .ddz-two-rows .ddz-card .rank{font-size:14px}}
+@media(orientation:portrait) and (max-height:700px){.ddz-table{grid-template-rows:auto auto minmax(80px,1fr) auto;gap:5px;padding:8px}.ddz-table .ddz-two-rows .ddz-card{height:58px}.ddz-table #ddzHand.ddz-two-rows{gap:10px;padding-top:13px}.ddz-center{padding:2px 0}.ddz-control-line{min-height:48px}.ddz-own{padding-top:5px}}
+
+/* One-row portrait uses the same adaptive spacing, including the merge threshold. */
+.ddz-table #ddzHand.ddz-portrait-hand{overflow:hidden;touch-action:pan-y}
+.ddz-table .ddz-portrait-hand .ddz-hand-row{width:100%;min-width:0;--card-w:52px;justify-content:center}
+.ddz-table .ddz-portrait-hand .ddz-card{width:var(--card-w);flex-basis:var(--card-w);margin-left:min(0px,calc((100% - var(--card-w)) / var(--intervals) - var(--card-w)))}
+.ddz-table .ddz-portrait-hand .ddz-card:first-child{margin-left:0}
+@media(max-width:380px) and (orientation:portrait){.ddz-table .ddz-portrait-hand .ddz-hand-row{--card-w:46px}}
