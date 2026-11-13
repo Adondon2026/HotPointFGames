@@ -1,8 +1,6 @@
-    <div id="cardsGame" class="hidden">
-      <div class="stage"><div class="stage-kicker">本轮目标</div><div class="stage-main" id="targetRank">Q</div><div class="stage-sub" id="cardsTurnText"></div></div>
-      <div class="notice" id="lastPlayText">还没人出牌</div>
-      <div class="muted" style="margin-top:14px">你的牌</div><div class="hand" id="myCards"></div><div class="selection-hint" id="selectionHint">选择 1～3 张</div>
-      <div class="actions" id="cardsActions"><button class="green" id="playCardsBtn">盖牌</button><button class="red" id="challengeCardsBtn">质疑上一手</button></div>
-      <div class="reveal hidden" id="cardsReveal"><div class="muted" style="text-align:center">上一手翻开</div><div class="reveal-cards" id="revealedCards"></div><div class="result" id="cardsResult"></div><button class="full blue hidden" id="cardsNextBtn" style="margin-top:12px">下一轮</button></div>
-    </div>
-
+<div id="cardsGame" class="hidden tg-table">
+ <header class="tg-head"><span>骗子牌</span><span id="cardsTurnText" class="tg-turn"></span><button class="tg-link" data-table-history>记录</button><button class="tg-link" onclick="liteRules()">规则</button></header>
+ <div id="cardsSeats" class="tg-seats"></div>
+ <section class="tg-center cards-center"><div class="tg-target"><span>目标牌</span><b id="targetRank">Q</b><small>Joker 万能</small></div><div id="lastPlayText" class="tg-caption"></div><div id="cardsBacks" class="tg-backs"></div><div id="cardsReveal" class="hidden tg-reveal"><div id="revealedCards" class="reveal-cards"></div><div id="cardsResult" class="result"></div><button class="green full hidden" id="cardsNextBtn">下一轮</button></div></section>
+ <section class="tg-own"><div class="tg-own-head"><span>你的手牌</span><span id="selectionHint"></span></div><div id="myCards" class="hand"></div><div id="cardsActions" class="actions"><button class="green" id="playCardsBtn">盖牌</button><button class="red" id="challengeCardsBtn">质疑上一手</button></div></section>
+</div>

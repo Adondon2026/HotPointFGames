@@ -15,11 +15,11 @@ function renderDraw(){
   $("drawKicker").textContent=state.phase==="draw_choose"?(isDrawer?"选题":"画家正在选题"):state.phase==="draw_play"?(isDrawer?"你的题目":"正在作画"):"答案";
   $("drawMain").textContent=state.phase==="draw_choose"?(isDrawer?"请选择":"请稍候"):state.phase==="draw_play"?(isDrawer?d.word:d.hint):(d.answer||"");
   $("drawSub").textContent=state.phase==="draw_play"?(isDrawer?`${d.libraryLabel} · 不能写字、数字或拼音`:`${drawer?.name||""} 正在画 · ${d.libraryLabel}`):state.phase==="draw_reveal"?d.result:`第 ${d.turnIndex+1}/${d.totalTurns} 题 · ${d.libraryLabel||""}`;
-  $("wordChoicePanel").classList.toggle("hidden",!(state.phase==="draw_choose"&&isDrawer));$("wordChoices").innerHTML="";
-  (d.choices||[]).forEach((w,i)=>{const b=document.createElement("button");b.className="word-choice";b.innerHTML=`${esc(w.word)}<small>${esc(w.category)} · ${w.difficultyLabel} · ${w.libraryLabel}</small>`;b.onclick=()=>action("draw_choose",{index:i});$("wordChoices").appendChild(b)});
+  $("wordChoicePanel").classList.toggle("hidden",!(state.phase==="draw_choose"&&isDrawer));const choiceKey=JSON.stringify(d.choices||[]);if($("wordChoices").dataset.key!==choiceKey){$("wordChoices").dataset.key=choiceKey;$("wordChoices").innerHTML="";
+  (d.choices||[]).forEach((w,i)=>{const b=document.createElement("button");b.className="word-choice";b.innerHTML=`${esc(w.word)}<small>${esc(w.category)} · ${w.difficultyLabel} · ${w.libraryLabel}</small>`;b.onclick=()=>action("draw_choose",{index:i});$("wordChoices").appendChild(b)});}
   const showCanvas=["draw_play","draw_reveal"].includes(state.phase);$("canvasPanel").classList.toggle("hidden",!showCanvas);$("drawTools").classList.toggle("hidden",!(state.phase==="draw_play"&&isDrawer));
-  const guessed=(d.correctIds||[]).includes(playerId);$("guessRow").classList.toggle("hidden",!(state.phase==="draw_play"&&!isDrawer&&!guessed));$("guessFeed").innerHTML="";
-  (d.guesses||[]).slice(-8).forEach(g=>{const x=document.createElement("div");x.className="guess-chip"+(g.correct?" correct":"");x.textContent=g.correct?`${g.name} 猜对了`:`${g.name}：${g.text}`;$("guessFeed").appendChild(x)});
+  const guessed=(d.correctIds||[]).includes(playerId);$("guessRow").classList.toggle("hidden",!(state.phase==="draw_play"&&!isDrawer&&!guessed));const guessKey=JSON.stringify(d.guesses||[]);if($("guessFeed").dataset.key!==guessKey){$("guessFeed").dataset.key=guessKey;$("guessFeed").innerHTML="";
+  (d.guesses||[]).slice(-8).forEach(g=>{const x=document.createElement("div");x.className="guess-chip"+(g.correct?" correct":"");x.textContent=g.correct?`${g.name} 猜对了`:`${g.name}：${g.text}`;$("guessFeed").appendChild(x)});}
   $("drawReveal").classList.toggle("hidden",state.phase!=="draw_reveal");$("drawResult").textContent=d.result||"";$("drawNextBtn").classList.toggle("hidden",!state.canAdvanceRound);
   applyDrawCanvas(drawCanvasRevision!==d.canvasRevision);startTimer();lastPhase=state.phase;
 }

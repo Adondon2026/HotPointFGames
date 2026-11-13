@@ -31,6 +31,7 @@ jobs:
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py
           python game_source/tests/test_table.py
+          python game_source/tests/test_other_tables.py
       - name: Upload importable game files
         uses: actions/upload-artifact@v4
         with:

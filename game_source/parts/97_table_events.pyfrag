@@ -1,0 +1,48 @@
+# Public action history for the other table games. Never record private hands/dice.
+_table_action_base = Handler.handle_action
+_TABLE_ACTIONS = {'cards_play','cards_challenge','dice_bid','dice_challenge','dice_exact','cm_discard','cm_self_hu','cm_gang'}
+def _table_action(self, player, action, data):
+    mode = STATE['mode']; match = STATE.get('matchId'); round_no = STATE.get('roundNo', 1)
+    event = None
+    if action in _TABLE_ACTIONS and match:
+        event = {'playerId':player['id'], 'playerName':player['name'], 'kind':action, 'round':round_no}
+        if action == 'cards_play': event['count'] = len(data.get('cardIds', [])) if isinstance(data.get('cardIds'), list) else 0
+        if action == 'dice_bid': event.update(quantity=data.get('quantity'), face=data.get('face'))
+        if action == 'cm_discard':
+            tile = next((t for t in player.get('cmHand',[]) if t['id']==str(data.get('tileId',''))),None)
+            if tile: event['tile'] = {'suit':tile['suit'],'rank':tile['rank']}
+        if action == 'cm_gang': event['tile'] = {'suit':data.get('suit'),'rank':data.get('rank')}
+    result = _table_action_base(self,player,action,data)
+    if event and result[1]==200:
+        if action in ('cards_challenge','dice_challenge','dice_exact'): event['result'] = STATE.get('roundResult','')
+        _append_table_event(event,match)
+    return result
+Handler.handle_action = _table_action
+
+def _append_table_event(event,match):
+    if not match: return
+    if STATE.get('tableEventMatch') != match:
+        STATE['tableEventMatch'] = match; STATE['tableEvents'] = []; STATE['tableEventSeq'] = 0
+    STATE['tableEventSeq'] += 1; event['seq'] = STATE['tableEventSeq']
+    STATE['tableEvents'].append(event); STATE['tableEvents'] = STATE['tableEvents'][-512:]
+    save_state()
+
+# Responses are private until resolution; record only actual public melds/wins.
+_table_resolve_base = cm_resolve_responses
+def cm_resolve_responses():
+    cm = STATE['chuanma']; match = STATE.get('matchId'); round_no = STATE.get('roundNo',1)
+    before = {p['id']:len(p.get('cmMelds',[])) for p in STATE['players']}
+    wins = len(cm.get('winRecords',[])); discard = cm.get('lastDiscard') or {}; tile = discard.get('tile')
+    _table_resolve_base()
+    for p in STATE['players']:
+        for meld in p.get('cmMelds',[])[before.get(p['id'],0):]:
+            _append_table_event({'playerId':p['id'],'playerName':p['name'],'kind':'cm_meld','choice':meld['type'],'tile':{'suit':meld['suit'],'rank':meld['rank']},'round':round_no},match)
+    for win in cm.get('winRecords',[])[wins:]:
+        p=player_by_id(win['winnerId'])
+        if p: _append_table_event({'playerId':p['id'],'playerName':p['name'],'kind':'cm_win','tile':{'suit':tile['suit'],'rank':tile['rank']} if tile else None,'round':round_no},match)
+_table_public_base = public_state
+def public_state(player_id,draw_since=-1,draw_revision=-1):
+    view = _table_public_base(player_id,draw_since,draw_revision)
+    view['tableMatch'] = STATE.get('matchId')
+    view['tableEvents'] = list(STATE.get('tableEvents',[])) if STATE.get('tableEventMatch')==STATE.get('matchId') and STATE['mode'] in ('cards','dice','chuanma') else []
+    return view

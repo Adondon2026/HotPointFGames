@@ -28,9 +28,10 @@ async function refresh(force=false){
     return null;
   }finally{refreshing=false}
 }
-async function poll(){if(polling)return;polling=true;while(polling){await refresh();let ms=document.hidden?3000:1500;if(state?.mode==="draw"&&state?.phase==="draw_play")ms=document.hidden?2600:1000;await sleep(ms)}}
+async function poll(){if(polling)return;polling=true;while(polling){await refresh();let ms=document.hidden?3000:1500;if(state?.mode==="draw"&&state?.phase==="draw_play")ms=document.hidden?2600:1000;else if(["cards","dice","chuanma"].includes(state?.mode)&&state?.phase!=="lobby"&&state?.phase!=="finished")ms=document.hidden?3000:650;await sleep(ms)}}
 async function action(type,extra={}){
   if(busy&&type!=="draw_stroke")return null;
+  if(tgBusy()&&["cards_play","cards_challenge","dice_bid","dice_challenge","dice_exact","cm_discard","cm_respond","cm_self_hu","cm_gang","next_round"].includes(type))return null;
   const lock=type!=="draw_stroke",requestId=(crypto.randomUUID?.()||("req_"+Date.now()+"_"+Math.random()));
   if(lock)busy=true;
   try{

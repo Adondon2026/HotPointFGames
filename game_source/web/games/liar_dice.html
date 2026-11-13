@@ -1,17 +1,6 @@
-    <div id="diceGame" class="hidden">
-      <div class="stage"><div class="stage-kicker">当前叫法</div><div class="stage-main" id="diceBid">尚未叫骰</div><div class="stage-sub" id="diceTurnText"></div></div>
-      <div class="dice" id="myDice"></div>
-      <div id="diceControls">
-        <div class="notice" id="diceRuleNotice">叫骰表示“至少”有这么多。开你：实际少于叫数才成功；抓准：实际必须刚好相等。</div>
-        <div class="muted" style="margin-top:12px">数量</div>
-        <div class="counter"><button class="secondary" id="qtyMinus">−</button><strong id="qtyValue">1</strong><button class="secondary" id="qtyPlus">＋</button></div>
-        <div class="faces" id="faces"></div>
-        <div class="actions three"><button class="green" id="bidBtn">叫骰</button><button class="red" id="challengeDiceBtn">开你</button><button class="secondary" id="exactBtn">抓准</button></div>
-      </div>
-      <div class="reveal hidden" id="diceReveal">
-        <div class="result" id="diceResult"></div>
-        <div class="dice-reveal-list" id="diceRevealHands"></div>
-        <button class="full blue hidden" id="diceNextBtn" style="margin-top:12px">下一轮</button>
-      </div>
-    </div>
-
+<div id="diceGame" class="hidden tg-table">
+ <header class="tg-head"><span>大话骰</span><span id="diceTurnText" class="tg-turn"></span><button class="tg-link" data-table-history>记录</button><button class="tg-link" onclick="liteRules()">规则</button></header>
+ <div id="diceSeats" class="tg-seats"></div>
+ <section class="tg-center dice-center"><div class="tg-caption" id="diceCaller">当前叫法</div><div id="diceBid" class="tg-bid">尚未叫骰</div><div id="diceRecent" class="tg-caption"></div><div id="diceReveal" class="hidden tg-reveal"><div id="diceResult" class="result"></div><div id="diceRevealHands" class="dice-reveal-list"></div><button class="green full hidden" id="diceNextBtn">下一轮</button></div></section>
+ <section class="tg-own"><div class="tg-own-head"><span>你的骰子</span><span id="diceRuleNotice"></span></div><div id="myDice" class="dice"></div><div id="diceControls"><div class="tg-bid-editor"><div class="counter"><button class="secondary" id="qtyMinus">−</button><strong id="qtyValue">1</strong><button class="secondary" id="qtyPlus">＋</button></div><div id="faces" class="faces"></div></div><div class="actions three"><button class="green" id="bidBtn">叫骰</button><button class="red" id="challengeDiceBtn">开你</button><button class="secondary" id="exactBtn">抓准</button></div></div></section>
+</div>

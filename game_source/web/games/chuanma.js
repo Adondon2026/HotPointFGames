@@ -12,21 +12,12 @@ function renderChuanma(){
   $("cmSub").textContent=`牌墙 ${cm.wallCount} 张${cm.myMissing?` · 你缺${CM_SUIT_LABEL[cm.myMissing]}`:""}`;
   $("cmNotice").textContent=cm.message||"";
 
-  const meldBoard=$("cmMeldBoard");meldBoard.innerHTML="";
-  state.players.forEach(p=>{
-    const row=document.createElement("div");row.className="cm-meld-row";
-    const title=document.createElement("div");title.className="cm-meld-name";title.textContent=`${p.name}${p.cmWon?" · 已胡":""}${p.cmMissing?` · 缺${CM_SUIT_LABEL[p.cmMissing]}`:""} · ${p.cmScore>=0?"+":""}${p.cmScore}`;row.appendChild(title);
-    const tiles=document.createElement("div");tiles.className="cm-melds";
-    (p.cmMelds||[]).forEach(m=>{const group=document.createElement("div");group.className="cm-meld-group";const count=m.type==="gang"?4:3;for(let i=0;i<count;i++)group.appendChild(renderCmTile({suit:m.suit,rank:m.rank},true));tiles.appendChild(group)});
-    row.appendChild(tiles);meldBoard.appendChild(row);
-  });
-
-  const river=$("cmRiver");river.innerHTML="";
-  (cm.discardPile||[]).forEach(item=>{const wrap=document.createElement("div");wrap.className="cm-river-item";wrap.title=item.playerName;wrap.appendChild(renderCmTile(item.tile,true));river.appendChild(wrap)});
-
   const valid=new Set((cm.myHand||[]).map(t=>t.id));[...selectedCmTiles].forEach(id=>{if(!valid.has(id))selectedCmTiles.delete(id)});
   if(phase!=="cm_exchange"&&!(phase==="cm_play"&&state.turnPlayerId===playerId))selectedCmTiles.clear();
   const hand=$("cmHand");hand.innerHTML="";
+  const tiles=cm.myHand||[];const split=matchMedia('(orientation:portrait) and (max-width:520px)').matches&&tiles.length>=10;
+  let cut=tiles.length;if(split){const candidates=Array.from({length:tiles.length-1},(_,i)=>i+1).filter(i=>i>=Math.floor(tiles.length/2)-2&&i<=Math.ceil(tiles.length/2)+2&&tiles[i-1].suit!==tiles[i].suit);cut=candidates.sort((a,b)=>Math.abs(a-tiles.length/2)-Math.abs(b-tiles.length/2))[0]||Math.ceil(tiles.length/2)}
+  const rows=[document.createElement('div')];rows[0].className='cm-hand-row';hand.append(rows[0]);if(split){rows.push(document.createElement('div'));rows[1].className='cm-hand-row';hand.append(rows[1])}hand.classList.toggle('cm-two-rows',split);rows[0].style.setProperty('--cm-count',String(Math.max(1,cut)));if(split)rows[1].style.setProperty('--cm-count',String(Math.max(1,tiles.length-cut)));
   (cm.myHand||[]).forEach((tile,index)=>{
     const el=renderCmTile(tile,false);el.style.zIndex=String(index+1);el.classList.toggle("selected",selectedCmTiles.has(tile.id));
     if(tile.id===cm.myDrawnId)el.classList.add("drawn");
@@ -35,7 +26,7 @@ function renderChuanma(){
     const blocked=(phase==="cm_exchange"&&selected&&selected.suit!==tile.suit)||(phase==="cm_play"&&cm.canDiscard&&cm.myMissing&&(cm.myHand||[]).some(t=>t.suit===cm.myMissing)&&tile.suit!==cm.myMissing);
     if(blocked)el.classList.add("ineligible");
     el.onclick=()=>{
-      if(blocked)return;
+      if(blocked||tgBusy())return;
       if(phase==="cm_exchange"){
         if(cm.exchangeSubmitted)return;
         if(selectedCmTiles.has(tile.id))selectedCmTiles.delete(tile.id);else if(selectedCmTiles.size<3)selectedCmTiles.add(tile.id);else toast("换三张最多选择 3 张");
@@ -43,7 +34,7 @@ function renderChuanma(){
         selectedCmTiles.clear();selectedCmTiles.add(tile.id);
       }
       renderChuanma();
-    };hand.appendChild(el);
+    };rows[split&&index>=cut?1:0].appendChild(el);
   });
   if(cm.myWon)hand.innerHTML='<div class="muted">你已经胡牌，正在观看血战继续</div>';
 
@@ -61,7 +52,7 @@ function renderChuanma(){
   if(phase==="cm_exchange")$("cmSelection").textContent=cm.exchangeSubmitted?"已提交，不能再修改":selectedCmTiles.size?`已选 ${selectedCmTiles.size}/3 张（必须同花色）`:"请选择三张同花色的牌";
   else if(phase==="cm_dingque")$("cmSelection").textContent=cm.dingqueSubmitted?"已完成定缺，等待其他人":"选择一个你准备优先打空的花色";
   else if(phase==="cm_response")$("cmSelection").textContent=cm.responded?"已响应，等待其他玩家":"请选择碰、杠、胡或过";
-  else $("cmSelection").textContent=selectedCmTiles.size?"已选 1 张":"定缺牌尚未打完时，必须优先打缺门";
+  else $("cmSelection").textContent=selectedCmTiles.size?"已选 1 张":cm.canDiscard&&cm.myMissing&&cm.myHand.some(t=>t.suit===cm.myMissing)?"优先打缺门":"";
 }
 
 $("cmExchangeBtn").onclick=()=>action("cm_exchange",{tileIds:[...selectedCmTiles]}).then(d=>{if(d?.ok)selectedCmTiles.clear()});

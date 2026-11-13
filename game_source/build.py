@@ -23,10 +23,11 @@ def build_html():
         read("web/games/doudizhu.js"),
         read("web/games/chuanma.js"),
         read("web/games/draw_guess.js"),
+        read("web/table_games.js"),
         read("web/90_common.js"),
         read("web/lite.js"),
     ])
-    return markup.replace("</style>", read("web/lite.css") + "\n</style>", 1) + script + read("web/99_document_end.html")
+    return markup.replace("</style>", read("web/lite.css") + "\n" + read("web/table_games.css") + "\n</style>", 1) + script + read("web/99_document_end.html")
 
 def build_release():
     html = build_html()
@@ -46,7 +47,7 @@ def build_release():
         read("parts/games/doudizhu_actions.pyfrag"),
         read("parts/games/chuanma_actions.pyfrag"),
         read("parts/games/draw_guess_actions.pyfrag"),
-        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + "\n" + read("parts/96_bots.pyfrag") + '\nif __name__ == "__main__":', 1),
+        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + "\n" + read("parts/96_bots.pyfrag") + "\n" + read("parts/97_table_events.pyfrag") + '\nif __name__ == "__main__":', 1),
     ]
     release = "".join(chunks)
     compile(release, "game_hall_lan_v6_2.py", "exec")

@@ -1,43 +1,9 @@
-
-    <div id="chuanmaGame" class="hidden">
-      <div class="stage">
-        <div class="stage-kicker" id="cmKicker">四川麻将</div>
-        <div class="stage-main" id="cmMain">等待开始</div>
-        <div class="stage-sub" id="cmSub"></div>
-      </div>
-      <div class="notice" id="cmNotice"></div>
-
-      <div class="cm-meld-board" id="cmMeldBoard"></div>
-      <div class="muted" style="margin-top:12px">牌河</div>
-      <div class="cm-river" id="cmRiver"></div>
-
-      <div class="muted" style="margin-top:12px">你的手牌</div>
-      <div class="cm-hand" id="cmHand"></div>
-      <div class="selection-hint" id="cmSelection">点牌选择</div>
-
-      <div id="cmExchangePanel" class="hidden">
-        <button class="full green" id="cmExchangeBtn">确认换三张</button>
-      </div>
-      <div id="cmDingquePanel" class="hidden">
-        <div class="actions three">
-          <button data-cm-missing="W">缺万</button>
-          <button data-cm-missing="T">缺筒</button>
-          <button data-cm-missing="B">缺条</button>
-        </div>
-      </div>
-      <div id="cmPlayPanel" class="hidden">
-        <div class="actions three">
-          <button class="red" id="cmHuBtn">胡</button>
-          <button class="secondary" id="cmGangBtn">杠</button>
-          <button class="green" id="cmDiscardBtn">出牌</button>
-        </div>
-      </div>
-      <div id="cmResponsePanel" class="hidden">
-        <div class="actions four">
-          <button class="red" data-cm-response="hu">胡</button>
-          <button data-cm-response="gang">杠</button>
-          <button data-cm-response="peng">碰</button>
-          <button class="secondary" data-cm-response="pass">过</button>
-        </div>
-      </div>
-    </div>
+<div id="chuanmaGame" class="hidden tg-table cm-table">
+ <header class="tg-head"><span>四川麻将</span><span id="cmSub" class="tg-turn"></span><button class="tg-link" data-table-history>记录</button><button class="tg-link" onclick="liteRules()">规则</button></header>
+ <div class="tg-center cm-center"><div id="cmMeldBoard" class="cm-meld-board"></div><div id="cmRiver" class="cm-river"></div><div class="cm-current"><span id="cmKicker"></span><strong id="cmMain"></strong><div id="cmLatest"></div><div id="cmNotice" class="tg-caption"></div></div></div>
+ <section class="tg-own"><div class="tg-own-head"><span id="cmOwnLabel">你的手牌</span><span id="cmSelection"></span></div><div id="cmHand" class="cm-hand"></div>
+ <div id="cmExchangePanel" class="hidden"><button class="full green" id="cmExchangeBtn">确认换三张</button></div>
+ <div id="cmDingquePanel" class="hidden"><div class="actions three"><button data-cm-missing="W">缺万</button><button data-cm-missing="T">缺筒</button><button data-cm-missing="B">缺条</button></div></div>
+ <div id="cmPlayPanel" class="hidden"><div class="actions three"><button class="red" id="cmHuBtn">胡</button><button class="secondary" id="cmGangBtn">杠</button><button class="green" id="cmDiscardBtn">出牌</button></div></div>
+ <div id="cmResponsePanel" class="hidden"><div class="actions four"><button class="red" data-cm-response="hu">胡</button><button data-cm-response="gang">杠</button><button data-cm-response="peng">碰</button><button class="secondary" data-cm-response="pass">过</button></div></div>
+ </section></div>
