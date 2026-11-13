@@ -14,6 +14,7 @@ def build_html():
         read("web/games/doudizhu.html"),
         read("web/games/chuanma.html"),
         read("web/games/draw_guess.html"),
+        read("web/games/army.html"),
         read("web/90_shell_after_games.html"),
     ])
     script = "".join([
@@ -27,8 +28,20 @@ def build_html():
         read("web/90_common.js"),
         read("web/lite.js"),
         read("web/feedback.js"),
+        read("web/games/army.js"),
     ])
-    return markup.replace("</style>", read("web/lite.css") + "\n" + read("web/table_games.css") + "\n" + read("web/feedback.css") + "\n</style>", 1) + script + read("web/99_document_end.html")
+    return markup.replace("</style>", read("web/lite.css") + "\n" + read("web/table_games.css") + "\n" + read("web/feedback.css") + "\n" + read("web/games/army.css") + "\n</style>", 1) + script + read("web/99_document_end.html")
+
+def army_engine():
+    # Embed original modules in isolated namespaces; release remains one Python file.
+    chunks = ["import types as _army_types\n"]
+    for name in ("topology", "rules", "game_state"):
+        src = read("parts/army/" + name + ".py").replace("import topology\n", "").replace("import rules\n", "")
+        chunks.append(f"_army_{name} = _army_types.ModuleType('army_{name}')\n")
+        if name != "topology": chunks.append(f"_army_{name}.__dict__['topology'] = _army_topology\n")
+        if name == "game_state": chunks.append("_army_game_state.__dict__['rules'] = _army_rules\n")
+        chunks.append(f"exec(compile({src!r}, 'army/{name}.py', 'exec'), _army_{name}.__dict__)\n")
+    return "".join(chunks)
 
 def build_release():
     html = build_html()
@@ -48,7 +61,7 @@ def build_release():
         read("parts/games/doudizhu_actions.pyfrag"),
         read("parts/games/chuanma_actions.pyfrag"),
         read("parts/games/draw_guess_actions.pyfrag"),
-        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + "\n" + read("parts/96_bots.pyfrag") + "\n" + read("parts/97_table_events.pyfrag") + '\nif __name__ == "__main__":', 1),
+        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + "\n" + read("parts/96_bots.pyfrag") + "\n" + read("parts/97_table_events.pyfrag") + "\n" + army_engine() + "\n" + read("parts/98_army.pyfrag") + '\nif __name__ == "__main__":', 1),
     ]
     release = "".join(chunks)
     compile(release, "game_hall_lan_v6_2.py", "exec")

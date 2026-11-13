@@ -14,6 +14,7 @@ def fresh_state():
             "drawTime": 75,
             "drawDifficulty": "mixed",
             "drawLibrary": "random",
+            "armyVictory": "capture", "armyFirst": "host", "armyMountains": True, "armyAnnotations": True,
         },
         "turnPlayerId": None,
         "roundNo": 0,

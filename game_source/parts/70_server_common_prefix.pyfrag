@@ -5,7 +5,7 @@ def public_state(player_id, draw_since=-1, draw_revision=-1):
     can_advance = STATE["phase"] in ("cards_reveal", "dice_reveal", "draw_reveal") and (
         player_id == STATE["hostPlayerId"] or player_id == STATE["roundLoserId"] or player_id == STATE["draw"]["drawerId"]
     )
-    max_players = 3 if STATE["mode"] == "ddz" else 4
+    max_players = 2 if STATE["mode"] == "army" else 3 if STATE["mode"] == "ddz" else 4
     min_players = 1 if STATE["mode"] == "ddz" else 2
     last_play = STATE["card"]["lastPlay"]
     return {
@@ -39,7 +39,7 @@ def public_state(player_id, draw_since=-1, draw_revision=-1):
         "roundNo": STATE["roundNo"],
         "roundResult": STATE["roundResult"],
         "canAdvanceRound": can_advance,
-        "winnerName": (STATE["roundResult"] if STATE["mode"] in ("draw", "ddz", "chuanma") and STATE["phase"] == "finished" else (winner["name"] if winner else "")),
+        "winnerName": (STATE["roundResult"] if STATE["mode"] in ("draw", "ddz", "chuanma", "army") and STATE["phase"] == "finished" else (winner["name"] if winner else "")),
         "myCards": list(me["hand"]) if me and STATE["mode"] == "cards" else [],
         "myDice": list(me["dice"]) if me and STATE["mode"] == "dice" else [],
         "myDdzCards": list(me.get("ddzHand", [])) if me and STATE["mode"] == "ddz" else [],
@@ -194,7 +194,7 @@ class Handler(BaseHTTPRequestHandler):
                 response = {"ok": False, "error": "游戏已经开始，未找到原座位"}
             else:
                 prune_lobby_players()
-                max_players = 3 if STATE["mode"] == "ddz" else 4
+                max_players = 2 if STATE["mode"] == "army" else 3 if STATE["mode"] == "ddz" else 4
                 if len(STATE["players"]) >= max_players:
                     response = {"ok": False, "error": "座位已满"}
                 else:
@@ -258,7 +258,7 @@ class Handler(BaseHTTPRequestHandler):
             if STATE["phase"] != "lobby":
                 return {"error": "只能在大厅切换玩法"}, 409
             mode = str(data.get("mode", ""))
-            if mode not in ("cards", "dice", "draw", "ddz", "chuanma"):
+            if mode not in ("cards", "dice", "draw", "ddz", "chuanma", "army"):
                 return {"error": "未知玩法"}, 400
             STATE["mode"] = mode
             trim_bots_for_mode(mode)
@@ -300,7 +300,7 @@ class Handler(BaseHTTPRequestHandler):
                 return {"error": "游戏已经开始"}, 409
             humans = [item for item in STATE["players"] if not item.get("isBot")]
             min_players = 1 if STATE["mode"] == "ddz" else 2
-            max_players = 3 if STATE["mode"] == "ddz" else 4
+            max_players = 2 if STATE["mode"] == "army" else 3 if STATE["mode"] == "ddz" else 4
             if not humans or not (min_players <= len(STATE["players"]) <= max_players):
                 return {"error": ("斗地主支持 1～3 名真人，空位自动补机器人" if STATE["mode"] == "ddz" else "川麻支持 2～4 人，可手动添加机器人" if STATE["mode"] == "chuanma" else "当前玩法支持 2～4 人")}, 409
             if not all(is_connected(item) for item in humans):
@@ -325,6 +325,8 @@ class Handler(BaseHTTPRequestHandler):
                 start_draw_turn()
             elif STATE["mode"] == "chuanma":
                 start_chuanma()
+            elif STATE["mode"] == "army":
+                army_start()
             else:
                 STATE["ddz"] = fresh_ddz()
                 deal_ddz()

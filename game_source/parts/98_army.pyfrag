@@ -1,0 +1,172 @@
+# ArmyChess v0.6.1 adapter. Original engine is isolated from the other games.
+_army_cache = (None, None)
+_army_due = (None, 0.0)
+_ARMY_NODES = [(r,c) for r in range(12) for c in range(5)] + ['ML','MR']
+
+def _army_encode(x):
+    if isinstance(x, tuple): return {'@tuple': [_army_encode(v) for v in x]}
+    if isinstance(x, list): return [_army_encode(v) for v in x]
+    if isinstance(x, dict):
+        if all(isinstance(k,str) for k in x): return {k:_army_encode(v) for k,v in x.items()}
+        return {'@map': [[_army_encode(k),_army_encode(v)] for k,v in x.items()]}
+    return x
+
+def _army_decode(x):
+    if isinstance(x,list): return [_army_decode(v) for v in x]
+    if isinstance(x,dict):
+        if '@tuple' in x: return tuple(_army_decode(v) for v in x['@tuple'])
+        if '@map' in x: return {_army_decode(k):_army_decode(v) for k,v in x['@map']}
+        return {k:_army_decode(v) for k,v in x.items()}
+    return x
+
+def army_get():
+    global _army_cache
+    data=STATE.get('armyData')
+    if not data: return None
+    if _army_cache[0] is data: return _army_cache[1]
+    g=_army_game_state.GameState();g.__dict__.update(_army_decode(data))
+    _army_cache=(data,g);return g
+
+def army_commit(g):
+    global _army_cache
+    data=_army_encode(g.__dict__);STATE['armyData']=data;_army_cache=(data,g)
+    STATE['phase']={'setup':'army_setup','play':'army_play','over':'finished'}[g.phase]
+    ids=STATE['armySeats'];STATE['turnPlayerId']=ids[g.turn] if g.phase=='play' else None
+    STATE['roundNo']=1;STATE['roundResult']=g.message
+    STATE['winnerId']=ids[g.winner] if g.phase=='over' and g.winner is not None else None
+    for p in STATE['players']: p['armyScore']=int(p['id']==STATE['winnerId'])
+    bump()
+
+def army_start():
+    s=STATE['settings'];g=_army_game_state.GameState({'victory_mode':s['armyVictory'],'first_player':s['armyFirst'],'mountains':s['armyMountains'],'allow_annotations':s['armyAnnotations']})
+    ids=[STATE['hostPlayerId']]+[p['id'] for p in STATE['players'] if p['id']!=STATE['hostPlayerId']]
+    STATE['armySeats']=ids;STATE['armyDrafts']=[_army_rules.random_setup(i,random.SystemRandom()) for i in range(2)]
+    for i,pid in enumerate(ids):
+        if player_by_id(pid).get('isBot'): g.submit_setup(i,STATE['armyDrafts'][i])
+    army_commit(g)
+
+def _army_node(v):
+    if isinstance(v,str) and v in ('ML','MR'): return v
+    if isinstance(v,list) and len(v)==2 and all(type(x) is int for x in v):
+        n=tuple(v)
+        if _army_topology.is_station(n): return n
+    raise ValueError('无效站点')
+
+def _army_legal(g,owner,src,dst,truth=False):
+    ok,_,_,_=_army_rules.movement_details(g.board,owner,src,dst,g.room_rules['mountains'])
+    if not ok:return False
+    flag=g.ground_flags.get(dst);piece=g.board[src];target=g.board.get(dst)
+    if flag==owner:return False
+    if g.room_rules['victory_mode']=='return' and piece['rank']=='炸弹':
+        if flag is not None:return False
+        # Do not expose an unrevealed flag through a missing legal-move hint.
+        if target and target['rank']=='军旗' and (truth or owner in target.get('revealed_to',[])):return False
+    return True
+
+def _army_has_any(board,owner,mountains_enabled=True,ground_flags=None,victory_mode='capture'):
+    # Original engine's terminal check omitted own dropped flags and hidden original flag vs bomb.
+    flags=ground_flags or {}
+    for src,p in board.items():
+        if p['owner']!=owner:continue
+        for dst in _ARMY_NODES:
+            if flags.get(dst)==owner:continue
+            if victory_mode=='return' and p['rank']=='炸弹' and (dst in flags or board.get(dst,{}).get('rank')=='军旗'):continue
+            if _army_rules.movement_details(board,owner,src,dst,mountains_enabled)[0]:return True
+    return False
+_army_rules.has_any_move=_army_has_any
+
+_army_action_base=Handler.handle_action
+def _army_action(self,player,action,data):
+    if action=='army_settings':
+        if STATE['mode']!='army' or STATE['phase']!='lobby' or player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可在军棋大厅设置'},403
+        v=data.get('victory');f=data.get('first')
+        if v not in ('capture','return') or f not in ('host','guest','random'):return {'error':'设置无效'},400
+        STATE['settings'].update(armyVictory=v,armyFirst=f,armyMountains=bool(data.get('mountains',True)),armyAnnotations=bool(data.get('annotations',True)));bump();return {},200
+    if action=='reset' and player['id']==STATE['hostPlayerId']:
+        r=_army_action_base(self,player,action,data)
+        if r[1]==200:STATE.pop('armyData',None);STATE.pop('armyDrafts',None);STATE.pop('armySeats',None);save_state()
+        return r
+    if not action.startswith('army_'):return _army_action_base(self,player,action,data)
+    if STATE['mode']!='army' or STATE['phase'] not in ('army_setup','army_play'):return {'error':'当前不是军棋对局'},409
+    g=army_get();ids=STATE['armySeats']
+    if not g or player['id'] not in ids:return {'error':'无效座位'},403
+    owner=ids.index(player['id'])
+    try:
+        if action=='army_random':
+            if g.phase!='setup' or owner in g.setups:return {'error':'已经确认布阵'},409
+            STATE['armyDrafts'][owner]=_army_rules.random_setup(owner,random.SystemRandom());bump();return {},200
+        if action in ('army_swap','army_setup'):
+            if g.phase!='setup' or owner in g.setups:return {'error':'已经确认布阵'},409
+            draft=STATE['armyDrafts'][owner]
+            if action=='army_swap':
+                a,b=_army_node(data.get('src')),_army_node(data.get('dst'))
+                x=next((i for i,t in enumerate(draft) if (t['r'],t['c'])==a),None);y=next((i for i,t in enumerate(draft) if (t['r'],t['c'])==b),None)
+                if x is None or y is None:return {'error':'请选择两枚己方棋子'},400
+                new=[dict(t) for t in draft];new[x]['rank'],new[y]['rank']=new[y]['rank'],new[x]['rank'];err=_army_rules.validate_setup(owner,new)
+                if err:return {'error':err},409
+                STATE['armyDrafts'][owner]=new;bump();return {},200
+            ok,err=g.submit_setup(owner,draft)
+        elif action=='army_move':
+            src,dst=_army_node(data.get('src')),_army_node(data.get('dst'))
+            # The reference engine mutates trace/statistics before rejecting bomb vs flag.
+            if g.phase=='play' and owner==g.turn and g.room_rules['victory_mode']=='return' and g.board.get(src,{}).get('rank')=='炸弹' and g.board.get(dst,{}).get('rank')=='军旗' and not g.pending_request and _army_rules.movement_details(g.board,owner,src,dst,g.room_rules['mountains'])[0]:
+                return {'error':'背回军旗模式下，炸弹不能夺取军旗。'},409
+            ok,err=g.move(owner,src,dst)
+        elif action=='army_request':ok,err=g.request(owner,str(data.get('kind','')))
+        elif action=='army_respond':ok,err=g.respond(owner,data.get('accept') is True)
+        elif action=='army_resign':ok,err=g.resign(owner)
+        else:return {'error':'未知军棋操作'},400
+    except (ValueError,TypeError,KeyError):return {'error':'军棋操作数据无效'},400
+    if not ok:return {'error':err},409
+    army_commit(g);return {},200
+Handler.handle_action=_army_action
+
+_army_public_base=public_state
+def public_state(player_id,draw_since=-1,draw_revision=-1):
+    view=_army_public_base(player_id,draw_since,draw_revision)
+    if STATE['mode']!='army':return view
+    for p in view['players']:p['armyScore']=int(p['id']==STATE.get('winnerId'))
+    if STATE['phase']=='lobby':return view
+    g=army_get();ids=STATE.get('armySeats',[])
+    if not g or player_id not in ids:return view
+    owner=ids.index(player_id);v=g.view_for(owner);v['owner']=owner;v['seats']=ids;v['step']=len(g.history)
+    if g.phase=='setup':
+        v['pieces']=[{'node':[t['r'],t['c']],'id':i,'owner':owner,'rank':t['rank'],'carrying_flag':False} for i,t in enumerate(STATE['armyDrafts'][owner])]
+    if g.phase=='play' and g.turn==owner and not g.pending_request:
+        v['legal']=[{'src':g._node_json(src),'dst':[g._node_json(dst) for dst in _ARMY_NODES if _army_legal(g,owner,src,dst)]} for src,p in g.board.items() if p['owner']==owner]
+    else:v['legal']=[]
+    v['match']=STATE.get('matchId');view['army']=v;return view
+
+_army_tick_base=update_timers
+def update_timers():
+    global _army_due
+    _army_tick_base()
+    if STATE['mode']!='army' or STATE['phase']!='army_play':_army_due=(None,0);return
+    g=army_get();ids=STATE['armySeats'];owner=1-g.pending_request['from'] if g.pending_request else g.turn
+    p=player_by_id(ids[owner]);key=(STATE.get('matchId'),STATE['version'],owner)
+    if not p or not p.get('isBot'):_army_due=(None,0);return
+    now=time.time()
+    if _army_due[0]!=key:_army_due=(key,now+1.15);return
+    if now<_army_due[1]:return
+    _army_due=(None,0)
+    if g.pending_request:
+        g.respond(owner,g.pending_request['type']=='undo');army_commit(g);return
+    choices=[]
+    for src,piece in g.board.items():
+        if piece['owner']!=owner:continue
+        for dst in _ARMY_NODES:
+            if not _army_legal(g,owner,src,dst):continue
+            target=g.board.get(dst);known=target and owner in target.get('revealed_to',[])
+            score=random.random()*2
+            if isinstance(src,tuple) and isinstance(dst,tuple):score+=(dst[0]-src[0])*(1 if owner==0 else -1)*.18
+            if target:score+=1.7
+            if known and target['rank']=='军旗':score+=15
+            if piece['rank']=='工兵' and known and target['rank']=='地雷':score+=5
+            if piece.get('carrying_flag_owner') is not None and isinstance(dst,tuple):score+=8 if dst in _army_topology.hq_for(owner) else -(dst[0] if owner==0 else 11-dst[0])*.5
+            choices.append((score,src,dst))
+    for _,src,dst in sorted(choices,key=lambda x:x[0],reverse=True):
+        # Try moves in a ranking based on the bot's visible information only.
+        if not _army_legal(g,owner,src,dst,truth=True):continue
+        ok,_=g.move(owner,src,dst)
+        if ok:army_commit(g);return
+    g._check_terminal();army_commit(g)

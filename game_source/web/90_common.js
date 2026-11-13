@@ -6,7 +6,8 @@ function renderGame(){
   $("drawGame").classList.toggle("hidden",state.mode!=="draw");
   $("ddzGame").classList.toggle("hidden",state.mode!=="ddz");
   $("chuanmaGame").classList.toggle("hidden",state.mode!=="chuanma");
-  if(state.mode==="cards")renderCards();else if(state.mode==="dice")renderDice();else if(state.mode==="draw")renderDraw();else if(state.mode==="ddz")renderDdz();else renderChuanma();
+  $("armyGame").classList.toggle("hidden",state.mode!=="army");
+  if(state.mode==="cards")renderCards();else if(state.mode==="dice")renderDice();else if(state.mode==="draw")renderDraw();else if(state.mode==="ddz")renderDdz();else if(state.mode==="army")renderArmy();else renderChuanma();
 }
 function render(){renderLobby();renderGame();if(state.phase==="finished"){$("winnerName").textContent=state.winnerName;$("backLobbyBtn").classList.toggle("hidden",!state.isHost)}}
 function updateSettings(){action("settings",{cardLives:Number($("cardLives").value),diceStart:Number($("diceStart").value),onesWild:$("onesWild").checked,exactEnabled:$("exactEnabled").checked,drawRounds:Number($("drawRounds").value),drawTime:Number($("drawTime").value),drawDifficulty:$("drawDifficulty").value,drawLibrary:$("drawLibrary").value})}
@@ -16,7 +17,7 @@ function moveDraw(e){if(!drawing)return;e.preventDefault();const p=pointerPos(e)
 function endDraw(e){if(!drawing)return;drawing=false;if(currentPoints.length){const step=Math.max(1,Math.ceil(currentPoints.length/110)),pts=currentPoints.filter((_,i)=>i%step===0).slice(0,120);if(pts[pts.length-1]!==currentPoints[currentPoints.length-1])pts.push(currentPoints[currentPoints.length-1]);queueStroke({color:drawColor,width:drawWidth,erase:eraser,points:pts})}currentPoints=[]}
 
 $("joinBtn").onclick=join;$("readyBtn").onclick=()=>action("toggle_ready");$("startBtn").onclick=()=>action("start");
-$("modeCards").onclick=()=>state?.isHost&&action("set_mode",{mode:"cards"});$("modeDice").onclick=()=>state?.isHost&&action("set_mode",{mode:"dice"});$("modeDraw").onclick=()=>state?.isHost&&action("set_mode",{mode:"draw"});$("modeDdz").onclick=()=>state?.isHost&&action("set_mode",{mode:"ddz"});$("modeChuanma").onclick=()=>state?.isHost&&action("set_mode",{mode:"chuanma"});
+$("modeArmy").onclick=()=>state?.isHost&&action("set_mode",{mode:"army"});$("modeCards").onclick=()=>state?.isHost&&action("set_mode",{mode:"cards"});$("modeDice").onclick=()=>state?.isHost&&action("set_mode",{mode:"dice"});$("modeDraw").onclick=()=>state?.isHost&&action("set_mode",{mode:"draw"});$("modeDdz").onclick=()=>state?.isHost&&action("set_mode",{mode:"ddz"});$("modeChuanma").onclick=()=>state?.isHost&&action("set_mode",{mode:"chuanma"});
 $("playCardsBtn").onclick=()=>{const ids=[...selectedCards];selectedCards.clear();action("cards_play",{cardIds:ids})};$("challengeCardsBtn").onclick=()=>action("cards_challenge");$("cardsNextBtn").onclick=()=>action("next_round");
 $("qtyMinus").onclick=()=>{bidQty=Math.max(1,bidQty-1);renderDice()};$("qtyPlus").onclick=()=>{const maxDice=state?.players?.filter(p=>!p.out).reduce((sum,p)=>sum+Number(p.diceCount||0),0)||1;bidQty=Math.min(maxDice,bidQty+1);renderDice()};$("bidBtn").onclick=()=>action("dice_bid",{quantity:bidQty,face:bidFace});$("challengeDiceBtn").onclick=()=>action("dice_challenge");$("exactBtn").onclick=()=>action("dice_exact");$("diceNextBtn").onclick=()=>action("next_round");
 async function waitForStrokeQueue(){while(strokeSending||strokeQueue.length)await sleep(30)}
