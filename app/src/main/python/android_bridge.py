@@ -3,6 +3,7 @@ import ast
 import importlib
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 import threading
@@ -22,6 +23,7 @@ BUILTIN = "game_hall_lan_v6_2"
 ACTIVE = "gamehall_import.py"
 PENDING = "gamehall_import.pending"
 FAILED = "gamehall_import.failed.py"
+BACKUP = "gamehall_import.previous.py"
 MAX_BYTES = 4 * 1024 * 1024
 _REQUIRED_CLASSES = {"Handler", "ReliableThreadingHTTPServer"}
 _REQUIRED_FUNCTIONS = {"fresh_state", "flush_state"}
@@ -65,7 +67,18 @@ def install_game(directory):
             if not _stopped():
                 raise RuntimeError("请先停止游戏厅")
             _check_file(pending)
-            os.replace(pending, Path(directory) / ACTIVE)
+            active = Path(directory) / ACTIVE
+            backup = Path(directory) / BACKUP
+            if active.is_file():
+                staging = backup.with_suffix(".tmp")
+                try:
+                    shutil.copyfile(active, staging)
+                    os.replace(staging, backup)
+                finally:
+                    staging.unlink(missing_ok=True)
+            else:
+                backup.unlink(missing_ok=True)
+            os.replace(pending, active)
             _restart_required = True
             return json.dumps({"ok": True}, ensure_ascii=False)
         except Exception as exc:
@@ -81,6 +94,7 @@ def restore_builtin(directory):
             if not _stopped():
                 raise RuntimeError("请先停止游戏厅")
             (Path(directory) / ACTIVE).unlink(missing_ok=True)
+            (Path(directory) / BACKUP).unlink(missing_ok=True)
             _restart_required = True
             return json.dumps({"ok": True}, ensure_ascii=False)
         except Exception as exc:
@@ -93,7 +107,9 @@ def _load_game(directory=None):
         return game
     if directory:
         path = Path(directory) / ACTIVE
-        if path.is_file():
+        for attempt in range(2):
+            if not path.is_file():
+                break
             module = types.ModuleType("gamehall_imported")
             module.__file__ = str(path)
             try:
@@ -109,11 +125,21 @@ def _load_game(directory=None):
                 return game
             except Exception as exc:
                 sys.modules.pop(module.__name__, None)
-                _warning = f"导入版加载失败，已使用内置版：{type(exc).__name__}: {exc}"
+                _warning = f"导入版加载失败：{type(exc).__name__}: {exc}"
                 try:
                     os.replace(path, Path(directory) / FAILED)
                 except OSError:
                     pass
+                backup = Path(directory) / BACKUP
+                if attempt == 0 and backup.is_file():
+                    try:
+                        os.replace(backup, path)
+                        _warning += "；已恢复上一个游戏版本"
+                        continue
+                    except OSError:
+                        pass
+                _warning += "；已使用内置版"
+                break
     game = importlib.import_module(BUILTIN)
     _source = "builtin"
     return game

@@ -60,4 +60,18 @@ assert r['running'] and r['source']=='builtin' and r['warning'], r
 assert not json.loads(b.stop_server(True))['running']
 """)
     assert not active.exists() and (root / bridge.FAILED).exists()
-    print("Runner import / fallback / lifecycle tests passed")
+    # A valid-looking but broken update must restore the previously working imported game.
+    shutil.copyfile(PYTHON / (bridge.BUILTIN + ".py"), active)
+    pending.write_text('raise RuntimeError("update failed")\\nclass Handler: pass\\nclass ReliableThreadingHTTPServer: pass\\ndef fresh_state(): pass\\ndef flush_state(): pass\\n', encoding="utf-8")
+    # A fresh process stages the update, retaining the active file.
+    run("""import android_bridge as b, json, sys
+assert json.loads(b.install_game(sys.argv[1]))['ok']
+""")
+    assert (root / bridge.BACKUP).is_file()
+    run("""import android_bridge as b, json, sys
+r=json.loads(b.start_server(18000,18002,sys.argv[1]))
+assert r['running'] and r['source']=='imported' and '恢复上一个' in r['warning'], r
+assert not json.loads(b.stop_server(True))['running']
+""")
+    assert active.exists() and not (root / bridge.BACKUP).exists()
+    print("Runner import / fallback / rollback / lifecycle tests passed")

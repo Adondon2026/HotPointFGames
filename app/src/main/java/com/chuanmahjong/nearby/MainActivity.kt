@@ -44,6 +44,12 @@ class MainActivity : Activity() {
     private lateinit var importButton: Button
     private lateinit var restoreButton: Button
     private var importing = false
+    private lateinit var updateButton: Button
+    private lateinit var updateStatus: TextView
+    private var checkingUpdate = false
+    private var availableUpdate: GameUpdates.Available? = null
+    private var versionLabel = ""
+    private var updateMessage = "检查更新需要联网，联机游戏可离线"
 
     companion object {
         private const val PICK_GAME = 6201
@@ -66,6 +72,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         buildUi()
         requestNotificationPermissionIfNeeded()
+        checkUpdates(false)
 
         val state = ServerPrefs.read(this)
         if (state.desired) {
@@ -203,6 +210,21 @@ class MainActivity : Activity() {
         }
         content.addView(gameSourceText, matchWrap(bottom = 6))
 
+        updateStatus = TextView(this).apply {
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(Color.DKGRAY)
+        }
+        content.addView(updateStatus, matchWrap(bottom = 4))
+        updateButton = Button(this).apply {
+            text = "检查更新"
+            setOnClickListener {
+                val update = availableUpdate
+                if (update == null) checkUpdates(true) else confirmUpdate(update)
+            }
+        }
+        content.addView(updateButton, matchWrap(bottom = 10))
+
         importButton = Button(this).apply {
             text = "导入新版游戏文件"
             setOnClickListener { chooseGameFile() }
@@ -264,12 +286,103 @@ class MainActivity : Activity() {
         enterButton.isEnabled = state.running
         val stopped = !state.running && !state.desired && !importing
         val imported = File(filesDir, "gamehall_import.py").isFile
-        gameSourceText.text = if (imported) "游戏版本：本地导入版" else "游戏版本：APP 内置版"
+        gameSourceText.text = "游戏版本：" + versionLabel.ifBlank { if (imported) "本地导入版" else "APP 内置版" }
+        updateStatus.text = updateMessage
+        updateButton.text = when {
+            importing -> "正在更新…"
+            checkingUpdate -> "正在检查…"
+            availableUpdate != null -> "下载并更新"
+            else -> "检查更新"
+        }
+        updateButton.isEnabled = !checkingUpdate && !importing
         importButton.isEnabled = stopped
         restoreButton.visibility = if (imported) View.VISIBLE else View.GONE
         restoreButton.isEnabled = stopped
         if (importing) startStopButton.isEnabled = false
         updateAddresses(state)
+    }
+
+    private fun checkUpdates(manual: Boolean) {
+        if (checkingUpdate || importing) return
+        checkingUpdate = true
+        updateMessage = "正在检查 GitHub 版本…"
+        refreshUi()
+        Thread {
+            var found: GameUpdates.Available? = null
+            var message: String
+            var label = ""
+            try {
+                label = GameUpdates.current(this)?.version.orEmpty()
+                found = GameUpdates.check(this)
+                message = if (found == null) "未发现可用更新" else "发现新版本：${found.info.version}"
+            } catch (e: Exception) {
+                message = if (manual) "检查失败：${e.message.orEmpty()}" else "暂时无法联网检查，可离线游戏"
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                checkingUpdate = false
+                availableUpdate = found
+                versionLabel = label
+                updateMessage = message
+                refreshUi()
+            }
+        }.start()
+    }
+
+    private fun confirmUpdate(update: GameUpdates.Available) {
+        val state = ServerPrefs.read(this)
+        if (state.running || state.desired) {
+            AlertDialog.Builder(this).setTitle("请先停止游戏厅")
+                .setMessage("更新不会自动结束正在进行的游戏。请在所有房间结束后停止服务器，再点击下载并更新。")
+                .setPositiveButton("知道了", null).show()
+            return
+        }
+        AlertDialog.Builder(this).setTitle("更新游戏")
+            .setMessage("版本：${update.info.version}\n大小：${(update.info.size + 1023) / 1024} KB\n\n${update.notes}\n\n保留账户和积分；更新后需重新打开 APP。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("更新") { _, _ -> installUpdate(update) }.show()
+    }
+
+    private fun installUpdate(update: GameUpdates.Available) {
+        val state = ServerPrefs.read(this)
+        if (state.running || state.desired || importing) return
+        importing = true
+        updateMessage = "正在下载并校验新版…"
+        refreshUi()
+        Thread {
+            val pending = File(filesDir, "gamehall_import.pending")
+            var error: String? = null
+            try {
+                GameUpdates.download(update, pending)
+                val raw = Python.getInstance().getModule("android_bridge").callAttr("install_game", filesDir.absolutePath).toJava(String::class.java)
+                val result = JSONObject(raw)
+                require(result.optBoolean("ok")) { result.optString("error", "安装失败") }
+                // Version metadata is advisory: an installed file is always identified by its actual hash.
+                runCatching { GameUpdates.record(this, update.info) }
+            } catch (e: Throwable) {
+                error = e.message ?: "更新失败"
+            } finally { pending.delete() }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (error != null) {
+                    importing = false
+                    updateMessage = "更新失败，原版本未更换"
+                    refreshUi()
+                    AlertDialog.Builder(this).setTitle("更新失败").setMessage(error)
+                        .setPositiveButton("知道了", null).show()
+                } else {
+                    updateMessage = "已更新，重新打开 APP 后生效"
+                    refreshUi()
+                    AlertDialog.Builder(this).setTitle("更新完成")
+                        .setMessage("APP 将关闭。重新打开即可使用新版游戏。")
+                        .setCancelable(false)
+                        .setPositiveButton("关闭 APP") { _, _ ->
+                            finishAffinity()
+                            Process.killProcess(Process.myPid())
+                        }.show()
+                }
+            }
+        }.start()
     }
 
     private fun chooseGameFile() {

@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from game_update_manifest import write_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "game_source"
@@ -12,4 +13,5 @@ release = SOURCE / "dist" / "game_hall_lan_v6_2.py"
 target = ROOT / "app" / "src" / "main" / "python" / release.name
 target.parent.mkdir(parents=True, exist_ok=True)
 shutil.copy2(release, target)
+write_manifest(release, ROOT / 'app' / 'src' / 'main' / 'assets' / 'builtin-game-info.json')
 print(f"Synced {release} -> {target}")
