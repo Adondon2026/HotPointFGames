@@ -29,3 +29,8 @@
 .army-notice.army-battle-result{color:#f5d6a2;font-weight:700;font-size:14px}
 @media(orientation:landscape) and (max-height:520px){.army-fx-ring{width:7%;font-size:17px}.army-fx-caption{font-size:12px}.army-fx-role{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.army-fx-ghost.moving{animation:none;left:var(--fx-x)!important;top:var(--fx-y)!important}.army-fx-ghost.duelist,.army-fx-ghost.loser{animation:none}.army-fx-ghost.loser{opacity:.85}}
+
+/* Vertical contact leaves no space above the lower piece for a role label. */
+.army-fx-role.side-left,.army-fx-role.side-right{top:50%;bottom:auto;transform:translateY(-50%)}
+.army-fx-role.side-left{left:auto;right:calc(100% + 4px)}
+.army-fx-role.side-right{left:calc(100% + 4px)}

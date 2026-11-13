@@ -35,6 +35,7 @@ jobs:
           python game_source/tests/test_feedback.py
           python game_source/tests/test_army.py
           python game_source/tests/test_army_feedback.py
+          node game_source/tests/test_army_presentation.js
       - name: Upload importable game files
         uses: actions/upload-artifact@v4
         with:

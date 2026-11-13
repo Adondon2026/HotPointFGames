@@ -45,7 +45,7 @@ function armyFxOverlay(board,e,owner){
   if(!piece)return null;
   const el=document.createElement('div');el.className='army-node piece army-fx-ghost '+(piece.owner===owner?'own':'enemy')+' '+cls;el.textContent=piece.rank==='UNKNOWN'?'':piece.rank;el.style.left=pos[0]+'%';el.style.top=pos[1]+'%';
   if(piece.carrying_flag){const f=document.createElement('span');f.className='army-flag';f.textContent='⚑';el.append(f)}
-  if(role){const mark=document.createElement('span');mark.className='army-fx-role';mark.textContent=role;el.append(mark)}
+  if(role){const mark=document.createElement('span');mark.className='army-fx-role'+(contact.axis===1?(pos[0]>55?' side-left':' side-right'):'');mark.textContent=role;el.append(mark)}
   if(cls.includes('loser')){const cross=document.createElement('span');cross.className='army-fx-cross';cross.textContent='×';el.append(cross)}
   board.append(el);return el;
  };
