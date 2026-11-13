@@ -170,7 +170,9 @@ def remove_player(player_id):
         if mapped_id == player_id:
             TOKENS.pop(token, None)
     if STATE.get("hostPlayerId") == player_id:
-        STATE["hostPlayerId"] = STATE["players"][0]["id"] if STATE["players"] else None
+        STATE["hostPlayerId"] = next((p["id"] for p in STATE["players"] if not p.get("isBot")), None)
+    if not STATE.get("hostPlayerId"):
+        STATE["players"] = [p for p in STATE["players"] if not p.get("isBot")]
     return player
 
 def remove_ddz_bots():
@@ -180,14 +182,13 @@ def remove_ddz_bots():
     return len(bot_ids)
 
 def add_ddz_bots():
-    remove_ddz_bots()
-    names = ["机器人小北", "机器人阿南"]
+    names = [n for n in ("机器人小北", "机器人阿南", "机器人小西") if n not in {p["name"] for p in STATE["players"]}]
     index = 0
     while len(STATE["players"]) < 3:
         bot_id = "bot_" + secrets.token_hex(4)
         STATE["players"].append({
             "id": bot_id, "name": names[index] if index < len(names) else f"机器人{index + 1}",
-            "ready": True, "connected": True, "lastSeen": time.time(), "seatKey": "", "isBot": True,
+            "ready": True, "connected": True, "lastSeen": time.time(), "seatKey": "", "isBot": True, "autoBot": True,
             "life": STATE["settings"]["cardLives"], "hand": [], "diceCount": STATE["settings"]["diceStart"],
             "dice": [], "score": 0, "ddzHand": [], "ddzScore": 0, "ddzHintCursor": 0,
         })

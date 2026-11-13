@@ -10,7 +10,7 @@
                 return {"error": "换三张必须选择三张同花色的牌"}, 409
             STATE["chuanma"]["exchangeSelections"][player_id] = tile_ids
             player["cmExchange"] = list(tile_ids)
-            humans = [item for item in STATE["players"] if not item.get("isBot")]
+            humans = [item for item in STATE["players"]]
             if len(STATE["chuanma"]["exchangeSelections"]) >= len(humans):
                 cm_finish_exchange()
             else:
@@ -26,7 +26,7 @@
                 return {"error": "请选择万、筒或条"}, 400
             player["cmMissing"] = suit
             STATE["chuanma"]["dingqueSelections"][player_id] = suit
-            humans = [item for item in STATE["players"] if not item.get("isBot")]
+            humans = [item for item in STATE["players"]]
             if len(STATE["chuanma"]["dingqueSelections"]) >= len(humans):
                 cm_begin_play()
             else:

@@ -12,10 +12,15 @@ def finish_game():
     if STATE["mode"] == "draw":
         if not STATE["players"]:
             return
-        best = max(p["score"] for p in STATE["players"])
-        winners = [p for p in STATE["players"] if p["score"] == best]
-        STATE["winnerId"] = winners[0]["id"]
-        STATE["roundResult"] = "、".join(p["name"] for p in winners) + f" 以 {best} 分获胜"
+        eligible = [p for p in STATE["players"] if not p.get("isBot")]
+        best = max(p["score"] for p in eligible)
+        winners = [p for p in eligible if p["score"] == best]
+        if any(p.get("isBot") for p in STATE["players"]) and best == 0:
+            STATE["winnerId"] = None
+            STATE["roundResult"] = "猜图练习结束，本局未猜中"
+        else:
+            STATE["winnerId"] = winners[0]["id"]
+            STATE["roundResult"] = "、".join(p["name"] for p in winners) + f" 以 {best} 分获胜"
     else:
         alive = alive_players()
         if not alive:

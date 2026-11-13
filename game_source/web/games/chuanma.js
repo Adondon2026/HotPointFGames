@@ -31,7 +31,11 @@ function renderChuanma(){
     const el=renderCmTile(tile,false);el.style.zIndex=String(index+1);el.classList.toggle("selected",selectedCmTiles.has(tile.id));
     if(tile.id===cm.myDrawnId)el.classList.add("drawn");
     if(cm.myMissing&&tile.suit===cm.myMissing)el.classList.add("missing-suit");
+    const selected=(cm.myHand||[]).find(t=>selectedCmTiles.has(t.id));
+    const blocked=(phase==="cm_exchange"&&selected&&selected.suit!==tile.suit)||(phase==="cm_play"&&cm.canDiscard&&cm.myMissing&&(cm.myHand||[]).some(t=>t.suit===cm.myMissing)&&tile.suit!==cm.myMissing);
+    if(blocked)el.classList.add("ineligible");
     el.onclick=()=>{
+      if(blocked)return;
       if(phase==="cm_exchange"){
         if(cm.exchangeSubmitted)return;
         if(selectedCmTiles.has(tile.id))selectedCmTiles.delete(tile.id);else if(selectedCmTiles.size<3)selectedCmTiles.add(tile.id);else toast("换三张最多选择 3 张");

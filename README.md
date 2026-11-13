@@ -6,6 +6,10 @@
 
 进入 `game_source/`，先执行 `python build.py`，然后双击 `START_GAME.bat` 或执行 `python run_preview.py`。浏览器自动打开本机游戏厅。手机连接同一 Wi-Fi，点击大厅「邀请朋友」扫码加入。账户和历史积分保存在该运行设备，具体规则见 [本地预览说明](game_source/README.md)。
 
+## 单人 / 好友体验
+
+一个人也可直接开局；五款游戏均支持本地机器人（你画我猜为机器人出题的简笔画练习）。大厅可手动添加或移除机器人，规则与设置按游戏独立披露。无需热点即可在本机浏览器或 Android APP 内单人玩。
+
 ## 最快的游戏开发方式
 
 唯一开发源码位于 game_source/。五个游戏分别维护后端、动作和 Web UI。不要手改 app/src/main/python/game_hall_lan_v6_2.py，它是构建产物。

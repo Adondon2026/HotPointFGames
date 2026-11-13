@@ -41,8 +41,9 @@ def start_draw_turn():
     if not players:
         finish_game()
         return
-    drawer = players[draw["turnIndex"] % len(players)]
-    choices = word_candidates()
+    bots = [p for p in STATE["players"] if p.get("isBot")]
+    drawer = bots[0] if bots else players[draw["turnIndex"] % len(players)]
+    choices = bot_draw_choices() if bots else word_candidates()
     draw.update({
         "drawerId": drawer["id"],
         "choices": choices,
@@ -90,7 +91,7 @@ def end_draw_turn(reason):
     answer = draw["word"]
     draw["answer"] = answer
     guessed = len(draw["correctIds"])
-    total_guessers = max(1, len([p for p in STATE["players"] if not p.get("isBot")]) - 1)
+    total_guessers = max(1, len([p for p in STATE["players"] if not p.get("isBot")]) - (0 if any(p.get("isBot") for p in STATE["players"]) else 1))
     if reason == "all":
         result = f"全员猜中，答案是“{answer}”"
     elif guessed:

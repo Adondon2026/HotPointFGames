@@ -4,11 +4,14 @@ from pathlib import Path
 import os
 import sys
 import tempfile
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_HOME = Path(tempfile.mkdtemp(prefix="game_hall_e2e_"))
 os.environ["HOME"] = str(TEST_HOME)
-sys.path.insert(0, str(ROOT / "app" / "src" / "main" / "python"))
+os.environ["GAMEHALL_DATA_DIR"] = str(TEST_HOME)
+subprocess.run([sys.executable, str(ROOT / "game_source" / "build.py")], check=True)
+sys.path.insert(0, str(ROOT / "game_source" / "dist"))
 
 import game_hall_lan_v6_2 as game  # noqa: E402
 

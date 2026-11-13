@@ -85,10 +85,10 @@
                 remaining = max(0, int(STATE["draw"]["deadline"] - time.time()))
                 player["score"] += 100 + min(80, remaining)
                 drawer = player_by_id(STATE["draw"]["drawerId"])
-                if drawer:
+                if drawer and not drawer.get("isBot"):
                     drawer["score"] += 50
                 humans = [item for item in STATE["players"] if not item.get("isBot")]
-                if len(STATE["draw"]["correctIds"]) >= len(humans) - 1:
+                if len(STATE["draw"]["correctIds"]) >= len(humans) - (0 if drawer and drawer.get("isBot") else 1):
                     end_draw_turn("all")
                     return {}, 200
             bump(); return {}, 200

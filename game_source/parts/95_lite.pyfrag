@@ -79,7 +79,7 @@ def _settle_match():
     for p in players:
         uid=p.get('accountId')
         if not uid or p.get('isBot'): continue
-        raw=int(p.get(key,0)); won=(raw>0 if mode=='ddz' else raw==best if mode in ('draw','chuanma') else p['id']==STATE.get('winnerId'))
+        raw=int(p.get(key,0)); won=(raw>0 if mode=='ddz' else (raw==best and (mode!='draw' or not any(p.get('isBot') for p in players) or raw>0)) if mode in ('draw','chuanma') else p['id']==STATE.get('winnerId'))
         rows.append((STATE['matchId'],uid,mode,int(won),3 if won else 1,raw,int(time.time())))
     if rows:
         with _db() as db: db.executemany('INSERT OR IGNORE INTO results VALUES(?,?,?,?,?,?,?)',rows)
@@ -129,7 +129,7 @@ def _lite_join(self,data):
                     if mapped==pid: TOKENS.pop(old_token,None)
                 token=secrets.token_urlsafe(24); TOKENS[token]=pid; touch_player(found); bump()
                 return self.reply({'ok':True,'token':token,'playerId':pid,'reconnected':True})
-            if len(STATE['players'])>=4: return self.reply({'ok':False,'error':'座位已满'})
+            if len(STATE['players'])>= (3 if STATE['mode']=='ddz' else 4): return self.reply({'ok':False,'error':'座位已满'})
             pid='p_'+secrets.token_hex(4)
             found={'id':pid,'name':user['name'],'accountId':uid,'ready':False,'connected':True,'lastSeen':time.time(),'seatKey':secrets.token_urlsafe(24),'life':STATE['settings']['cardLives'],'hand':[],'diceCount':STATE['settings']['diceStart'],'dice':[],'score':0,'ddzHand':[],'ddzScore':0,'ddzHintCursor':0,'isBot':False,'cmHand':[],'cmMelds':[],'cmMissing':None,'cmWon':False,'cmScore':0,'cmDrawnId':None,'cmExchange':[]}
             STATE['players'].append(found)

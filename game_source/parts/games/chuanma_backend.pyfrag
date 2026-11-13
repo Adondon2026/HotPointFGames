@@ -149,11 +149,11 @@ def cm_win_info(player, extra_tile=None, self_draw=False):
 
 
 def cm_active_players():
-    return [player for player in STATE["players"] if not player.get("isBot") and not player.get("cmWon")]
+    return [player for player in STATE["players"] if not player.get("cmWon")]
 
 
 def cm_next_active_id(current_id):
-    players = [player for player in STATE["players"] if not player.get("isBot")]
+    players = [player for player in STATE["players"]]
     if not players:
         return None
     ids = [player["id"] for player in players]
@@ -170,7 +170,7 @@ def cm_next_active_id(current_id):
 
 def cm_finish(reason):
     ranking = sorted(
-        [player for player in STATE["players"] if not player.get("isBot")],
+        [player for player in STATE["players"]],
         key=lambda player: (player.get("cmScore", 0), player.get("cmWon", False)),
         reverse=True,
     )
@@ -183,7 +183,7 @@ def cm_finish(reason):
 
 
 def cm_check_end():
-    humans = [player for player in STATE["players"] if not player.get("isBot")]
+    humans = [player for player in STATE["players"]]
     active = [player for player in humans if not player.get("cmWon")]
     if len(active) <= 1:
         cm_finish("血战结束")
@@ -238,7 +238,7 @@ def cm_exchange_target_map(players, direction):
 
 
 def cm_finish_exchange():
-    players = [player for player in STATE["players"] if not player.get("isBot")]
+    players = [player for player in STATE["players"]]
     selections = STATE["chuanma"]["exchangeSelections"]
     target_map = cm_exchange_target_map(players, STATE["chuanma"]["exchangeDirection"])
     packets = {}
@@ -257,7 +257,7 @@ def cm_finish_exchange():
 
 
 def start_chuanma():
-    players = [player for player in STATE["players"] if not player.get("isBot")]
+    players = [player for player in STATE["players"]]
     wall = cm_deck()
     dealer_id = STATE["hostPlayerId"] if player_by_id(STATE["hostPlayerId"]) else players[0]["id"]
     for player in players:
@@ -382,7 +382,7 @@ def cm_resolve_responses():
         return
 
     def seat_distance(pid):
-        players = [p for p in STATE["players"] if not p.get("isBot")]
+        players = [p for p in STATE["players"]]
         ids = [p["id"] for p in players]
         return (ids.index(pid) - ids.index(discarder_id)) % len(ids)
 

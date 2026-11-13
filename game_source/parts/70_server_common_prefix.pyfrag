@@ -31,7 +31,8 @@ def public_state(player_id, draw_since=-1, draw_revision=-1):
         ],
         "canStart": (
             player_id == STATE["hostPlayerId"] and STATE["phase"] == "lobby"
-            and min_players <= len([p for p in STATE["players"] if not p.get("isBot")]) <= max_players
+            and min_players <= len(STATE["players"]) <= max_players
+            and any(not p.get("isBot") for p in STATE["players"])
             and all(p["ready"] and is_connected(p) for p in STATE["players"] if not p.get("isBot"))
         ),
         "turnPlayerId": STATE["turnPlayerId"],
@@ -193,7 +194,7 @@ class Handler(BaseHTTPRequestHandler):
                 response = {"ok": False, "error": "游戏已经开始，未找到原座位"}
             else:
                 prune_lobby_players()
-                max_players = 4
+                max_players = 3 if STATE["mode"] == "ddz" else 4
                 if len(STATE["players"]) >= max_players:
                     response = {"ok": False, "error": "座位已满"}
                 else:
@@ -259,10 +260,10 @@ class Handler(BaseHTTPRequestHandler):
             mode = str(data.get("mode", ""))
             if mode not in ("cards", "dice", "draw", "ddz", "chuanma"):
                 return {"error": "未知玩法"}, 400
-            remove_ddz_bots()
             STATE["mode"] = mode
+            trim_bots_for_mode(mode)
             for item in STATE["players"]:
-                item["ready"] = False
+                item["ready"] = bool(item.get("isBot"))
             bump(); return {}, 200
 
         if action == "settings":
@@ -300,8 +301,8 @@ class Handler(BaseHTTPRequestHandler):
             humans = [item for item in STATE["players"] if not item.get("isBot")]
             min_players = 1 if STATE["mode"] == "ddz" else 2
             max_players = 3 if STATE["mode"] == "ddz" else 4
-            if not (min_players <= len(humans) <= max_players):
-                return {"error": ("斗地主支持 1～3 名真人，空位自动补机器人" if STATE["mode"] == "ddz" else "川麻支持 2～4 名真人，不补机器人" if STATE["mode"] == "chuanma" else "当前玩法支持 2～4 人")}, 409
+            if not humans or not (min_players <= len(STATE["players"]) <= max_players):
+                return {"error": ("斗地主支持 1～3 名真人，空位自动补机器人" if STATE["mode"] == "ddz" else "川麻支持 2～4 人，可手动添加机器人" if STATE["mode"] == "chuanma" else "当前玩法支持 2～4 人")}, 409
             if not all(is_connected(item) for item in humans):
                 return {"error": "房间里有离线座位，请等待重连或由房主移除"}, 409
             if not all(item["ready"] for item in humans):
@@ -320,7 +321,7 @@ class Handler(BaseHTTPRequestHandler):
                 start_dice_round(player_id)
             elif STATE["mode"] == "draw":
                 STATE["draw"] = fresh_draw()
-                STATE["draw"]["totalTurns"] = len([p for p in STATE["players"] if not p.get("isBot")]) * STATE["settings"]["drawRounds"]
+                STATE["draw"]["totalTurns"] = (len(humans) if not any(p.get("isBot") for p in STATE["players"]) else 3) * STATE["settings"]["drawRounds"]
                 start_draw_turn()
             elif STATE["mode"] == "chuanma":
                 start_chuanma()

@@ -34,7 +34,7 @@ test('refresh, draw clear, end game and leave work on a phone viewport', async (
       const joinResponse = page.waitForResponse(response => response.url().endsWith('/api/join'));
       await page.getByRole('button', { name: '游客进入', exact: true }).click();
       expect((await (await joinResponse).json()).ok).toBe(true);
-      await expect(page.getByRole('button', { name: '准备', exact: true })).toBeVisible();
+      await expect(page.locator('#liteSolo').or(page.getByRole('button', { name: '准备', exact: true }))).toBeVisible();
     }
 
     await pages[0].getByText('你画我猜', { exact: true }).click();
@@ -88,7 +88,7 @@ test('refresh, draw clear, end game and leave work on a phone viewport', async (
     expect((await (await resetResponse).json()).ok).toBe(true);
     for (const page of pages) {
       await expect(page.locator('#lobbyCard')).toBeVisible();
-      await expect(page.getByRole('button', { name: '取消准备', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '取消准备', exact: true }).or(page.getByRole('button', { name: '开始游戏', exact: true }))).toBeVisible();
     }
 
     pages[1].once('dialog', dialog => dialog.accept());

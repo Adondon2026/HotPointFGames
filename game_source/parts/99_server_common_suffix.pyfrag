@@ -19,7 +19,8 @@
         if action == "reset":
             if player_id != STATE["hostPlayerId"]:
                 return {"error": "只有房主能返回大厅"}, 403
-            remove_ddz_bots()
+            for bot in list(STATE["players"]):
+                if bot.get("autoBot"): remove_player(bot["id"])
             STATE.update({"phase": "lobby", "turnPlayerId": None, "roundNo": 0, "roundLoserId": None, "roundResult": "", "winnerId": None})
             STATE["card"] = {"targetRank": "Q", "lastPlay": None, "revealedCards": []}
             STATE["dice"] = {"currentBid": None, "lastCount": None}; STATE["draw"] = fresh_draw(); STATE["ddz"] = fresh_ddz(); STATE["chuanma"] = fresh_chuanma()

@@ -21,7 +21,7 @@ function renderDraw(){
   const guessed=(d.correctIds||[]).includes(playerId);$("guessRow").classList.toggle("hidden",!(state.phase==="draw_play"&&!isDrawer&&!guessed));$("guessFeed").innerHTML="";
   (d.guesses||[]).slice(-8).forEach(g=>{const x=document.createElement("div");x.className="guess-chip"+(g.correct?" correct":"");x.textContent=g.correct?`${g.name} 猜对了`:`${g.name}：${g.text}`;$("guessFeed").appendChild(x)});
   $("drawReveal").classList.toggle("hidden",state.phase!=="draw_reveal");$("drawResult").textContent=d.result||"";$("drawNextBtn").classList.toggle("hidden",!state.canAdvanceRound);
-  applyDrawCanvas(lastPhase!==state.phase);startTimer();lastPhase=state.phase;
+  applyDrawCanvas(drawCanvasRevision!==d.canvasRevision);startTimer();lastPhase=state.phase;
 }
 
 async function flushStrokeQueue(){

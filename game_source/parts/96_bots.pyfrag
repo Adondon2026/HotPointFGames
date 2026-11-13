@@ -1,0 +1,138 @@
+# Rule-based local opponents. The same validated actions are used by humans and bots.
+BOT_NAMES = ('小北', '阿南', '小西')
+
+def trim_bots_for_mode(mode):
+    limit = 3 if mode == 'ddz' else 4
+    humans = sum(not p.get('isBot') for p in STATE['players'])
+    bots = [p for p in STATE['players'] if p.get('isBot')]
+    keep = min(max(0, limit - humans), 1 if mode == 'draw' else 3)
+    for p in bots[keep:]: remove_player(p['id'])
+
+def add_local_bot():
+    mode = STATE['mode']
+    if len(STATE['players']) >= (3 if mode=='ddz' else 4): return False
+    if mode=='draw' and any(p.get('isBot') for p in STATE['players']): return False
+    names = {p['name'] for p in STATE['players']}
+    name = next(('机器人'+n for n in BOT_NAMES if '机器人'+n not in names), '机器人')
+    STATE['players'].append({'id':'bot_'+secrets.token_hex(4),'name':name,'ready':True,'connected':True,'lastSeen':time.time(),'seatKey':'','isBot':True,'life':STATE['settings']['cardLives'],'diceCount':STATE['settings']['diceStart'],'hand':[],'dice':[],'score':0,'ddzHand':[],'ddzScore':0,'ddzHintCursor':0,'cmHand':[],'cmMelds':[],'cmMissing':None,'cmWon':False,'cmScore':0,'cmDrawnId':None,'cmExchange':[]})
+    return True
+
+_bot_action_base = Handler.handle_action
+def _bot_room_action(self, player, action, data):
+    if action in ('add_bot','remove_bot','solo_start'):
+        if player['id'] != STATE['hostPlayerId'] or STATE['phase'] != 'lobby': return {'error':'仅房主可在大厅操作机器人'},403
+        if action=='add_bot':
+            if not add_local_bot(): return {'error':'本游戏机器人座位已满'},409
+            bump(); return {},200
+        if action=='remove_bot':
+            target=player_by_id(str(data.get('targetId','')))
+            if not target or not target.get('isBot'): return {'error':'该机器人不存在'},409
+            remove_player(target['id']); bump(); return {},200
+        if sum(not p.get('isBot') for p in STATE['players'])!=1: return {'error':'单人开局仅在一名真人时可用'},409
+        old_ready=player['ready']; player['ready']=True
+        if len(STATE['players'])==1 and STATE['mode']!='ddz': add_local_bot()
+        result=_bot_action_base(self,player,'start',data)
+        if result[1]!=200: player['ready']=old_ready
+        return result
+    return _bot_action_base(self,player,action,data)
+Handler.handle_action=_bot_room_action
+
+# Tiny drawing library for actual offline drawing practice, no pretend image recognition.
+# Coordinates use a 0..100 square, scaled into the shared canvas.
+def _circle(x,y,r,n=32):
+    import math
+    return [(x+r*math.cos(i*2*math.pi/n),y+r*math.sin(i*2*math.pi/n)) for i in range(n+1)]
+
+BOT_PICTURES = {
+ '房子': [[(20,47),(50,18),(80,47),(20,47)],[(28,47),(28,85),(72,85),(72,47)],[(44,85),(44,65),(56,65),(56,85)],[(33,53),(42,53),(42,62),(33,62),(33,53)]],
+ '太阳': [_circle(50,50,18)] + [[(50+23*__import__('math').cos(i*0.7854),50+23*__import__('math').sin(i*0.7854)),(50+34*__import__('math').cos(i*0.7854),50+34*__import__('math').sin(i*0.7854))] for i in range(8)],
+ '雨伞': [[(15,50),(19,36),(29,24),(43,18),(57,18),(71,24),(81,36),(85,50),(70,44),(55,50),(40,44),(25,50),(15,50)],[(50,18),(50,79),(48,85),(43,87),(38,84),(38,78)]],
+ '苹果': [[(50,38),(39,30),(26,36),(20,49),(23,66),(34,80),(45,82),(50,78),(57,82),(68,80),(78,66),(81,49),(74,36),(62,30),(50,38)],[(50,38),(50,22),(56,16)],[(51,26),(63,16),(75,18),(66,27),(51,26)]],
+ '鱼': [[(17,50),(29,35),(50,29),(72,40),(80,50),(72,60),(50,71),(29,65),(17,50)],[(80,50),(95,34),(95,66),(80,50)],_circle(33,47,3)],
+ '眼镜': [_circle(29,50,17),_circle(71,50,17),[(46,48),(50,45),(54,48)],[(12,48),(4,43)],[(88,48),(96,43)]],
+ '气球': [_circle(50,34,23),[(46,57),(50,62),(54,57)],[(50,62),(46,72),(53,81),(49,93)]],
+ '花朵': [_circle(50,35,9)] + [_circle(50+15*__import__('math').cos(i*1.2566),35+15*__import__('math').sin(i*1.2566),10) for i in range(5)] + [[(50,53),(50,90)],[(50,72),(35,62),(25,65),(38,77),(50,72)],[(50,80),(64,67),(75,71),(63,82),(50,80)]],
+ '冰淇淋': [[(27,48),(50,92),(73,48),(27,48)],[(27,48),(21,38),(24,25),(34,17),(47,17),(54,12),(65,17),(77,28),(79,38),(73,48)]],
+ '自行车': [_circle(25,70,17),_circle(75,70,17),[(25,70),(43,40),(60,70),(25,70),(60,70),(75,70),(63,35),(72,29)],[(36,40),(49,40)]],
+ '小船': [[(13,69),(87,69),(72,83),(30,83),(13,69)],[(50,15),(50,69),(20,61),(50,15)],[(54,25),(80,61),(54,61),(54,25)]],
+ '月亮': [[(67,17),(52,15),(36,20),(24,32),(18,48),(21,66),(33,79),(50,85),(67,81),(78,72),(62,71),(47,61),(40,46),(43,32),(54,22),(67,17)]],
+}
+def bot_draw_choices():
+    used=set(STATE['draw'].get('usedWords',[])); choices=[k for k in BOT_PICTURES if k not in used]
+    if not choices: STATE['draw']['usedWords']=[]; choices=list(BOT_PICTURES)
+    return [{'word':word,'category':'简笔画','difficulty':'easy','library':'items','aliases':{'冰淇淋':['冰激凌','雪糕'],'小船':['船'],'花朵':['花'],'鱼':['小鱼']}.get(word,[])} for word in random.sample(choices,min(3,len(choices)))]
+
+def _bot_move(p,action,**data):
+    result=Handler.handle_action(object.__new__(Handler),p,action,data)
+    if result[1]!=200: print('机器人操作被拒绝:',action,result[0])
+    return result[1]==200
+
+def _bot_task():
+    phase=STATE['phase']; mode=STATE['mode']; bots=[p for p in STATE['players'] if p.get('isBot')]
+    if not bots or phase in ('lobby','finished'): return None
+    if mode=='chuanma':
+        cm=STATE['chuanma']
+        if phase in ('cm_exchange','cm_dingque'):
+            key='exchangeSelections' if phase=='cm_exchange' else 'dingqueSelections'
+            return next((p for p in bots if p['id'] not in cm[key]),None)
+        if phase=='cm_response': return next((p for p in bots if p['id'] in cm['responseOptions'] and p['id'] not in cm['responses']),None)
+    if mode=='draw' and phase=='draw_choose': return player_by_id(STATE['draw']['drawerId']) if bots else None
+    if mode in ('cards','dice','chuanma'):
+        p=player_by_id(STATE['turnPlayerId']); return p if p and p.get('isBot') else None
+    return None
+
+def bot_step(p):
+    phase=STATE['phase']; mode=STATE['mode']
+    if mode=='cards':
+        last=STATE['card']['lastPlay']; hand=p['hand']; target=STATE['card']['targetRank']; truthful=[c for c in hand if c['rank'] in (target,'JOKER')]
+        if last and (not hand or random.random()<(.52 if len(last['cards'])>=2 else .21)):
+            return _bot_move(p,'cards_challenge')
+        if hand:
+            pool=truthful if truthful and random.random()<.72 else hand
+            return _bot_move(p,'cards_play',cardIds=[c['id'] for c in random.sample(pool,min(len(pool),random.randint(1,2)))])
+    if mode=='dice':
+        old=STATE['dice']['currentBid']; total=sum(x['diceCount'] for x in alive_players()); hidden=total-p['diceCount']; wild=STATE['settings']['onesWild']
+        def expected(face): return sum(x==face or (wild and face!=1 and x==1) for x in p['dice'])+hidden*(2 if wild and face!=1 else 1)/6
+        choices=[(q,f) for q in range(1,total+1) for f in range(1,7) if not old or (q,f)>(old['quantity'],old['face'])]
+        if old and (not choices or old['quantity']>expected(old['face'])+random.uniform(.3,1.5)): return _bot_move(p,'dice_challenge')
+        if old and STATE['settings']['exactEnabled'] and abs(old['quantity']-expected(old['face']))<.2 and random.random()<.15: return _bot_move(p,'dice_exact')
+        if choices:
+            viable=[(q,f) for q,f in choices if q<=expected(f)+.65]
+            q,f=max(viable,key=lambda z:(expected(z[1])-z[0],z[0],z[1])) if viable else choices[0]
+            return _bot_move(p,'dice_bid',quantity=q,face=f)
+    if mode=='chuanma':
+        hand=p['cmHand']; cm=STATE['chuanma']; counts=Counter(t['suit'] for t in hand)
+        if phase=='cm_exchange':
+            suit=min((s for s in CM_SUITS if counts[s]>=3),key=lambda s:counts[s]);return _bot_move(p,'cm_exchange',tileIds=[t['id'] for t in hand if t['suit']==suit][:3])
+        if phase=='cm_dingque': return _bot_move(p,'cm_dingque',suit=min(CM_SUITS,key=lambda s:counts[s]))
+        if phase=='cm_response':
+            options=cm['responseOptions'][p['id']]; return _bot_move(p,'cm_respond',choice=next(x for x in ('hu','gang','peng','pass') if x in options))
+        if phase=='cm_play' and cm['needsDiscard']:
+            if cm_can_win(p): return _bot_move(p,'cm_self_hu')
+            gang=cm_self_gang_options(p)
+            if gang: return _bot_move(p,'cm_gang',suit=gang[0]['suit'],rank=gang[0]['rank'])
+            pool=[t for t in hand if t['suit']==p['cmMissing']] or hand
+            tile=min(pool,key=lambda t:(sum(cm_same(t,x) for x in hand),sum(x['suit']==t['suit'] and abs(x['rank']-t['rank'])==1 for x in hand),random.random()))
+            return _bot_move(p,'cm_discard',tileId=tile['id'])
+    if mode=='draw' and phase=='draw_choose':
+        begin_draw_word(0); d=STATE['draw']; strokes=BOT_PICTURES[d['word']]
+        d['strokes']=[{'seq':i+1,'color':'#111111','width':7,'erase':False,'points':[[.13+x*.0074,.05+y*.009] for x,y in line]} for i,line in enumerate(strokes)]
+        d['strokeSeq']=len(strokes);d['canvasRevision']+=1;bump();return True
+    return False
+
+_bot_tick_base=update_timers
+_bot_pending=None
+_bot_due=0.0
+
+def update_timers():
+    global _bot_pending,_bot_due
+    _bot_tick_base()
+    p=_bot_task()
+    if not p: _bot_pending=None;return
+    key=(STATE.get('matchId'),STATE['phase'],p['id'],STATE['version'])
+    now=time.time()
+    if key!=_bot_pending: _bot_pending=key;_bot_due=now+.45;return
+    if now>=_bot_due:
+        _bot_pending=None;bot_step(p)
+
+# A bot seat must never be claimed by an old guest seat key.
