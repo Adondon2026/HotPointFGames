@@ -9,6 +9,7 @@ on:
       - 'app/**'
       - 'tools/**'
       - 'tests/test_android_bridge.py'
+      - 'tests/test_game_update_manifest.py'
       - '*.gradle'
       - 'gradle/**'
       - 'gradle.properties'
@@ -21,6 +22,7 @@ on:
       - 'app/**'
       - 'tools/**'
       - 'tests/test_android_bridge.py'
+      - 'tests/test_game_update_manifest.py'
       - '*.gradle'
       - 'gradle/**'
       - 'gradle.properties'
@@ -53,6 +55,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test and sync game source
         run: |
+          python tests/test_game_update_manifest.py
           python game_source/tests/smoke_test.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py

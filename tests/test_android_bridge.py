@@ -62,7 +62,7 @@ assert not json.loads(b.stop_server(True))['running']
     assert not active.exists() and (root / bridge.FAILED).exists()
     # A valid-looking but broken update must restore the previously working imported game.
     shutil.copyfile(PYTHON / (bridge.BUILTIN + ".py"), active)
-    pending.write_text('raise RuntimeError("update failed")\\nclass Handler: pass\\nclass ReliableThreadingHTTPServer: pass\\ndef fresh_state(): pass\\ndef flush_state(): pass\\n', encoding="utf-8")
+    pending.write_text('raise RuntimeError("update failed")\nclass Handler: pass\nclass ReliableThreadingHTTPServer: pass\ndef fresh_state(): pass\ndef flush_state(): pass\n', encoding="utf-8")
     # A fresh process stages the update, retaining the active file.
     run("""import android_bridge as b, json, sys
 assert json.loads(b.install_game(sys.argv[1]))['ok']
