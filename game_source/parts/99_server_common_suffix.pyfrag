@@ -1,0 +1,75 @@
+        if action == "next_round":
+            if STATE["phase"] not in ("cards_reveal", "dice_reveal", "draw_reveal"):
+                return {"error": "当前不能开始下一轮"}, 409
+            if STATE["mode"] == "draw":
+                if player_id not in (STATE["hostPlayerId"], STATE["draw"]["drawerId"]):
+                    return {"error": "由房主或本题画家继续"}, 403
+                STATE["draw"]["turnIndex"] += 1
+                start_draw_turn()
+                return {}, 200
+            if player_id not in (STATE["hostPlayerId"], STATE["roundLoserId"]):
+                return {"error": "由房主或本轮受罚者继续"}, 403
+            starter = STATE["roundLoserId"]; starter_player = player_by_id(starter)
+            if not starter_player or is_out(starter_player):
+                starter = next_alive_id(starter)
+            if STATE["mode"] == "cards": start_cards_round(starter)
+            else: start_dice_round(starter)
+            return {}, 200
+
+        if action == "reset":
+            if player_id != STATE["hostPlayerId"]:
+                return {"error": "只有房主能返回大厅"}, 403
+            remove_ddz_bots()
+            STATE.update({"phase": "lobby", "turnPlayerId": None, "roundNo": 0, "roundLoserId": None, "roundResult": "", "winnerId": None})
+            STATE["card"] = {"targetRank": "Q", "lastPlay": None, "revealedCards": []}
+            STATE["dice"] = {"currentBid": None, "lastCount": None}; STATE["draw"] = fresh_draw(); STATE["ddz"] = fresh_ddz(); STATE["chuanma"] = fresh_chuanma()
+            for item in STATE["players"]:
+                item["life"] = STATE["settings"]["cardLives"]; item["hand"] = []
+                item["diceCount"] = STATE["settings"]["diceStart"]; item["dice"] = []; item["score"] = 0
+                item["ddzHand"] = []; item["ddzScore"] = 0; item["ddzHintCursor"] = 0
+                item["cmHand"] = []; item["cmMelds"] = []; item["cmMissing"] = None; item["cmWon"] = False; item["cmScore"] = 0; item["cmDrawnId"] = None; item["cmExchange"] = []
+            bump(); return {}, 200
+
+        return {"error": "未知操作"}, 400
+
+def local_ipv4_addresses():
+    addresses = []
+    if fcntl is None:
+        return addresses
+    try:
+        for _, name in socket.if_nameindex():
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                packed = struct.pack("256s", name[:15].encode("utf-8"))
+                result = fcntl.ioctl(sock.fileno(), 0x8915, packed)
+                ip = socket.inet_ntoa(result[20:24])
+                if not ip.startswith("127.") and ip not in addresses:
+                    addresses.append(ip)
+            except OSError:
+                pass
+            finally:
+                sock.close()
+    except Exception:
+        pass
+    return addresses
+
+if __name__ == "__main__":
+    print("=" * 62)
+    print("局域网游戏厅 v6.2（大话骰规则校验与正常词库版）已启动")
+    print(f"房主本机打开：http://127.0.0.1:{PORT}")
+    addresses = local_ipv4_addresses()
+    for address in addresses:
+        print(f"其他玩家打开：http://{address}:{PORT}")
+    if not addresses:
+        print("其他玩家请使用热点详情中的“网关地址:8000”")
+    print("停止服务器：音量减 + C，或 Ctrl+C")
+    print("=" * 62)
+    server = ReliableThreadingHTTPServer((HOST, PORT), Handler)
+    try:
+        server.serve_forever(poll_interval=0.3)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+        flush_state()
+        print("\n服务器已停止")

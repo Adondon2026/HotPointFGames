@@ -1,0 +1,34 @@
+    <div id="drawGame" class="hidden">
+      <div class="stage">
+        <div class="stage-kicker" id="drawKicker">准备作画</div>
+        <div class="stage-main" id="drawMain">等待</div>
+        <div class="stage-sub"><span id="drawSub"></span> <span class="timer" id="drawTimer"></span></div>
+      </div>
+
+      <div id="wordChoicePanel" class="hidden">
+        <div class="notice">选择一个你愿意画的中文题目</div>
+        <div class="word-choices" id="wordChoices"></div>
+      </div>
+
+      <div class="draw-wrap hidden" id="canvasPanel">
+        <div class="canvas-shell"><canvas id="drawCanvas" class="draw-canvas" width="800" height="600"></canvas><div class="canvas-empty" id="canvasEmpty">画布还空着</div></div>
+        <div class="draw-tools hidden" id="drawTools">
+          <button class="color-dot active" data-color="#111111" style="background:#111111"></button>
+          <button class="color-dot" data-color="#e05555" style="background:#e05555"></button>
+          <button class="color-dot" data-color="#3478d4" style="background:#3478d4"></button>
+          <button class="color-dot" data-color="#35a36f" style="background:#35a36f"></button>
+          <button class="color-dot" data-color="#f0b72f" style="background:#f0b72f"></button>
+          <button class="secondary tool-btn" id="widthBtn">中</button>
+          <button class="secondary tool-btn" id="eraserBtn">橡皮</button>
+          <button class="secondary tool-btn" id="undoBtn">撤销</button>
+          <button class="secondary tool-btn" id="clearBtn">清空</button>
+        </div>
+        <div class="guess-row hidden" id="guessRow"><input id="guessInput" maxlength="20" placeholder="输入中文答案"><button class="green" id="guessBtn">猜</button></div>
+        <div class="guess-feed" id="guessFeed"></div>
+      </div>
+
+      <div class="reveal hidden" id="drawReveal">
+        <div class="result" id="drawResult"></div>
+        <button class="full blue hidden" id="drawNextBtn" style="margin-top:12px">下一题</button>
+      </div>
+    </div>

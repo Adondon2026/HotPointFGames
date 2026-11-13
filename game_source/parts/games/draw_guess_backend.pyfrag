@@ -1,0 +1,171 @@
+def normalize_guess(value):
+    return re.sub(r"[\s\W_]+", "", str(value), flags=re.UNICODE).lower()
+
+
+def draw_library_pool():
+    selected = str(STATE["settings"].get("drawLibrary", "random"))
+    if selected not in LIBRARY_LABEL:
+        selected = "random"
+    if selected == "random":
+        selected = random.SystemRandom().choice(DRAW_RANDOM_LIBRARIES)
+    if selected == "mixed":
+        return list(WORD_BANK), "mixed"
+    return [word for word in WORD_BANK if word.get("library") == selected], selected
+
+
+def word_candidates():
+    pool, active_library = draw_library_pool()
+    difficulty = STATE["settings"]["drawDifficulty"]
+    if difficulty != "mixed":
+        filtered = [word for word in pool if word["difficulty"] == difficulty]
+        if len(filtered) >= 3:
+            pool = filtered
+    used = set(STATE["draw"].get("usedWords", []))
+    available = [word for word in pool if word["word"] not in used]
+    if len(available) < 3:
+        STATE["draw"]["usedWords"] = []
+        available = list(pool)
+    if not available:
+        available = [word for word in WORD_BANK if word.get("library") == "items"]
+        active_library = "items"
+    STATE["draw"]["activeLibrary"] = active_library
+    return random.SystemRandom().sample(available, min(3, len(available)))
+
+
+def start_draw_turn():
+    draw = STATE["draw"]
+    if draw["turnIndex"] >= draw["totalTurns"]:
+        finish_game()
+        return
+    players = [player for player in STATE["players"] if not player.get("isBot")]
+    if not players:
+        finish_game()
+        return
+    drawer = players[draw["turnIndex"] % len(players)]
+    choices = word_candidates()
+    draw.update({
+        "drawerId": drawer["id"],
+        "choices": choices,
+        "word": "",
+        "aliases": [],
+        "category": "",
+        "difficulty": "",
+        "chooseDeadline": time.time() + 25,
+        "deadline": 0.0,
+        "strokes": [],
+        "strokeSeq": 0,
+        "canvasRevision": int(draw.get("canvasRevision", 0)) + 1,
+        "guesses": [],
+        "correctIds": [],
+        "answer": "",
+        "result": "",
+    })
+    STATE["phase"] = "draw_choose"
+    STATE["turnPlayerId"] = drawer["id"]
+    STATE["roundNo"] = draw["turnIndex"] + 1
+    bump()
+
+
+def begin_draw_word(index):
+    draw = STATE["draw"]
+    if not draw["choices"]:
+        draw["choices"] = word_candidates()
+    index = max(0, min(int(index), len(draw["choices"]) - 1))
+    choice = draw["choices"][index]
+    draw["word"] = choice["word"]
+    draw["aliases"] = list(choice.get("aliases", []))
+    draw["category"] = choice["category"]
+    draw["difficulty"] = choice["difficulty"]
+    draw["activeLibrary"] = choice.get("library", draw.get("activeLibrary", "items"))
+    draw["usedWords"].append(choice["word"])
+    draw["choices"] = []
+    draw["deadline"] = time.time() + STATE["settings"]["drawTime"]
+    draw["chooseDeadline"] = 0.0
+    STATE["phase"] = "draw_play"
+    bump()
+
+
+def end_draw_turn(reason):
+    draw = STATE["draw"]
+    answer = draw["word"]
+    draw["answer"] = answer
+    guessed = len(draw["correctIds"])
+    total_guessers = max(1, len([p for p in STATE["players"] if not p.get("isBot")]) - 1)
+    if reason == "all":
+        result = f"全员猜中，答案是“{answer}”"
+    elif guessed:
+        result = f"{guessed}/{total_guessers} 人猜中，答案是“{answer}”"
+    else:
+        result = f"无人猜中，答案是“{answer}”"
+    draw["result"] = result
+    draw["deadline"] = 0.0
+    STATE["roundResult"] = result
+    STATE["phase"] = "draw_reveal"
+    STATE["turnPlayerId"] = None
+    bump()
+
+
+def update_timers():
+    if STATE.get("mode") == "ddz":
+        ddz_bot_step()
+        return
+    if STATE.get("mode") == "chuanma":
+        chuanma_tick()
+        return
+    if STATE["mode"] != "draw":
+        return
+    now = time.time()
+    if STATE["phase"] == "draw_choose" and STATE["draw"]["chooseDeadline"] and now >= STATE["draw"]["chooseDeadline"]:
+        begin_draw_word(0)
+    elif STATE["phase"] == "draw_play" and STATE["draw"]["deadline"] and now >= STATE["draw"]["deadline"]:
+        end_draw_turn("timeout")
+
+
+def draw_public(player_id, since_seq=-1, client_revision=-1):
+    draw = STATE["draw"]
+    is_drawer = player_id == draw["drawerId"]
+    show_answer = STATE["phase"] in ("draw_reveal", "finished")
+    choices = []
+    if STATE["phase"] == "draw_choose" and is_drawer:
+        choices = [
+            {
+                "word": word["word"],
+                "category": word["category"],
+                "difficultyLabel": DIFFICULTY_LABEL[word["difficulty"]],
+                "libraryLabel": LIBRARY_LABEL.get(word.get("library", "items"), "中文词库"),
+            }
+            for word in draw["choices"]
+        ]
+    word = draw["word"] if is_drawer or show_answer else ""
+    hint = ""
+    if draw["word"] and not is_drawer:
+        count = len(re.sub(r"[\s，。！？、,.!?]", "", draw["word"]))
+        hint = f"{draw['category']} · {count} 个字"
+
+    revision = int(draw.get("canvasRevision", 0))
+    seq = int(draw.get("strokeSeq", 0))
+    full_canvas = client_revision != revision or since_seq < 0 or since_seq > seq
+    if full_canvas:
+        strokes = list(draw["strokes"])
+    else:
+        strokes = [stroke for stroke in draw["strokes"] if int(stroke.get("seq", 0)) > since_seq]
+
+    return {
+        "drawerId": draw["drawerId"],
+        "turnIndex": draw["turnIndex"],
+        "totalTurns": draw["totalTurns"],
+        "choices": choices,
+        "word": word,
+        "hint": hint,
+        "libraryLabel": LIBRARY_LABEL.get(draw.get("activeLibrary", "items"), "中文词库"),
+        "deadline": draw["deadline"] or draw["chooseDeadline"],
+        "strokes": strokes,
+        "strokeSeq": seq,
+        "canvasRevision": revision,
+        "fullCanvas": full_canvas,
+        "guesses": list(draw["guesses"][-12:]),
+        "correctIds": list(draw["correctIds"]),
+        "answer": draw["answer"] if show_answer else "",
+        "result": draw["result"],
+    }
+

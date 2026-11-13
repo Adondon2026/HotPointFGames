@@ -1,0 +1,68 @@
+def create_card_deck():
+    deck = []
+    for rank in ("A", "Q", "K"):
+        for _ in range(6):
+            deck.append({"id": "c_" + secrets.token_hex(5), "rank": rank})
+    for _ in range(2):
+        deck.append({"id": "c_" + secrets.token_hex(5), "rank": "JOKER"})
+    random.SystemRandom().shuffle(deck)
+    return deck
+
+def finish_game():
+    if STATE["mode"] == "draw":
+        if not STATE["players"]:
+            return
+        best = max(p["score"] for p in STATE["players"])
+        winners = [p for p in STATE["players"] if p["score"] == best]
+        STATE["winnerId"] = winners[0]["id"]
+        STATE["roundResult"] = "、".join(p["name"] for p in winners) + f" 以 {best} 分获胜"
+    else:
+        alive = alive_players()
+        if not alive:
+            return
+        STATE["winnerId"] = alive[0]["id"]
+    STATE["phase"] = "finished"
+    STATE["turnPlayerId"] = None
+    bump()
+
+def start_cards_round(starter_id=None):
+    alive = alive_players()
+    if len(alive) <= 1:
+        finish_game()
+        return
+    deck = create_card_deck()
+    for player in STATE["players"]:
+        player["hand"] = []
+    for _ in range(5):
+        for player in alive:
+            player["hand"].append(deck.pop())
+    order = {"A": 0, "Q": 1, "K": 2, "JOKER": 3}
+    for player in alive:
+        player["hand"].sort(key=lambda card: order[card["rank"]])
+    alive_ids = [p["id"] for p in alive]
+    if starter_id not in alive_ids:
+        starter_id = alive_ids[0]
+    STATE["roundNo"] += 1
+    STATE["phase"] = "cards_play"
+    STATE["turnPlayerId"] = starter_id
+    STATE["roundLoserId"] = None
+    STATE["roundResult"] = ""
+    STATE["card"] = {"targetRank": random.SystemRandom().choice(["A", "Q", "K"]), "lastPlay": None, "revealedCards": []}
+    bump()
+
+def finish_cards_round(loser_id, result, revealed_cards):
+    loser = player_by_id(loser_id)
+    if loser and loser["life"] > 0:
+        loser["life"] -= 1
+        if loser["life"] == 0:
+            result += f"；{loser['name']} 已趴桌"
+    STATE["phase"] = "cards_reveal"
+    STATE["turnPlayerId"] = None
+    STATE["roundLoserId"] = loser_id
+    STATE["roundResult"] = result
+    STATE["card"]["revealedCards"] = revealed_cards
+    if len(alive_players()) <= 1:
+        finish_game()
+    else:
+        bump()
+

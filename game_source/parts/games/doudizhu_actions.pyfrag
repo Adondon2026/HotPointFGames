@@ -1,0 +1,43 @@
+        if action == "ddz_bid":
+            if STATE["mode"] != "ddz" or STATE["phase"] != "ddz_bidding":
+                return {"error": "当前不能叫地主"}, 409
+            if STATE["turnPlayerId"] != player_id:
+                return {"error": "还没轮到你"}, 409
+            try:
+                score = int(data.get("score", 0))
+            except Exception:
+                return {"error": "叫分无效"}, 400
+            return apply_ddz_bid(player, score)
+
+        if action == "ddz_hint":
+            if STATE["mode"] != "ddz" or STATE["phase"] != "ddz_play" or STATE["turnPlayerId"] != player_id:
+                return {"error": "当前不能提示"}, 409
+            previous = STATE["ddz"]["lastPlay"]["combo"] if STATE["ddz"]["lastPlay"] else None
+            options = ddz_hint_options(player["ddzHand"], previous)
+            if not options:
+                return {"hintCards": [], "message": "没有能压过上一手的牌"}, 200
+            index = player.get("ddzHintCursor", 0) % len(options)
+            player["ddzHintCursor"] = index + 1
+            return {"hintCards": [card["id"] for card in options[index]]}, 200
+
+        if action == "ddz_play":
+            if STATE["mode"] != "ddz" or STATE["phase"] != "ddz_play":
+                return {"error": "当前不能出牌"}, 409
+            if STATE["turnPlayerId"] != player_id:
+                return {"error": "还没轮到你"}, 409
+            card_ids = data.get("cardIds", [])
+            if not isinstance(card_ids, list) or not card_ids or len(set(card_ids)) != len(card_ids):
+                return {"error": "请选择要出的牌"}, 400
+            selected_ids = set(card_ids)
+            selected = [card for card in player["ddzHand"] if card["id"] in selected_ids]
+            if len(selected) != len(card_ids):
+                return {"error": "所选牌已经变化，请重新选择"}, 409
+            return apply_ddz_play(player, selected)
+
+        if action == "ddz_pass":
+            if STATE["mode"] != "ddz" or STATE["phase"] != "ddz_play":
+                return {"error": "当前不能不出"}, 409
+            if STATE["turnPlayerId"] != player_id:
+                return {"error": "还没轮到你"}, 409
+            return apply_ddz_pass(player)
+

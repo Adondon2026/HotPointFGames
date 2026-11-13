@@ -1,0 +1,233 @@
+def fresh_state():
+    return {
+        "version": 1,
+        "phase": "lobby",
+        "mode": "cards",
+        "hostPlayerId": None,
+        "players": [],
+        "settings": {
+            "cardLives": 3,
+            "diceStart": 5,
+            "onesWild": True,
+            "exactEnabled": True,
+            "drawRounds": 2,
+            "drawTime": 75,
+            "drawDifficulty": "mixed",
+            "drawLibrary": "random",
+        },
+        "turnPlayerId": None,
+        "roundNo": 0,
+        "roundLoserId": None,
+        "roundResult": "",
+        "winnerId": None,
+        "card": {"targetRank": "Q", "lastPlay": None, "revealedCards": []},
+        "dice": {"currentBid": None, "lastCount": None},
+        "draw": fresh_draw(),
+        "ddz": fresh_ddz(),
+        "chuanma": fresh_chuanma(),
+    }
+
+def migrate(state):
+    base = fresh_state()
+    if not isinstance(state, dict):
+        return base
+    for key, value in base.items():
+        state.setdefault(key, value)
+    for key, value in base["settings"].items():
+        state.setdefault("settings", {}).setdefault(key, value)
+    state.setdefault("card", base["card"])
+    state.setdefault("dice", base["dice"])
+    state.setdefault("draw", base["draw"])
+    state.setdefault("ddz", base["ddz"])
+    state.setdefault("chuanma", base["chuanma"])
+    for key, value in fresh_draw().items():
+        state["draw"].setdefault(key, value)
+    for key, value in fresh_ddz().items():
+        state["ddz"].setdefault(key, value)
+    for key, value in fresh_chuanma().items():
+        state["chuanma"].setdefault(key, value)
+    for player in state.get("players", []):
+        player.setdefault("seatKey", "")
+        player.setdefault("connected", True)
+        player.setdefault("lastSeen", time.time())
+        player.setdefault("ready", False)
+        player.setdefault("life", state["settings"]["cardLives"])
+        player.setdefault("hand", [])
+        player.setdefault("diceCount", state["settings"]["diceStart"])
+        player.setdefault("dice", [])
+        player.setdefault("score", 0)
+        player.setdefault("ddzHand", [])
+        player.setdefault("ddzScore", 0)
+        player.setdefault("ddzHintCursor", 0)
+        player.setdefault("isBot", False)
+        player.setdefault("cmHand", [])
+        player.setdefault("cmMelds", [])
+        player.setdefault("cmMissing", None)
+        player.setdefault("cmWon", False)
+        player.setdefault("cmScore", 0)
+        player.setdefault("cmDrawnId", None)
+        player.setdefault("cmExchange", [])
+    return state
+
+def load_saved():
+    for path in (STATE_FILE, LEGACY_STATE_FILE):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            state = migrate(data.get("state"))
+            tokens = data.get("tokens")
+            if isinstance(tokens, dict):
+                return state, tokens
+        except Exception:
+            pass
+    return fresh_state(), {}
+
+STATE, TOKENS = load_saved()
+SAVE_EVENT = threading.Event()
+SAVE_WRITE_LOCK = threading.Lock()
+ACTION_CACHE = {}
+
+
+def _snapshot_json():
+    with LOCK:
+        return json.dumps({"state": STATE, "tokens": TOKENS}, ensure_ascii=False)
+
+
+def flush_state():
+    try:
+        with SAVE_WRITE_LOCK:
+            # Snapshot inside the write lock. This prevents an older queued
+            # snapshot from overwriting a newer explicit room reset.
+            payload = _snapshot_json()
+            temp = STATE_FILE.with_suffix(".tmp")
+            temp.write_text(payload, encoding="utf-8")
+            temp.replace(STATE_FILE)
+    except Exception as exc:
+        print("状态保存失败：", exc)
+
+
+def _save_worker():
+    while True:
+        SAVE_EVENT.wait()
+        # 合并短时间内的多次操作，避免安卓共享存储阻塞请求。
+        time.sleep(0.18)
+        SAVE_EVENT.clear()
+        flush_state()
+
+
+threading.Thread(target=_save_worker, name="game-state-writer", daemon=True).start()
+
+
+def save_state():
+    SAVE_EVENT.set()
+
+
+def bump(persist=True):
+    STATE["version"] += 1
+    if persist:
+        save_state()
+
+
+def get_cached_action(player_id, request_id):
+    if not request_id:
+        return None
+    now = time.time()
+    for key, item in list(ACTION_CACHE.items()):
+        if now - item[0] > ACTION_CACHE_TTL:
+            ACTION_CACHE.pop(key, None)
+    item = ACTION_CACHE.get((player_id, request_id))
+    if not item:
+        return None
+    return dict(item[1]), int(item[2])
+
+
+def remember_action(player_id, request_id, payload, rule_code):
+    if not request_id:
+        return
+    if len(ACTION_CACHE) >= ACTION_CACHE_LIMIT:
+        oldest = min(ACTION_CACHE, key=lambda key: ACTION_CACHE[key][0])
+        ACTION_CACHE.pop(oldest, None)
+    ACTION_CACHE[(player_id, request_id)] = (time.time(), dict(payload or {}), int(rule_code))
+
+def player_by_id(player_id):
+    return next((p for p in STATE["players"] if p["id"] == player_id), None)
+
+def touch_player(player):
+    if player:
+        player["lastSeen"] = time.time()
+        player["connected"] = True
+
+def is_connected(player):
+    if player.get("isBot"):
+        return True
+    return (time.time() - float(player.get("lastSeen", 0))) <= ONLINE_TIMEOUT
+
+def remove_player(player_id):
+    player = player_by_id(player_id)
+    if not player:
+        return None
+    STATE["players"] = [p for p in STATE["players"] if p["id"] != player_id]
+    for token, mapped_id in list(TOKENS.items()):
+        if mapped_id == player_id:
+            TOKENS.pop(token, None)
+    if STATE.get("hostPlayerId") == player_id:
+        STATE["hostPlayerId"] = STATE["players"][0]["id"] if STATE["players"] else None
+    return player
+
+def remove_ddz_bots():
+    bot_ids = [p["id"] for p in STATE["players"] if p.get("isBot")]
+    for bot_id in bot_ids:
+        remove_player(bot_id)
+    return len(bot_ids)
+
+def add_ddz_bots():
+    remove_ddz_bots()
+    names = ["机器人小北", "机器人阿南"]
+    index = 0
+    while len(STATE["players"]) < 3:
+        bot_id = "bot_" + secrets.token_hex(4)
+        STATE["players"].append({
+            "id": bot_id, "name": names[index] if index < len(names) else f"机器人{index + 1}",
+            "ready": True, "connected": True, "lastSeen": time.time(), "seatKey": "", "isBot": True,
+            "life": STATE["settings"]["cardLives"], "hand": [], "diceCount": STATE["settings"]["diceStart"],
+            "dice": [], "score": 0, "ddzHand": [], "ddzScore": 0, "ddzHintCursor": 0,
+        })
+        index += 1
+
+def prune_lobby_players():
+    if STATE.get("phase") != "lobby":
+        return []
+    now = time.time()
+    stale = [p["id"] for p in STATE["players"] if not p.get("isBot") and now - float(p.get("lastSeen", 0)) > ZOMBIE_TIMEOUT]
+    if not stale:
+        return []
+    for player_id in stale:
+        remove_player(player_id)
+    bump()
+    return stale
+
+def is_out(player):
+    if STATE["mode"] == "cards":
+        return player["life"] <= 0
+    if STATE["mode"] == "dice":
+        return player["diceCount"] <= 0
+    if STATE["mode"] in ("ddz", "chuanma"):
+        return bool(player.get("cmWon")) if STATE["mode"] == "chuanma" else False
+    return False
+
+def alive_players():
+    return [p for p in STATE["players"] if not is_out(p)]
+
+def next_alive_id(current_id):
+    players = STATE["players"]
+    if not players:
+        return None
+    ids = [p["id"] for p in players]
+    try:
+        start = ids.index(current_id)
+    except ValueError:
+        start = -1
+    for offset in range(1, len(players) + 1):
+        player = players[(start + offset) % len(players)]
+        if not is_out(player):
+            return player["id"]
+    return None

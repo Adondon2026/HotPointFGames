@@ -70,7 +70,7 @@ class GameServerService : Service() {
         worker.execute {
             try {
                 val raw = Python.getInstance().getModule("android_bridge")
-                    .callAttr("start_server", 8000, 8010)
+                    .callAttr("start_server", 8000, 8010, filesDir.absolutePath)
                     .toJava(String::class.java)
                 val result = JSONObject(raw)
                 if (result.optBoolean("running")) {
@@ -82,7 +82,7 @@ class GameServerService : Service() {
                         return@execute
                     }
                     val port = result.getInt("port")
-                    ServerPrefs.setRunning(this, port)
+                    ServerPrefs.setRunning(this, port, result.optString("warning", ""))
                     acquireWakeLock()
                     updateNotification("服务器运行中 · 端口 $port")
                 } else {

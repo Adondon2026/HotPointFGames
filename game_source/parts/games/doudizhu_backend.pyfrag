@@ -1,0 +1,637 @@
+DDZ_RANK_VALUE = {
+    "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+    "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14, "2": 15,
+    "BJ": 16, "RJ": 17,
+}
+DDZ_VALUE_RANK = {value: rank for rank, value in DDZ_RANK_VALUE.items()}
+DDZ_COMBO_LABELS = {
+    "single": "单张", "pair": "对子", "triple": "三张",
+    "triple_single": "三带一", "triple_pair": "三带二",
+    "straight": "顺子", "pair_straight": "连对",
+    "plane": "飞机", "plane_single": "飞机带单",
+    "plane_pair": "飞机带对", "four_two_single": "四带二",
+    "four_two_pair": "四带两对", "bomb": "炸弹", "rocket": "王炸",
+}
+
+def fresh_ddz():
+    return {
+        "bottom": [],
+        "highestBid": 0,
+        "highestBidder": None,
+        "bidCount": 0,
+        "bidHistory": [],
+        "landlordId": None,
+        "lastPlay": None,
+        "trickLeaderId": None,
+        "passCount": 0,
+        "baseBid": 0,
+        "multiplier": 1,
+        "bombCount": 0,
+        "landlordPlayCount": 0,
+        "farmerPlayCount": 0,
+        "message": "",
+        "botDueAt": 0.0,
+        "botActionCount": 0,
+    }
+
+def ddz_deck():
+    cards = []
+    for suit in ("S", "H", "C", "D"):
+        for rank in ("3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"):
+            cards.append({
+                "id": "d_" + secrets.token_hex(5),
+                "rank": rank,
+                "suit": suit,
+                "value": DDZ_RANK_VALUE[rank],
+            })
+    cards.append({"id": "d_" + secrets.token_hex(5), "rank": "BJ", "suit": "J", "value": 16})
+    cards.append({"id": "d_" + secrets.token_hex(5), "rank": "RJ", "suit": "J", "value": 17})
+    random.SystemRandom().shuffle(cards)
+    return cards
+
+def sort_ddz_hand(cards):
+    suit_order = {"S": 0, "H": 1, "C": 2, "D": 3, "J": 4}
+    cards.sort(key=lambda c: (c["value"], suit_order.get(c["suit"], 9)))
+
+def ddz_consecutive(values):
+    values = sorted(values)
+    return bool(values) and values[-1] <= 14 and all(b == a + 1 for a, b in zip(values, values[1:]))
+
+def classify_ddz(cards):
+    if not cards:
+        return None
+    values = [int(card["value"]) for card in cards]
+    counts = Counter(values)
+    n = len(values)
+    unique = sorted(counts)
+    count_values = sorted(counts.values())
+
+    def result(kind, main, chain=1):
+        return {
+            "type": kind,
+            "main": int(main),
+            "size": n,
+            "chain": int(chain),
+            "label": DDZ_COMBO_LABELS[kind],
+        }
+
+    if n == 2 and set(values) == {16, 17}:
+        return result("rocket", 17)
+    if n == 4 and len(counts) == 1:
+        return result("bomb", unique[0])
+    if n == 1:
+        return result("single", values[0])
+    if n == 2 and len(counts) == 1:
+        return result("pair", unique[0])
+    if n == 3 and len(counts) == 1:
+        return result("triple", unique[0])
+    if n == 4 and count_values == [1, 3]:
+        return result("triple_single", next(v for v, c in counts.items() if c == 3))
+    if n == 5 and count_values == [2, 3]:
+        return result("triple_pair", next(v for v, c in counts.items() if c == 3))
+
+    if n >= 5 and len(counts) == n and ddz_consecutive(unique):
+        return result("straight", unique[-1], len(unique))
+    if n >= 6 and n % 2 == 0 and all(c == 2 for c in counts.values()) and len(unique) >= 3 and ddz_consecutive(unique):
+        return result("pair_straight", unique[-1], len(unique))
+    if n >= 6 and n % 3 == 0 and all(c == 3 for c in counts.values()) and len(unique) >= 2 and ddz_consecutive(unique):
+        return result("plane", unique[-1], len(unique))
+
+    if n >= 8 and n % 4 == 0:
+        chain = n // 4
+        triple_values = sorted(v for v, c in counts.items() if c == 3 and v <= 14)
+        for start in range(0, len(triple_values) - chain + 1):
+            body = triple_values[start:start + chain]
+            if len(body) == chain and ddz_consecutive(body):
+                remaining = n - 3 * chain
+                if remaining == chain:
+                    return result("plane_single", body[-1], chain)
+
+    if n >= 10 and n % 5 == 0:
+        chain = n // 5
+        triple_values = sorted(v for v, c in counts.items() if c == 3 and v <= 14)
+        for start in range(0, len(triple_values) - chain + 1):
+            body = triple_values[start:start + chain]
+            if len(body) != chain or not ddz_consecutive(body):
+                continue
+            rest = {v: c for v, c in counts.items() if v not in body}
+            if len(rest) == chain and all(c == 2 for c in rest.values()):
+                return result("plane_pair", body[-1], chain)
+
+    if n == 6 and 4 in counts.values():
+        return result("four_two_single", next(v for v, c in counts.items() if c == 4))
+    if n == 8 and 4 in counts.values():
+        bomb_value = next(v for v, c in counts.items() if c == 4)
+        rest = [c for v, c in counts.items() if v != bomb_value]
+        if len(rest) == 2 and all(c == 2 for c in rest):
+            return result("four_two_pair", bomb_value)
+    return None
+
+def ddz_beats(candidate, previous):
+    if not candidate:
+        return False
+    if not previous:
+        return True
+    if candidate["type"] == "rocket":
+        return previous["type"] != "rocket"
+    if previous["type"] == "rocket":
+        return False
+    if candidate["type"] == "bomb":
+        if previous["type"] != "bomb":
+            return True
+        return candidate["main"] > previous["main"]
+    if previous["type"] == "bomb":
+        return False
+    return (
+        candidate["type"] == previous["type"]
+        and candidate["size"] == previous["size"]
+        and candidate.get("chain", 1) == previous.get("chain", 1)
+        and candidate["main"] > previous["main"]
+    )
+
+def ddz_groups(hand):
+    groups = {}
+    for card in sorted(hand, key=lambda c: (c["value"], c["suit"])):
+        groups.setdefault(card["value"], []).append(card)
+    return groups
+
+def ddz_run_candidates(groups, chain, copies):
+    results = []
+    values = sorted(v for v, cards in groups.items() if v <= 14 and len(cards) >= copies)
+    for start in range(3, 15 - chain + 1):
+        seq = list(range(start, start + chain))
+        if all(v in values for v in seq):
+            cards = []
+            for v in seq:
+                cards.extend(groups[v][:copies])
+            results.append(cards)
+    return results
+
+def ddz_hint_options(hand, previous):
+    groups = ddz_groups(hand)
+    options = []
+    seen = set()
+
+    def add(cards):
+        if not cards:
+            return
+        combo = classify_ddz(cards)
+        if not combo or not ddz_beats(combo, previous):
+            return
+        key = tuple(sorted(card["id"] for card in cards))
+        if key not in seen:
+            seen.add(key)
+            options.append(cards)
+
+    if not previous:
+        add(hand)
+        for value in sorted(groups):
+            add(groups[value][:1])
+        for value in sorted(groups):
+            if len(groups[value]) >= 2:
+                add(groups[value][:2])
+        for value in sorted(groups):
+            if len(groups[value]) >= 3:
+                add(groups[value][:3])
+        for chain in range(5, 13):
+            candidates = ddz_run_candidates(groups, chain, 1)
+            if candidates:
+                add(candidates[0])
+                break
+        for chain in range(3, 7):
+            candidates = ddz_run_candidates(groups, chain, 2)
+            if candidates:
+                add(candidates[0])
+                break
+        for value in sorted(groups):
+            if len(groups[value]) == 4:
+                add(groups[value][:4])
+        if 16 in groups and 17 in groups:
+            add(groups[16][:1] + groups[17][:1])
+        return options[:24]
+
+    kind = previous["type"]
+    main = previous["main"]
+    chain = previous.get("chain", 1)
+
+    if kind == "single":
+        for v in sorted(groups):
+            if v > main:
+                add(groups[v][:1])
+    elif kind == "pair":
+        for v in sorted(groups):
+            if v > main and len(groups[v]) >= 2:
+                add(groups[v][:2])
+    elif kind == "triple":
+        for v in sorted(groups):
+            if v > main and len(groups[v]) >= 3:
+                add(groups[v][:3])
+    elif kind in ("triple_single", "triple_pair"):
+        for v in sorted(groups):
+            if v <= main or len(groups[v]) < 3:
+                continue
+            if kind == "triple_single":
+                wing = next((cards[0] for w, cards in sorted(groups.items()) if w != v and cards), None)
+                if wing:
+                    add(groups[v][:3] + [wing])
+            else:
+                wing = next((cards[:2] for w, cards in sorted(groups.items()) if w != v and len(cards) >= 2), None)
+                if wing:
+                    add(groups[v][:3] + wing)
+    elif kind == "straight":
+        for cards in ddz_run_candidates(groups, chain, 1):
+            if max(c["value"] for c in cards) > main:
+                add(cards)
+    elif kind == "pair_straight":
+        for cards in ddz_run_candidates(groups, chain, 2):
+            if max(c["value"] for c in cards) > main:
+                add(cards)
+    elif kind in ("plane", "plane_single", "plane_pair"):
+        for body in ddz_run_candidates(groups, chain, 3):
+            body_values = {c["value"] for c in body}
+            if max(body_values) <= main:
+                continue
+            remaining = [c for c in hand if c["value"] not in body_values]
+            if kind == "plane":
+                add(body)
+            elif kind == "plane_single" and len(remaining) >= chain:
+                add(body + remaining[:chain])
+            elif kind == "plane_pair":
+                pair_cards = []
+                for v, cards in sorted(ddz_groups(remaining).items()):
+                    if len(cards) >= 2:
+                        pair_cards.extend(cards[:2])
+                        if len(pair_cards) == chain * 2:
+                            break
+                if len(pair_cards) == chain * 2:
+                    add(body + pair_cards)
+    elif kind == "four_two_single":
+        for v in sorted(groups):
+            if v > main and len(groups[v]) == 4:
+                remaining = [c for c in hand if c["value"] != v]
+                if len(remaining) >= 2:
+                    add(groups[v][:4] + remaining[:2])
+    elif kind == "four_two_pair":
+        for v in sorted(groups):
+            if v > main and len(groups[v]) == 4:
+                pairs = []
+                for w, cards in sorted(groups.items()):
+                    if w != v and len(cards) >= 2:
+                        pairs.extend(cards[:2])
+                        if len(pairs) == 4:
+                            break
+                if len(pairs) == 4:
+                    add(groups[v][:4] + pairs)
+    elif kind == "bomb":
+        for v in sorted(groups):
+            if v > main and len(groups[v]) == 4:
+                add(groups[v][:4])
+
+    if kind not in ("bomb", "rocket"):
+        for v in sorted(groups):
+            if len(groups[v]) == 4:
+                add(groups[v][:4])
+    if kind != "rocket" and 16 in groups and 17 in groups:
+        add(groups[16][:1] + groups[17][:1])
+    return options[:32]
+
+def ddz_lead_options(hand):
+    """Generate practical lead candidates, preferring combinations that shed cards."""
+    groups = ddz_groups(hand)
+    options = []
+    seen = set()
+
+    def add(cards):
+        if not cards:
+            return
+        combo = classify_ddz(cards)
+        if not combo:
+            return
+        key = tuple(sorted(card["id"] for card in cards))
+        if key not in seen:
+            seen.add(key)
+            options.append(cards)
+
+    # If the whole hand is one legal combination, always include it first.
+    add(list(hand))
+    # Long structures first: planes, pair runs, straights.
+    for chain in range(6, 1, -1):
+        for body in ddz_run_candidates(groups, chain, 3):
+            add(body)
+    for chain in range(6, 2, -1):
+        for run in ddz_run_candidates(groups, chain, 2):
+            add(run)
+    for chain in range(12, 4, -1):
+        for run in ddz_run_candidates(groups, chain, 1):
+            add(run)
+    # Triples with attachments, then triples/pairs/singles.
+    for value in sorted(groups):
+        if len(groups[value]) >= 3:
+            remaining = [c for c in hand if c["value"] != value]
+            pair = next((cards[:2] for _, cards in sorted(ddz_groups(remaining).items()) if len(cards) >= 2), None)
+            if pair:
+                add(groups[value][:3] + pair)
+            if remaining:
+                add(groups[value][:3] + [remaining[0]])
+            add(groups[value][:3])
+    for value in sorted(groups):
+        if len(groups[value]) >= 2:
+            add(groups[value][:2])
+    for value in sorted(groups):
+        add(groups[value][:1])
+    # Bombs and rocket last.
+    for value in sorted(groups):
+        if len(groups[value]) == 4:
+            add(groups[value][:4])
+    if 16 in groups and 17 in groups:
+        add(groups[16][:1] + groups[17][:1])
+    return options
+
+def ddz_combo_cost(cards):
+    combo = classify_ddz(cards) or {"type": "invalid", "main": 99}
+    type_penalty = {
+        "plane_pair": 0, "plane_single": 1, "plane": 2,
+        "pair_straight": 3, "straight": 4,
+        "triple_pair": 5, "triple_single": 6, "triple": 7,
+        "pair": 8, "single": 9, "four_two_pair": 10,
+        "four_two_single": 11, "bomb": 40, "rocket": 60,
+    }.get(combo["type"], 20)
+    high_penalty = sum(max(0, card["value"] - 12) for card in cards)
+    # More cards shed is good, except bombs/rocket which remain expensive.
+    shed_bonus = len(cards) * 2 if combo["type"] not in ("bomb", "rocket") else 0
+    return type_penalty * 100 + combo.get("main", 99) * 3 + high_penalty * 4 - shed_bonus
+
+def ddz_hand_strength(hand):
+    groups = ddz_groups(hand)
+    score = 0
+    if 16 in groups:
+        score += 3
+    if 17 in groups:
+        score += 4
+    if 16 in groups and 17 in groups:
+        score += 5
+    score += len(groups.get(15, [])) * 2.5
+    score += len(groups.get(14, [])) * 1.2
+    score += sum(6 for cards in groups.values() if len(cards) == 4)
+    score += sum(2.2 for cards in groups.values() if len(cards) == 3)
+    # Reward long runs because the hand is easier to shed.
+    score += max((len(run) for run in ddz_run_candidates(groups, 5, 1)), default=0) * 0.25
+    return score
+
+def schedule_ddz_bot(delay=0.85):
+    ddz = STATE.get("ddz", {})
+    current = player_by_id(STATE.get("turnPlayerId"))
+    if STATE.get("mode") == "ddz" and STATE.get("phase") in ("ddz_bidding", "ddz_play") and current and current.get("isBot"):
+        ddz["botDueAt"] = time.time() + delay
+    else:
+        ddz["botDueAt"] = 0.0
+
+def apply_ddz_bid(player, score):
+    ddz = STATE["ddz"]
+    score = int(score)
+    if score not in (0, 1, 2, 3):
+        return {"error": "叫分无效"}, 400
+    if score and score <= ddz["highestBid"]:
+        return {"error": "叫分必须高于当前最高分"}, 409
+    ddz["bidHistory"].append({"playerId": player["id"], "playerName": player["name"], "score": score})
+    ddz["bidCount"] += 1
+    if score > ddz["highestBid"]:
+        ddz["highestBid"] = score
+        ddz["highestBidder"] = player["id"]
+    if score == 3:
+        finalize_ddz_landlord()
+        return {}, 200
+    if ddz["bidCount"] >= 3:
+        if not ddz["highestBidder"]:
+            deal_ddz("无人叫地主，已重新发牌")
+        else:
+            finalize_ddz_landlord()
+        return {}, 200
+    STATE["turnPlayerId"] = next_seat_id(player["id"])
+    ddz["message"] = f"{player['name']} " + (f"叫 {score} 分" if score else "不叫")
+    bump()
+    schedule_ddz_bot()
+    return {}, 200
+
+def apply_ddz_play(player, selected):
+    combo = classify_ddz(selected)
+    if not combo:
+        return {"error": "这组牌不是合法斗地主牌型"}, 409
+    ddz = STATE["ddz"]
+    previous = ddz["lastPlay"]["combo"] if ddz["lastPlay"] else None
+    if not ddz_beats(combo, previous):
+        return {"error": "这手牌压不过上一手"}, 409
+    selected_ids = {card["id"] for card in selected}
+    player["ddzHand"] = [card for card in player["ddzHand"] if card["id"] not in selected_ids]
+    ddz["lastPlay"] = {
+        "playerId": player["id"], "playerName": player["name"],
+        "cards": selected, "combo": combo,
+    }
+    ddz["trickLeaderId"] = player["id"]
+    ddz["passCount"] = 0
+    ddz["message"] = f"{player['name']} 出了 {combo['label']}"
+    if combo["type"] in ("bomb", "rocket"):
+        ddz["multiplier"] *= 2
+        ddz["bombCount"] += 1
+    if player["id"] == ddz["landlordId"]:
+        ddz["landlordPlayCount"] += 1
+    else:
+        ddz["farmerPlayCount"] += 1
+    player["ddzHintCursor"] = 0
+    if not player["ddzHand"]:
+        finish_ddz(player["id"])
+        return {}, 200
+    STATE["turnPlayerId"] = next_seat_id(player["id"])
+    bump()
+    schedule_ddz_bot()
+    return {}, 200
+
+def apply_ddz_pass(player):
+    ddz = STATE["ddz"]
+    if not ddz["lastPlay"]:
+        return {"error": "你是本轮首家，必须出牌"}, 409
+    ddz["passCount"] += 1
+    ddz["message"] = f"{player['name']} 不出"
+    player["ddzHintCursor"] = 0
+    if ddz["passCount"] >= 2:
+        STATE["turnPlayerId"] = ddz["trickLeaderId"]
+        ddz["lastPlay"] = None
+        ddz["passCount"] = 0
+        ddz["message"] = "其余两家都不出，重新领出"
+    else:
+        STATE["turnPlayerId"] = next_seat_id(player["id"])
+    bump()
+    schedule_ddz_bot()
+    return {}, 200
+
+def choose_ddz_bot_bid(player):
+    ddz = STATE["ddz"]
+    strength = ddz_hand_strength(player["ddzHand"])
+    target = 3 if strength >= 20 else 2 if strength >= 13 else 1 if strength >= 7 else 0
+    if target <= ddz["highestBid"]:
+        target = 0
+    # Avoid endless redeals: the final bidder calls one with a merely playable hand.
+    if ddz["bidCount"] == 2 and not ddz["highestBidder"] and target == 0:
+        target = 1
+    return target
+
+def choose_ddz_bot_play(player):
+    ddz = STATE["ddz"]
+    previous_record = ddz.get("lastPlay")
+    previous = previous_record["combo"] if previous_record else None
+    hand = player["ddzHand"]
+    whole = classify_ddz(hand)
+    if whole and ddz_beats(whole, previous):
+        return list(hand)
+
+    options = ddz_hint_options(hand, previous) if previous else ddz_lead_options(hand)
+    if not options:
+        return None
+
+    landlord_id = ddz.get("landlordId")
+    is_landlord = player["id"] == landlord_id
+    previous_player = player_by_id(previous_record["playerId"]) if previous_record else None
+    opponents = [p for p in STATE["players"] if (p["id"] != player["id"] and ((is_landlord and p["id"] != landlord_id) or (not is_landlord and p["id"] == landlord_id)))]
+    danger = any(len(p.get("ddzHand", [])) <= 2 for p in opponents)
+
+    # Farmer coordination: normally do not overtake the other farmer.
+    if not is_landlord and previous_player and previous_player["id"] != landlord_id:
+        finishing = [cards for cards in options if len(cards) == len(hand)]
+        if finishing:
+            return min(finishing, key=ddz_combo_cost)
+        return None
+
+    non_bombs = [cards for cards in options if classify_ddz(cards)["type"] not in ("bomb", "rocket")]
+    pool = options if danger or not non_bombs else non_bombs
+    # When leading, prefer shedding more cards; when following, prefer cheapest valid response.
+    if previous is None:
+        return min(pool, key=lambda cards: (ddz_combo_cost(cards), -len(cards)))
+    return min(pool, key=ddz_combo_cost)
+
+def ddz_bot_step():
+    if STATE.get("mode") != "ddz" or STATE.get("phase") not in ("ddz_bidding", "ddz_play"):
+        return False
+    player = player_by_id(STATE.get("turnPlayerId"))
+    if not player or not player.get("isBot"):
+        return False
+    ddz = STATE["ddz"]
+    if time.time() < float(ddz.get("botDueAt", 0.0)):
+        return False
+    ddz["botDueAt"] = 0.0
+    ddz["botActionCount"] = int(ddz.get("botActionCount", 0)) + 1
+    if STATE["phase"] == "ddz_bidding":
+        apply_ddz_bid(player, choose_ddz_bot_bid(player))
+    else:
+        cards = choose_ddz_bot_play(player)
+        if cards:
+            apply_ddz_play(player, cards)
+        else:
+            apply_ddz_pass(player)
+    return True
+
+def next_seat_id(current_id):
+    players = STATE["players"]
+    if not players:
+        return None
+    ids = [p["id"] for p in players]
+    try:
+        index = ids.index(current_id)
+    except ValueError:
+        index = -1
+    return ids[(index + 1) % len(ids)]
+
+def deal_ddz(message=""):
+    deck = ddz_deck()
+    for player in STATE["players"]:
+        player["ddzHand"] = []
+        player["ddzHintCursor"] = 0
+    for _ in range(17):
+        for player in STATE["players"]:
+            player["ddzHand"].append(deck.pop())
+    for player in STATE["players"]:
+        sort_ddz_hand(player["ddzHand"])
+    STATE["ddz"] = fresh_ddz()
+    STATE["ddz"]["bottom"] = deck
+    STATE["ddz"]["message"] = message
+    starter = random.SystemRandom().choice(STATE["players"])
+    STATE["phase"] = "ddz_bidding"
+    STATE["turnPlayerId"] = starter["id"]
+    STATE["roundNo"] += 1
+    bump()
+    schedule_ddz_bot()
+
+def finalize_ddz_landlord():
+    ddz = STATE["ddz"]
+    landlord = player_by_id(ddz["highestBidder"])
+    if not landlord:
+        deal_ddz("无人叫地主，已重新发牌")
+        return
+    landlord["ddzHand"].extend(ddz["bottom"])
+    sort_ddz_hand(landlord["ddzHand"])
+    ddz["landlordId"] = landlord["id"]
+    ddz["baseBid"] = max(1, ddz["highestBid"])
+    ddz["lastPlay"] = None
+    ddz["trickLeaderId"] = landlord["id"]
+    ddz["passCount"] = 0
+    ddz["message"] = f"{landlord['name']} 成为地主"
+    STATE["phase"] = "ddz_play"
+    STATE["turnPlayerId"] = landlord["id"]
+    bump()
+    schedule_ddz_bot()
+
+def finish_ddz(winner_id):
+    ddz = STATE["ddz"]
+    landlord_id = ddz["landlordId"]
+    landlord_win = winner_id == landlord_id
+    spring = False
+    if landlord_win and ddz["farmerPlayCount"] == 0:
+        spring = True
+    elif not landlord_win and ddz["landlordPlayCount"] == 1:
+        spring = True
+    if spring:
+        ddz["multiplier"] *= 2
+    unit = max(1, ddz["baseBid"]) * ddz["multiplier"]
+    landlord = player_by_id(landlord_id)
+    farmers = [p for p in STATE["players"] if p["id"] != landlord_id]
+    if landlord_win:
+        landlord["ddzScore"] += 2 * unit
+        for farmer in farmers:
+            farmer["ddzScore"] -= unit
+        result = f"地主 {landlord['name']} 获胜"
+        STATE["winnerId"] = landlord_id
+    else:
+        landlord["ddzScore"] -= 2 * unit
+        for farmer in farmers:
+            farmer["ddzScore"] += unit
+        result = "农民 " + "、".join(p["name"] for p in farmers) + " 获胜"
+        STATE["winnerId"] = farmers[0]["id"]
+    if spring:
+        result += " · " + ("春天" if landlord_win else "反春天")
+    result += f" · {ddz['baseBid']}分 × {ddz['multiplier']}倍 = {unit}分"
+    STATE["roundResult"] = result
+    STATE["phase"] = "finished"
+    STATE["turnPlayerId"] = None
+    bump()
+
+def ddz_public(player_id):
+    ddz = STATE["ddz"]
+    landlord = player_by_id(ddz.get("landlordId"))
+    last = ddz.get("lastPlay")
+    return {
+        "highestBid": ddz.get("highestBid", 0),
+        "bidHistory": list(ddz.get("bidHistory", [])),
+        "landlordId": ddz.get("landlordId"),
+        "landlordName": landlord["name"] if landlord else "",
+        "baseBid": ddz.get("baseBid", 0),
+        "multiplier": ddz.get("multiplier", 1),
+        "message": ddz.get("message", ""),
+        "botThinking": bool((player_by_id(STATE.get("turnPlayerId")) or {}).get("isBot")) and STATE.get("phase") in ("ddz_bidding", "ddz_play"),
+        "bottomCards": list(ddz.get("bottom", [])) if ddz.get("landlordId") else [],
+        "lastPlay": {
+            "playerId": last["playerId"],
+            "playerName": last["playerName"],
+            "cards": list(last["cards"]),
+            "comboLabel": last["combo"]["label"],
+        } if last else None,
+    }
+

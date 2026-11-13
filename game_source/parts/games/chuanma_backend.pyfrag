@@ -1,0 +1,480 @@
+CM_SUITS = ("W", "T", "B")
+CM_SUIT_LABEL = {"W": "万", "T": "筒", "B": "条"}
+
+
+def fresh_chuanma():
+    return {
+        "wall": [],
+        "dealerId": None,
+        "exchangeDirection": "",
+        "exchangeSelections": {},
+        "dingqueSelections": {},
+        "discardPile": [],
+        "lastDiscard": None,
+        "needsDiscard": False,
+        "responseOptions": {},
+        "responses": {},
+        "responseDeadline": 0.0,
+        "discarderId": None,
+        "message": "",
+        "winRecords": [],
+    }
+
+
+def cm_tile_key(tile):
+    return (CM_SUITS.index(tile["suit"]), int(tile["rank"]))
+
+
+def sort_cm_hand(cards):
+    cards.sort(key=cm_tile_key)
+
+
+def cm_deck():
+    cards = []
+    for suit in CM_SUITS:
+        for rank in range(1, 10):
+            for _ in range(4):
+                cards.append({"id": "m_" + secrets.token_hex(5), "suit": suit, "rank": rank})
+    random.SystemRandom().shuffle(cards)
+    return cards
+
+
+def cm_same(tile, other):
+    return tile["suit"] == other["suit"] and int(tile["rank"]) == int(other["rank"])
+
+
+def cm_counts(cards):
+    counts = Counter()
+    for tile in cards:
+        counts[(tile["suit"], int(tile["rank"]))] += 1
+    return counts
+
+
+def cm_standard_win(cards):
+    if len(cards) % 3 != 2:
+        return False
+    counts = cm_counts(cards)
+
+    def consume_sets(local):
+        remaining = [key for key, count in local.items() if count > 0]
+        if not remaining:
+            return True
+        suit, rank = min(remaining, key=lambda item: (CM_SUITS.index(item[0]), item[1]))
+        if local[(suit, rank)] >= 3:
+            local[(suit, rank)] -= 3
+            if consume_sets(local):
+                return True
+            local[(suit, rank)] += 3
+        if rank <= 7 and local[(suit, rank + 1)] > 0 and local[(suit, rank + 2)] > 0:
+            local[(suit, rank)] -= 1
+            local[(suit, rank + 1)] -= 1
+            local[(suit, rank + 2)] -= 1
+            if consume_sets(local):
+                return True
+            local[(suit, rank)] += 1
+            local[(suit, rank + 1)] += 1
+            local[(suit, rank + 2)] += 1
+        return False
+
+    for key, count in list(counts.items()):
+        if count >= 2:
+            counts[key] -= 2
+            if consume_sets(counts):
+                return True
+            counts[key] += 2
+    return False
+
+
+def cm_seven_pairs(cards):
+    if len(cards) != 14:
+        return False
+    counts = cm_counts(cards)
+    return sum(count // 2 for count in counts.values()) == 7
+
+
+def cm_triplet_win(cards):
+    if len(cards) % 3 != 2:
+        return False
+    counts = cm_counts(cards)
+    for key, count in counts.items():
+        if count >= 2:
+            rest = counts.copy()
+            rest[key] -= 2
+            if all(value % 3 == 0 for value in rest.values()):
+                return True
+    return False
+
+
+def cm_can_win(player, extra_tile=None):
+    if player.get("cmWon"):
+        return False
+    cards = list(player.get("cmHand", []))
+    if extra_tile is not None:
+        cards.append(extra_tile)
+    missing = player.get("cmMissing")
+    if missing and any(tile["suit"] == missing for tile in cards):
+        return False
+    meld_count = len(player.get("cmMelds", []))
+    if len(cards) + 3 * meld_count != 14:
+        return False
+    if meld_count == 0 and cm_seven_pairs(cards):
+        return True
+    return cm_standard_win(cards)
+
+
+def cm_win_info(player, extra_tile=None, self_draw=False):
+    cards = list(player.get("cmHand", []))
+    if extra_tile is not None:
+        cards.append(extra_tile)
+    melds = player.get("cmMelds", [])
+    labels = ["平胡"]
+    fan = 0
+    all_suits = {tile["suit"] for tile in cards}
+    for meld in melds:
+        all_suits.add(meld["suit"])
+    if len(all_suits) == 1:
+        fan += 2
+        labels.append("清一色")
+    if not melds and cm_seven_pairs(cards):
+        fan += 2
+        labels.append("七对")
+    elif cm_triplet_win(cards) and all(meld.get("type") in ("peng", "gang") for meld in melds):
+        fan += 1
+        labels.append("对对胡")
+    if self_draw:
+        fan += 1
+        labels.append("自摸")
+    points = 2 ** min(fan, 5)
+    return {"fan": fan, "points": points, "label": " · ".join(labels)}
+
+
+def cm_active_players():
+    return [player for player in STATE["players"] if not player.get("isBot") and not player.get("cmWon")]
+
+
+def cm_next_active_id(current_id):
+    players = [player for player in STATE["players"] if not player.get("isBot")]
+    if not players:
+        return None
+    ids = [player["id"] for player in players]
+    try:
+        start = ids.index(current_id)
+    except ValueError:
+        start = -1
+    for offset in range(1, len(players) + 1):
+        player = players[(start + offset) % len(players)]
+        if not player.get("cmWon"):
+            return player["id"]
+    return None
+
+
+def cm_finish(reason):
+    ranking = sorted(
+        [player for player in STATE["players"] if not player.get("isBot")],
+        key=lambda player: (player.get("cmScore", 0), player.get("cmWon", False)),
+        reverse=True,
+    )
+    summary = "；".join(f"{player['name']} {player.get('cmScore', 0):+d}" for player in ranking)
+    STATE["roundResult"] = f"{reason}。{summary}"
+    STATE["winnerId"] = ranking[0]["id"] if ranking else None
+    STATE["phase"] = "finished"
+    STATE["turnPlayerId"] = None
+    bump()
+
+
+def cm_check_end():
+    humans = [player for player in STATE["players"] if not player.get("isBot")]
+    active = [player for player in humans if not player.get("cmWon")]
+    if len(active) <= 1:
+        cm_finish("血战结束")
+        return True
+    if not STATE["chuanma"]["wall"]:
+        cm_finish("牌墙已摸完")
+        return True
+    return False
+
+
+def cm_draw_for(player_id):
+    if cm_check_end():
+        return
+    player = player_by_id(player_id)
+    if not player or player.get("cmWon"):
+        next_id = cm_next_active_id(player_id)
+        if next_id:
+            cm_draw_for(next_id)
+        return
+    wall = STATE["chuanma"]["wall"]
+    if not wall:
+        cm_finish("牌墙已摸完")
+        return
+    tile = wall.pop()
+    player["cmHand"].append(tile)
+    sort_cm_hand(player["cmHand"])
+    player["cmDrawnId"] = tile["id"]
+    STATE["phase"] = "cm_play"
+    STATE["turnPlayerId"] = player_id
+    STATE["chuanma"]["responseOptions"] = {}
+    STATE["chuanma"]["responses"] = {}
+    STATE["chuanma"]["responseDeadline"] = 0.0
+    STATE["chuanma"]["needsDiscard"] = True
+    STATE["chuanma"]["message"] = f"{player['name']} 已摸牌"
+    bump()
+
+
+def cm_exchange_target_map(players, direction):
+    count = len(players)
+    result = {}
+    for index, player in enumerate(players):
+        if count == 2:
+            target_index = 1 - index
+        elif direction == "逆时针":
+            target_index = (index - 1) % count
+        elif direction == "对家":
+            target_index = (index + 2) % count
+        else:
+            target_index = (index + 1) % count
+        result[player["id"]] = players[target_index]["id"]
+    return result
+
+
+def cm_finish_exchange():
+    players = [player for player in STATE["players"] if not player.get("isBot")]
+    selections = STATE["chuanma"]["exchangeSelections"]
+    target_map = cm_exchange_target_map(players, STATE["chuanma"]["exchangeDirection"])
+    packets = {}
+    for player in players:
+        selected_ids = set(selections[player["id"]])
+        packet = [tile for tile in player["cmHand"] if tile["id"] in selected_ids]
+        player["cmHand"] = [tile for tile in player["cmHand"] if tile["id"] not in selected_ids]
+        packets[target_map[player["id"]]] = packet
+    for player in players:
+        player["cmHand"].extend(packets.get(player["id"], []))
+        sort_cm_hand(player["cmHand"])
+    STATE["phase"] = "cm_dingque"
+    STATE["turnPlayerId"] = None
+    STATE["chuanma"]["message"] = f"换三张完成（{STATE['chuanma']['exchangeDirection']}），请选择定缺"
+    bump()
+
+
+def start_chuanma():
+    players = [player for player in STATE["players"] if not player.get("isBot")]
+    wall = cm_deck()
+    dealer_id = STATE["hostPlayerId"] if player_by_id(STATE["hostPlayerId"]) else players[0]["id"]
+    for player in players:
+        player["cmHand"] = []
+        player["cmMelds"] = []
+        player["cmMissing"] = None
+        player["cmWon"] = False
+        player["cmScore"] = 0
+        player["cmDrawnId"] = None
+        player["cmExchange"] = []
+    for _ in range(13):
+        for player in players:
+            player["cmHand"].append(wall.pop())
+    dealer = player_by_id(dealer_id)
+    dealer["cmHand"].append(wall.pop())
+    for player in players:
+        sort_cm_hand(player["cmHand"])
+    if len(players) == 4:
+        direction = random.SystemRandom().choice(["顺时针", "逆时针", "对家"])
+    elif len(players) == 3:
+        direction = random.SystemRandom().choice(["顺时针", "逆时针"])
+    else:
+        direction = "互换"
+    STATE["chuanma"] = fresh_chuanma()
+    STATE["chuanma"].update({"wall": wall, "dealerId": dealer_id, "exchangeDirection": direction, "message": "请选择三张同花色的牌进行交换"})
+    STATE["phase"] = "cm_exchange"
+    STATE["turnPlayerId"] = None
+    STATE["roundNo"] = 1
+    bump()
+
+
+def cm_begin_play():
+    dealer_id = STATE["chuanma"]["dealerId"]
+    STATE["phase"] = "cm_play"
+    STATE["turnPlayerId"] = dealer_id
+    STATE["chuanma"]["needsDiscard"] = True
+    STATE["chuanma"]["message"] = f"{player_by_id(dealer_id)['name']} 先出牌"
+    bump()
+
+
+def cm_remove_last_discard():
+    pile = STATE["chuanma"]["discardPile"]
+    if pile and STATE["chuanma"]["lastDiscard"] and pile[-1].get("tile", {}).get("id") == STATE["chuanma"]["lastDiscard"]["tile"]["id"]:
+        pile.pop()
+
+
+def cm_offer_responses(discarder, tile):
+    options = {}
+    for player in cm_active_players():
+        if player["id"] == discarder["id"]:
+            continue
+        actions = []
+        if cm_can_win(player, tile):
+            actions.append("hu")
+        if tile["suit"] != player.get("cmMissing"):
+            matching = sum(1 for own in player["cmHand"] if cm_same(own, tile))
+            if matching >= 3:
+                actions.append("gang")
+            if matching >= 2:
+                actions.append("peng")
+        if actions:
+            actions.append("pass")
+            options[player["id"]] = actions
+    STATE["chuanma"]["responseOptions"] = options
+    STATE["chuanma"]["responses"] = {}
+    if options:
+        STATE["phase"] = "cm_response"
+        STATE["turnPlayerId"] = None
+        STATE["chuanma"]["responseDeadline"] = time.time() + 22
+        STATE["chuanma"]["message"] = "等待其他玩家响应"
+        bump()
+    else:
+        next_id = cm_next_active_id(discarder["id"])
+        if next_id:
+            cm_draw_for(next_id)
+
+
+def cm_score_gang(player, kind, source_id=None):
+    opponents = [item for item in cm_active_players() if item["id"] != player["id"]]
+    if kind == "exposed" and source_id:
+        source = player_by_id(source_id)
+        if source and not source.get("cmWon"):
+            source["cmScore"] -= 2
+            player["cmScore"] += 2
+    else:
+        value = 2 if kind == "concealed" else 1
+        for opponent in opponents:
+            opponent["cmScore"] -= value
+            player["cmScore"] += value
+
+
+def cm_resolve_responses():
+    cm = STATE["chuanma"]
+    tile = cm["lastDiscard"]["tile"]
+    discarder_id = cm["discarderId"]
+    responses = cm["responses"]
+    option_ids = list(cm["responseOptions"])
+    hu_ids = [pid for pid in option_ids if responses.get(pid) == "hu"]
+    if hu_ids:
+        discarder = player_by_id(discarder_id)
+        records = []
+        for pid in hu_ids:
+            winner = player_by_id(pid)
+            if not winner or winner.get("cmWon"):
+                continue
+            info = cm_win_info(winner, tile, self_draw=False)
+            winner["cmWon"] = True
+            winner["cmScore"] += info["points"]
+            if discarder:
+                discarder["cmScore"] -= info["points"]
+            records.append(f"{winner['name']} 荣和（{info['label']}，{info['points']}分）")
+            cm["winRecords"].append({"winnerId": pid, "fromId": discarder_id, "label": info["label"], "points": info["points"]})
+        cm["message"] = "；".join(records)
+        cm["responseOptions"] = {}
+        cm["responses"] = {}
+        cm["responseDeadline"] = 0
+        if cm_check_end():
+            return
+        next_id = cm_next_active_id(discarder_id)
+        if next_id:
+            cm_draw_for(next_id)
+        return
+
+    def seat_distance(pid):
+        players = [p for p in STATE["players"] if not p.get("isBot")]
+        ids = [p["id"] for p in players]
+        return (ids.index(pid) - ids.index(discarder_id)) % len(ids)
+
+    gang_ids = [pid for pid in option_ids if responses.get(pid) == "gang"]
+    peng_ids = [pid for pid in option_ids if responses.get(pid) == "peng"]
+    claimant_id = min(gang_ids, key=seat_distance) if gang_ids else (min(peng_ids, key=seat_distance) if peng_ids else None)
+    action = "gang" if gang_ids else ("peng" if peng_ids else None)
+    cm["responseOptions"] = {}
+    cm["responses"] = {}
+    cm["responseDeadline"] = 0
+    if claimant_id and action:
+        claimant = player_by_id(claimant_id)
+        need = 3 if action == "gang" else 2
+        removed = []
+        rest = []
+        for own in claimant["cmHand"]:
+            if len(removed) < need and cm_same(own, tile):
+                removed.append(own)
+            else:
+                rest.append(own)
+        claimant["cmHand"] = rest
+        claimant["cmMelds"].append({"type": action, "suit": tile["suit"], "rank": tile["rank"], "kind": "exposed", "fromId": discarder_id})
+        cm_remove_last_discard()
+        STATE["turnPlayerId"] = claimant_id
+        claimant["cmDrawnId"] = None
+        if action == "gang":
+            cm_score_gang(claimant, "exposed", discarder_id)
+            cm["message"] = f"{claimant['name']} 明杠"
+            cm_draw_for(claimant_id)
+        else:
+            cm["needsDiscard"] = True
+            STATE["phase"] = "cm_play"
+            cm["message"] = f"{claimant['name']} 碰牌后请出牌"
+            bump()
+        return
+    next_id = cm_next_active_id(discarder_id)
+    if next_id:
+        cm_draw_for(next_id)
+
+
+def cm_self_gang_options(player):
+    if STATE["mode"] != "chuanma" or STATE["phase"] != "cm_play" or STATE["turnPlayerId"] != player["id"]:
+        return []
+    counts = cm_counts(player.get("cmHand", []))
+    options = []
+    for (suit, rank), count in counts.items():
+        if suit == player.get("cmMissing"):
+            continue
+        if count == 4:
+            options.append({"suit": suit, "rank": rank, "kind": "concealed"})
+        if count >= 1 and any(meld["type"] == "peng" and meld["suit"] == suit and int(meld["rank"]) == rank for meld in player.get("cmMelds", [])):
+            options.append({"suit": suit, "rank": rank, "kind": "added"})
+    return options
+
+
+def chuanma_tick():
+    if STATE.get("mode") != "chuanma":
+        return
+    if STATE.get("phase") == "cm_response" and STATE["chuanma"].get("responseDeadline") and time.time() >= STATE["chuanma"]["responseDeadline"]:
+        for pid in STATE["chuanma"]["responseOptions"]:
+            STATE["chuanma"]["responses"].setdefault(pid, "pass")
+        cm_resolve_responses()
+
+
+def chuanma_public(player_id):
+    cm = STATE.get("chuanma", fresh_chuanma())
+    player = player_by_id(player_id)
+    response_options = list(cm.get("responseOptions", {}).get(player_id, []))
+    can_discard = bool(
+        player and STATE["phase"] == "cm_play" and STATE["turnPlayerId"] == player_id
+        and cm.get("needsDiscard") and not player.get("cmWon")
+    )
+    can_hu = bool(can_discard and cm_can_win(player))
+    return {
+        "wallCount": len(cm.get("wall", [])),
+        "dealerId": cm.get("dealerId"),
+        "exchangeDirection": cm.get("exchangeDirection", ""),
+        "exchangeSubmitted": bool(player_id in cm.get("exchangeSelections", {})),
+        "dingqueSubmitted": bool(player and player.get("cmMissing")),
+        "message": cm.get("message", ""),
+        "needsDiscard": bool(cm.get("needsDiscard")),
+        "myHand": list(player.get("cmHand", [])) if player else [],
+        "myMissing": player.get("cmMissing") if player else None,
+        "myWon": bool(player.get("cmWon")) if player else False,
+        "myDrawnId": player.get("cmDrawnId") if player else None,
+        "responseOptions": response_options,
+        "responded": player_id in cm.get("responses", {}),
+        "canDiscard": can_discard,
+        "canHu": can_hu,
+        "gangOptions": cm_self_gang_options(player) if player else [],
+        "lastDiscard": cm.get("lastDiscard"),
+        "discardPile": list(cm.get("discardPile", [])[-72:]),
+        "winRecords": list(cm.get("winRecords", [])),
+    }
+

@@ -1,0 +1,331 @@
+def public_state(player_id, draw_since=-1, draw_revision=-1):
+    update_timers()
+    me = player_by_id(player_id)
+    winner = player_by_id(STATE["winnerId"]) if STATE["winnerId"] else None
+    can_advance = STATE["phase"] in ("cards_reveal", "dice_reveal", "draw_reveal") and (
+        player_id == STATE["hostPlayerId"] or player_id == STATE["roundLoserId"] or player_id == STATE["draw"]["drawerId"]
+    )
+    max_players = 3 if STATE["mode"] == "ddz" else 4
+    min_players = 1 if STATE["mode"] == "ddz" else 2
+    last_play = STATE["card"]["lastPlay"]
+    return {
+        "version": STATE["version"],
+        "phase": STATE["phase"],
+        "mode": STATE["mode"],
+        "hostPlayerId": STATE["hostPlayerId"],
+        "isHost": player_id == STATE["hostPlayerId"],
+        "settings": dict(STATE["settings"]),
+        "players": [
+            {
+                "id": p["id"], "name": p["name"], "ready": p["ready"], "connected": is_connected(p),
+                "life": p["life"], "diceCount": p["diceCount"], "score": p["score"], "out": is_out(p),
+                "handCount": (len(p.get("ddzHand", [])) if STATE["mode"] == "ddz" else len(p.get("cmHand", []))),
+                "role": ("地主" if STATE["ddz"].get("landlordId") == p["id"] else ("农民" if STATE["ddz"].get("landlordId") else "待定")),
+                "ddzScore": p.get("ddzScore", 0),
+                "isBot": bool(p.get("isBot")),
+                "cmMissing": p.get("cmMissing"),
+                "cmWon": bool(p.get("cmWon")),
+                "cmScore": int(p.get("cmScore", 0)),
+                "cmMelds": list(p.get("cmMelds", [])),
+            } for p in STATE["players"]
+        ],
+        "canStart": (
+            player_id == STATE["hostPlayerId"] and STATE["phase"] == "lobby"
+            and min_players <= len([p for p in STATE["players"] if not p.get("isBot")]) <= max_players
+            and all(p["ready"] and is_connected(p) for p in STATE["players"] if not p.get("isBot"))
+        ),
+        "turnPlayerId": STATE["turnPlayerId"],
+        "roundNo": STATE["roundNo"],
+        "roundResult": STATE["roundResult"],
+        "canAdvanceRound": can_advance,
+        "winnerName": (STATE["roundResult"] if STATE["mode"] in ("draw", "ddz", "chuanma") and STATE["phase"] == "finished" else (winner["name"] if winner else "")),
+        "myCards": list(me["hand"]) if me and STATE["mode"] == "cards" else [],
+        "myDice": list(me["dice"]) if me and STATE["mode"] == "dice" else [],
+        "myDdzCards": list(me.get("ddzHand", [])) if me and STATE["mode"] == "ddz" else [],
+        "card": {
+            "targetRank": STATE["card"]["targetRank"],
+            "lastPlay": {"playerId": last_play["playerId"], "playerName": last_play["playerName"], "count": len(last_play["cards"])} if last_play else None,
+            "revealedCards": list(STATE["card"].get("revealedCards", [])),
+        },
+        "dice": dice_public(),
+        "draw": draw_public(player_id, draw_since, draw_revision),
+        "ddz": ddz_public(player_id),
+        "chuanma": chuanma_public(player_id),
+    }
+
+class ReliableThreadingHTTPServer(ThreadingHTTPServer):
+    request_queue_size = 32
+    daemon_threads = True
+    allow_reuse_address = True
+    block_on_close = False
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "GameHallLAN/6.2"
+    protocol_version = "HTTP/1.0"
+
+    def log_message(self, fmt, *args):
+        if self.path.startswith("/api/state"):
+            return
+        print(f"[{self.address_string()}] {fmt % args}")
+
+    def reply(self, body, code=200, content_type="application/json; charset=utf-8"):
+        if isinstance(body, (dict, list)):
+            raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        elif isinstance(body, str):
+            raw = body.encode("utf-8")
+        else:
+            raw = body
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(raw)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            pass
+
+    def read_json(self):
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        return json.loads((self.rfile.read(length) if length else b"{}").decode("utf-8"))
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/":
+            self.reply(HTML_PAGE, 200, "text/html; charset=utf-8")
+            return
+        if parsed.path == "/favicon.ico":
+            self.reply(b"", 204, "image/x-icon")
+            return
+        if parsed.path == "/api/state":
+            query = parse_qs(parsed.query)
+            token = query.get("token", [""])[0]
+            try:
+                draw_since = int(query.get("drawSeq", ["-1"])[0])
+                draw_revision = int(query.get("drawRevision", ["-1"])[0])
+            except Exception:
+                draw_since, draw_revision = -1, -1
+            with LOCK:
+                player_id = TOKENS.get(token)
+                caller = player_by_id(player_id) if player_id else None
+                valid = bool(caller)
+                if caller:
+                    touch_player(caller)
+                    prune_lobby_players()
+                response = {"state": public_state(player_id, draw_since, draw_revision)} if valid and player_by_id(player_id) else {"error": "身份失效"}
+            self.reply(response, 200 if valid else 401)
+            return
+        self.reply({"error": "not found"}, 404)
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        try:
+            data = self.read_json()
+        except Exception:
+            self.reply({"error": "请求格式错误"}, 400)
+            return
+        if parsed.path == "/api/join":
+            self.join_player(data)
+            return
+        if parsed.path != "/api/action":
+            self.reply({"error": "not found"}, 404)
+            return
+        token = str(data.get("token", ""))
+        action = str(data.get("type", ""))
+        request_id = str(data.get("requestId", ""))[:96]
+        with LOCK:
+            update_timers()
+            player_id = TOKENS.get(token)
+            player = player_by_id(player_id) if player_id else None
+            if not player:
+                response = {"ok": False, "error": "身份失效，正在尝试恢复"}
+            else:
+                touch_player(player)
+                cached = get_cached_action(player_id, request_id)
+                if cached is None:
+                    payload, rule_code = self.handle_action(player, action, data)
+                    remember_action(player_id, request_id, payload, rule_code)
+                else:
+                    payload, rule_code = cached
+                lightweight = action == "draw_stroke" and rule_code == 200
+                response = {
+                    "ok": rule_code == 200,
+                    "requestId": request_id,
+                    "replayed": cached is not None,
+                }
+                if not lightweight:
+                    try:
+                        action_draw_seq = int(data.get("drawSeq", -1))
+                        action_draw_revision = int(data.get("drawRevision", -1))
+                    except Exception:
+                        action_draw_seq, action_draw_revision = -1, -1
+                    response["state"] = public_state(player_id, action_draw_seq, action_draw_revision)
+                if rule_code == 200 and payload:
+                    response.update(payload)
+                if rule_code != 200:
+                    response["error"] = payload.get("error", "当前不能这样操作")
+        self.reply(response, 200)
+
+    def join_player(self, data):
+        name = str(data.get("name", "玩家")).strip()[:10] or "玩家"
+        old_token = str(data.get("token", ""))
+        requested_id = str(data.get("playerId", ""))
+        seat_key = str(data.get("seatKey", "")).strip()
+        with LOCK:
+            found = player_by_id(TOKENS.get(old_token)) if old_token in TOKENS else None
+            if not found and seat_key:
+                found = next((p for p in STATE["players"] if p.get("seatKey") == seat_key), None)
+            if not found and requested_id:
+                candidate = player_by_id(requested_id)
+                if candidate and candidate["name"] == name:
+                    found = candidate
+            if found:
+                token = secrets.token_urlsafe(18)
+                TOKENS[token] = found["id"]
+                touch_player(found)
+                found["seatKey"] = seat_key or found.get("seatKey", "")
+                prune_lobby_players()
+                save_state()
+                response = {"ok": True, "token": token, "playerId": found["id"], "reconnected": True}
+            elif STATE["phase"] != "lobby":
+                response = {"ok": False, "error": "游戏已经开始，未找到原座位"}
+            else:
+                prune_lobby_players()
+                max_players = 4
+                if len(STATE["players"]) >= max_players:
+                    response = {"ok": False, "error": "座位已满"}
+                else:
+                    player_id = "p_" + secrets.token_hex(4)
+                    token = secrets.token_urlsafe(18)
+                    STATE["players"].append({
+                        "id": player_id, "name": name, "ready": False, "connected": True, "lastSeen": time.time(), "seatKey": seat_key,
+                        "life": STATE["settings"]["cardLives"], "hand": [], "diceCount": STATE["settings"]["diceStart"],
+                        "dice": [], "score": 0, "ddzHand": [], "ddzScore": 0, "ddzHintCursor": 0, "isBot": False,
+                        "cmHand": [], "cmMelds": [], "cmMissing": None, "cmWon": False, "cmScore": 0, "cmDrawnId": None, "cmExchange": [],
+                    })
+                    TOKENS[token] = player_id
+                    if STATE["hostPlayerId"] is None:
+                        STATE["hostPlayerId"] = player_id
+                    bump()
+                    response = {"ok": True, "token": token, "playerId": player_id, "reconnected": False}
+        self.reply(response, 200)
+
+    def handle_action(self, player, action, data):
+        player_id = player["id"]
+
+        if action == "rename":
+            if STATE["phase"] != "lobby":
+                return {"error": "只能在大厅修改昵称"}, 409
+            name = str(data.get("name", "")).strip()[:10]
+            if not name:
+                return {"error": "昵称不能为空"}, 400
+            player["name"] = name
+            bump()
+            return {}, 200
+
+        if action == "leave":
+            if STATE["phase"] != "lobby":
+                return {"error": "游戏进行中会保留座位，请先返回大厅"}, 409
+            remove_player(player_id)
+            bump()
+            return {}, 200
+
+        if action == "kick":
+            if player_id != STATE["hostPlayerId"]:
+                return {"error": "只有房主能移除座位"}, 403
+            if STATE["phase"] != "lobby":
+                return {"error": "只能在大厅移除座位"}, 409
+            target_id = str(data.get("targetId", ""))
+            if not target_id or target_id == player_id:
+                return {"error": "不能移除自己的房主座位"}, 400
+            target = remove_player(target_id)
+            if not target:
+                return {"error": "该座位已经不存在"}, 409
+            bump()
+            return {}, 200
+
+        if action == "toggle_ready":
+            if STATE["phase"] != "lobby":
+                return {"error": "游戏已经开始"}, 409
+            player["ready"] = not player["ready"]; bump(); return {}, 200
+
+        if action == "set_mode":
+            if player_id != STATE["hostPlayerId"]:
+                return {"error": "只有房主能选择玩法"}, 403
+            if STATE["phase"] != "lobby":
+                return {"error": "只能在大厅切换玩法"}, 409
+            mode = str(data.get("mode", ""))
+            if mode not in ("cards", "dice", "draw", "ddz", "chuanma"):
+                return {"error": "未知玩法"}, 400
+            remove_ddz_bots()
+            STATE["mode"] = mode
+            for item in STATE["players"]:
+                item["ready"] = False
+            bump(); return {}, 200
+
+        if action == "settings":
+            if player_id != STATE["hostPlayerId"]:
+                return {"error": "只有房主能修改设置"}, 403
+            if STATE["phase"] != "lobby":
+                return {"error": "只能在大厅修改设置"}, 409
+            try:
+                card_lives = max(2, min(5, int(data.get("cardLives", 3))))
+                dice_start = max(3, min(6, int(data.get("diceStart", 5))))
+                draw_rounds = max(1, min(3, int(data.get("drawRounds", 2))))
+                draw_time = max(30, min(120, int(data.get("drawTime", 75))))
+            except Exception:
+                return {"error": "设置值无效"}, 400
+            difficulty = str(data.get("drawDifficulty", "mixed"))
+            if difficulty not in ("mixed", "easy", "medium", "hard"):
+                difficulty = "mixed"
+            draw_library = str(data.get("drawLibrary", "random"))
+            if draw_library not in LIBRARY_LABEL:
+                draw_library = "random"
+            STATE["settings"].update({
+                "cardLives": card_lives, "diceStart": dice_start, "onesWild": bool(data.get("onesWild", True)),
+                "exactEnabled": bool(data.get("exactEnabled", True)), "drawRounds": draw_rounds,
+                "drawTime": draw_time, "drawDifficulty": difficulty, "drawLibrary": draw_library,
+            })
+            for item in STATE["players"]:
+                item["life"] = card_lives; item["diceCount"] = dice_start
+            bump(); return {}, 200
+
+        if action == "start":
+            if player_id != STATE["hostPlayerId"]:
+                return {"error": "只有房主能开始"}, 403
+            if STATE["phase"] != "lobby":
+                return {"error": "游戏已经开始"}, 409
+            humans = [item for item in STATE["players"] if not item.get("isBot")]
+            min_players = 1 if STATE["mode"] == "ddz" else 2
+            max_players = 3 if STATE["mode"] == "ddz" else 4
+            if not (min_players <= len(humans) <= max_players):
+                return {"error": ("斗地主支持 1～3 名真人，空位自动补机器人" if STATE["mode"] == "ddz" else "川麻支持 2～4 名真人，不补机器人" if STATE["mode"] == "chuanma" else "当前玩法支持 2～4 人")}, 409
+            if not all(is_connected(item) for item in humans):
+                return {"error": "房间里有离线座位，请等待重连或由房主移除"}, 409
+            if not all(item["ready"] for item in humans):
+                return {"error": "还有人没准备"}, 409
+            if STATE["mode"] == "ddz":
+                add_ddz_bots()
+            STATE["roundNo"] = 0; STATE["winnerId"] = None; STATE["roundResult"] = ""
+            for item in STATE["players"]:
+                item["life"] = STATE["settings"]["cardLives"]; item["diceCount"] = STATE["settings"]["diceStart"]
+                item["hand"] = []; item["dice"] = []; item["score"] = 0
+                item["ddzHand"] = []; item["ddzScore"] = 0; item["ddzHintCursor"] = 0
+                item["cmHand"] = []; item["cmMelds"] = []; item["cmMissing"] = None; item["cmWon"] = False; item["cmScore"] = 0; item["cmDrawnId"] = None; item["cmExchange"] = []
+            if STATE["mode"] == "cards":
+                start_cards_round(player_id)
+            elif STATE["mode"] == "dice":
+                start_dice_round(player_id)
+            elif STATE["mode"] == "draw":
+                STATE["draw"] = fresh_draw()
+                STATE["draw"]["totalTurns"] = len([p for p in STATE["players"] if not p.get("isBot")]) * STATE["settings"]["drawRounds"]
+                start_draw_turn()
+            elif STATE["mode"] == "chuanma":
+                start_chuanma()
+            else:
+                STATE["ddz"] = fresh_ddz()
+                deal_ddz()
+            return {}, 200
+

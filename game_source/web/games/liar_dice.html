@@ -1,0 +1,17 @@
+    <div id="diceGame" class="hidden">
+      <div class="stage"><div class="stage-kicker">当前叫法</div><div class="stage-main" id="diceBid">尚未叫骰</div><div class="stage-sub" id="diceTurnText"></div></div>
+      <div class="dice" id="myDice"></div>
+      <div id="diceControls">
+        <div class="notice" id="diceRuleNotice">叫骰表示“至少”有这么多。开你：实际少于叫数才成功；抓准：实际必须刚好相等。</div>
+        <div class="muted" style="margin-top:12px">数量</div>
+        <div class="counter"><button class="secondary" id="qtyMinus">−</button><strong id="qtyValue">1</strong><button class="secondary" id="qtyPlus">＋</button></div>
+        <div class="faces" id="faces"></div>
+        <div class="actions three"><button class="green" id="bidBtn">叫骰</button><button class="red" id="challengeDiceBtn">开你</button><button class="secondary" id="exactBtn">抓准</button></div>
+      </div>
+      <div class="reveal hidden" id="diceReveal">
+        <div class="result" id="diceResult"></div>
+        <div class="dice-reveal-list" id="diceRevealHands"></div>
+        <button class="full blue hidden" id="diceNextBtn" style="margin-top:12px">下一轮</button>
+      </div>
+    </div>
+

@@ -1,0 +1,95 @@
+        if action == "draw_choose":
+            if STATE["mode"] != "draw" or STATE["phase"] != "draw_choose" or STATE["draw"]["drawerId"] != player_id:
+                return {"error": "当前不能选题"}, 409
+            try:
+                index = int(data.get("index", 0))
+            except Exception:
+                index = 0
+            begin_draw_word(index); return {}, 200
+
+        if action == "draw_stroke":
+            if STATE["mode"] != "draw" or STATE["phase"] != "draw_play" or STATE["draw"]["drawerId"] != player_id:
+                return {"error": "当前不能作画"}, 409
+            points = data.get("points", [])
+            if not isinstance(points, list) or not points or len(points) > 120:
+                return {"error": "笔画数据无效"}, 400
+            clean = []
+            last = None
+            for point in points:
+                if isinstance(point, list) and len(point) == 2:
+                    try:
+                        x = max(0.0, min(1.0, float(point[0])))
+                        y = max(0.0, min(1.0, float(point[1])))
+                        current = [round(x, 4), round(y, 4)]
+                        if last is None or abs(current[0] - last[0]) + abs(current[1] - last[1]) >= 0.0025:
+                            clean.append(current)
+                            last = current
+                    except Exception:
+                        pass
+            if not clean:
+                return {"error": "笔画数据无效"}, 400
+            color = str(data.get("color", "#111111"))
+            if color not in ("#111111", "#e05555", "#3478d4", "#35a36f", "#f0b72f"):
+                color = "#111111"
+            width = max(2, min(16, int(data.get("width", 7))))
+            STATE["draw"]["strokeSeq"] += 1
+            stroke = {
+                "seq": STATE["draw"]["strokeSeq"],
+                "color": color,
+                "width": width,
+                "erase": bool(data.get("erase", False)),
+                "points": clean,
+            }
+            STATE["draw"]["strokes"].append(stroke)
+            if len(STATE["draw"]["strokes"]) > 260:
+                STATE["draw"]["strokes"] = STATE["draw"]["strokes"][-260:]
+                STATE["draw"]["canvasRevision"] += 1
+            bump(False)
+            return {"strokeSeq": STATE["draw"]["strokeSeq"], "canvasRevision": STATE["draw"]["canvasRevision"]}, 200
+
+        if action == "draw_undo":
+            if STATE["mode"] != "draw" or STATE["phase"] != "draw_play" or STATE["draw"]["drawerId"] != player_id:
+                return {"error": "当前不能撤销"}, 409
+            if STATE["draw"]["strokes"]:
+                STATE["draw"]["strokes"].pop()
+                STATE["draw"]["canvasRevision"] += 1
+                bump(False)
+            return {}, 200
+
+        if action == "draw_clear":
+            if STATE["mode"] != "draw" or STATE["phase"] != "draw_play" or STATE["draw"]["drawerId"] != player_id:
+                return {"error": "当前不能清空"}, 409
+            STATE["draw"]["strokes"] = []
+            STATE["draw"]["strokeSeq"] = 0
+            STATE["draw"]["canvasRevision"] += 1
+            bump(False)
+            return {}, 200
+
+        if action == "draw_guess":
+            if STATE["mode"] != "draw" or STATE["phase"] != "draw_play":
+                return {"error": "当前不能猜题"}, 409
+            if STATE["draw"]["drawerId"] == player_id:
+                return {"error": "画家不能猜自己的题"}, 409
+            if player_id in STATE["draw"]["correctIds"]:
+                return {"error": "你已经猜对了"}, 409
+            guess = str(data.get("guess", "")).strip()[:20]
+            if not guess:
+                return {"error": "请输入答案"}, 400
+            targets = [STATE["draw"]["word"]] + list(STATE["draw"]["aliases"])
+            correct = normalize_guess(guess) in {normalize_guess(item) for item in targets}
+            STATE["draw"]["guesses"].append({"name": player["name"], "text": guess, "correct": correct})
+            if len(STATE["draw"]["guesses"]) > 40:
+                STATE["draw"]["guesses"] = STATE["draw"]["guesses"][-40:]
+            if correct:
+                STATE["draw"]["correctIds"].append(player_id)
+                remaining = max(0, int(STATE["draw"]["deadline"] - time.time()))
+                player["score"] += 100 + min(80, remaining)
+                drawer = player_by_id(STATE["draw"]["drawerId"])
+                if drawer:
+                    drawer["score"] += 50
+                humans = [item for item in STATE["players"] if not item.get("isBot")]
+                if len(STATE["draw"]["correctIds"]) >= len(humans) - 1:
+                    end_draw_turn("all")
+                    return {}, 200
+            bump(); return {}, 200
+

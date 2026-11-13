@@ -1,0 +1,28 @@
+  </section>
+
+  <section class="card hidden" id="winnerCard"><div class="stage"><div class="stage-kicker">本局冠军</div><div class="stage-main" id="winnerName"></div></div><button class="full hidden" id="backLobbyBtn">回到大厅</button></section>
+</div>
+
+<div class="bottom hidden" id="bottomBar"><div class="bottom-inner"><button class="secondary" id="refreshBtn">刷新</button><button class="red hidden" id="endGameBtn">结束游戏</button><button class="secondary" id="leaveBtn">离开</button></div></div>
+
+<div class="modal hidden" id="helpModal"><div class="sheet"><div class="sheet-head"><h2>怎么玩</h2><button class="icon-btn" data-close="helpModal">×</button></div><div class="rule">
+<b>骗子牌：</b>暗出 1～3 张，下一家继续或质疑。目标牌和 Joker 算真话。<br><br>
+<b>大话骰：</b>叫法表示全场“至少”有相应数量。开你只在实际数量少于叫数时成功；相等或更多都算上一家叫法成立。抓准则要求实际数量刚好相等。开启1点万能时，叫2～6点会把1点计入；叫1点只统计1点。<br><br>
+<b>你画我猜：</b>画家从 3 个中文题目中选一个；不能写字、数字或拼音。猜中越早得分越高，画家也会得分。每个人轮流作画。<br><br>
+<b>斗地主：</b>1～3 名真人，系统自动补足 3 家。每人 17 张，3 张底牌归地主；按 1～3 分轮流叫地主。地主先出，支持常见完整牌型。<br><br>
+<b>四川麻将：</b>2～4 人，使用万、筒、条共 108 张牌。先换三张同花色牌，再定缺；有缺门牌时必须优先打出。支持碰、明杠、暗杠、补杠、自摸与点炮，采用血战到底和简化番分。
+</div></div></div>
+
+<div class="modal hidden" id="settingsModal"><div class="sheet"><div class="sheet-head"><h2>房主设置</h2><button class="icon-btn" data-close="settingsModal">×</button></div><div class="setting-grid">
+<label><div class="muted">骗子牌酒量</div><select id="cardLives"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+<label><div class="muted">大话骰初始骰子</div><select id="diceStart"><option>3</option><option>4</option><option selected>5</option><option>6</option></select></label>
+<label class="toggle"><input type="checkbox" id="onesWild" checked><span>1 点万能</span></label>
+<label class="toggle"><input type="checkbox" id="exactEnabled" checked><span>允许抓准</span></label>
+<label><div class="muted">每人作画次数</div><select id="drawRounds"><option>1</option><option selected>2</option><option>3</option></select></label>
+<label><div class="muted">每题时间</div><select id="drawTime"><option value="45">45 秒</option><option value="60">60 秒</option><option value="75" selected>75 秒</option><option value="90">90 秒</option></select></label>
+<label><div class="muted">你画我猜词库</div><select id="drawLibrary"><option value="random" selected>随机词库</option><option value="mixed">综合混合</option><option value="items">生活用品</option><option value="animals">动物植物</option><option value="food">食物饮品</option><option value="actions">动作职业</option><option value="places">地点交通</option><option value="campus">校园生活</option><option value="fun">趣味词条</option></select></label>
+<label><div class="muted">词条难度</div><select id="drawDifficulty"><option value="mixed" selected>混合</option><option value="easy">简单</option><option value="medium">普通</option><option value="hard">困难</option></select></label>
+</div></div></div>
+<div class="toast" id="toast"></div>
+
+<script>

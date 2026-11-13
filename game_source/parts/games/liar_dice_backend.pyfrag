@@ -1,0 +1,78 @@
+def dice_count_detail(face):
+    face = int(face)
+    natural = 0
+    wild = 0
+    revealed = []
+    for player in alive_players():
+        dice = list(player.get("dice", []))
+        natural += sum(1 for value in dice if value == face)
+        if STATE["settings"]["onesWild"] and face != 1:
+            wild += sum(1 for value in dice if value == 1)
+        revealed.append({"playerId": player["id"], "playerName": player["name"], "dice": dice})
+    return {
+        "face": face,
+        "natural": natural,
+        "wild": wild,
+        "total": natural + wild,
+        "onesWild": bool(STATE["settings"]["onesWild"]),
+        "revealed": revealed,
+    }
+
+
+def dice_total(face):
+    return dice_count_detail(face)["total"]
+
+
+def dice_public():
+    bid = STATE["dice"].get("currentBid")
+    reveal = STATE["phase"] in ("dice_reveal", "finished") and STATE.get("mode") == "dice"
+    detail = STATE["dice"].get("lastCount") if reveal else None
+    return {
+        "currentBid": dict(bid) if bid else None,
+        "countDetail": dict(detail) if detail else None,
+        "revealed": list(detail.get("revealed", [])) if detail else [],
+        "ruleText": "叫骰表示至少有这么多；开你只在实际数量少于叫数时成功；抓准要求刚好相等。",
+    }
+
+
+def start_dice_round(starter_id=None):
+    alive = alive_players()
+    if len(alive) <= 1:
+        finish_game()
+        return
+    rng = random.SystemRandom()
+    for player in STATE["players"]:
+        player["dice"] = sorted(rng.randint(1, 6) for _ in range(player["diceCount"])) if player["diceCount"] > 0 else []
+    alive_ids = [p["id"] for p in alive]
+    if starter_id not in alive_ids:
+        starter_id = alive_ids[0]
+    STATE["roundNo"] += 1
+    STATE["phase"] = "dice_bidding"
+    STATE["turnPlayerId"] = starter_id
+    STATE["roundLoserId"] = None
+    STATE["roundResult"] = ""
+    STATE["dice"] = {"currentBid": None, "lastCount": None}
+    bump()
+
+
+def finish_dice_round(loser_id, result, gain_id=None):
+    loser = player_by_id(loser_id)
+    if loser and loser["diceCount"] > 0:
+        loser["diceCount"] -= 1
+        if loser["diceCount"] == 0:
+            result += f"；{loser['name']} 已出局"
+    if gain_id:
+        gainer = player_by_id(gain_id)
+        if gainer and gainer["diceCount"] > 0:
+            old = gainer["diceCount"]
+            gainer["diceCount"] = min(STATE["settings"]["diceStart"], gainer["diceCount"] + 1)
+            if gainer["diceCount"] > old:
+                result += f"；{gainer['name']} 恢复 1 颗骰子"
+    STATE["phase"] = "dice_reveal"
+    STATE["turnPlayerId"] = None
+    STATE["roundLoserId"] = loser_id
+    STATE["roundResult"] = result
+    if len(alive_players()) <= 1:
+        finish_game()
+    else:
+        bump()

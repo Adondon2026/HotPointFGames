@@ -1,0 +1,135 @@
+        if action == "cm_exchange":
+            if STATE["mode"] != "chuanma" or STATE["phase"] != "cm_exchange":
+                return {"error": "当前不能换三张"}, 409
+            tile_ids = data.get("tileIds", [])
+            if not isinstance(tile_ids, list) or len(tile_ids) != 3 or len(set(tile_ids)) != 3:
+                return {"error": "请选择三张牌"}, 400
+            selected_set = set(tile_ids)
+            selected = [tile for tile in player.get("cmHand", []) if tile["id"] in selected_set]
+            if len(selected) != 3 or len({tile["suit"] for tile in selected}) != 1:
+                return {"error": "换三张必须选择三张同花色的牌"}, 409
+            STATE["chuanma"]["exchangeSelections"][player_id] = tile_ids
+            player["cmExchange"] = list(tile_ids)
+            humans = [item for item in STATE["players"] if not item.get("isBot")]
+            if len(STATE["chuanma"]["exchangeSelections"]) >= len(humans):
+                cm_finish_exchange()
+            else:
+                STATE["chuanma"]["message"] = f"{len(STATE['chuanma']['exchangeSelections'])}/{len(humans)} 人已选好换三张"
+                bump()
+            return {}, 200
+
+        if action == "cm_dingque":
+            if STATE["mode"] != "chuanma" or STATE["phase"] != "cm_dingque":
+                return {"error": "当前不能定缺"}, 409
+            suit = str(data.get("suit", ""))
+            if suit not in CM_SUITS:
+                return {"error": "请选择万、筒或条"}, 400
+            player["cmMissing"] = suit
+            STATE["chuanma"]["dingqueSelections"][player_id] = suit
+            humans = [item for item in STATE["players"] if not item.get("isBot")]
+            if len(STATE["chuanma"]["dingqueSelections"]) >= len(humans):
+                cm_begin_play()
+            else:
+                STATE["chuanma"]["message"] = f"{len(STATE['chuanma']['dingqueSelections'])}/{len(humans)} 人已完成定缺"
+                bump()
+            return {}, 200
+
+        if action == "cm_discard":
+            if STATE["mode"] != "chuanma" or STATE["phase"] != "cm_play" or STATE["turnPlayerId"] != player_id:
+                return {"error": "还没轮到你出牌"}, 409
+            if not STATE["chuanma"].get("needsDiscard"):
+                return {"error": "当前不需要出牌"}, 409
+            tile_id = str(data.get("tileId", ""))
+            tile = next((item for item in player.get("cmHand", []) if item["id"] == tile_id), None)
+            if not tile:
+                return {"error": "所选牌已经变化"}, 409
+            missing = player.get("cmMissing")
+            if missing and any(item["suit"] == missing for item in player["cmHand"]) and tile["suit"] != missing:
+                return {"error": f"定缺为{CM_SUIT_LABEL[missing]}，请先打完缺门牌"}, 409
+            player["cmHand"] = [item for item in player["cmHand"] if item["id"] != tile_id]
+            player["cmDrawnId"] = None
+            discard = {"playerId": player_id, "playerName": player["name"], "tile": tile}
+            STATE["chuanma"]["discardPile"].append(discard)
+            STATE["chuanma"]["lastDiscard"] = discard
+            STATE["chuanma"]["discarderId"] = player_id
+            STATE["chuanma"]["needsDiscard"] = False
+            STATE["chuanma"]["message"] = f"{player['name']} 打出 {tile['rank']}{CM_SUIT_LABEL[tile['suit']]}"
+            cm_offer_responses(player, tile)
+            return {}, 200
+
+        if action == "cm_respond":
+            if STATE["mode"] != "chuanma" or STATE["phase"] != "cm_response":
+                return {"error": "当前不需要响应"}, 409
+            choice = str(data.get("choice", ""))
+            allowed = STATE["chuanma"].get("responseOptions", {}).get(player_id, [])
+            if choice not in allowed:
+                return {"error": "该操作当前不可用"}, 409
+            STATE["chuanma"]["responses"][player_id] = choice
+            if all(pid in STATE["chuanma"]["responses"] for pid in STATE["chuanma"]["responseOptions"]):
+                cm_resolve_responses()
+            else:
+                bump(False)
+            return {}, 200
+
+        if action == "cm_self_hu":
+            if STATE["mode"] != "chuanma" or STATE["phase"] != "cm_play" or STATE["turnPlayerId"] != player_id:
+                return {"error": "当前不能胡牌"}, 409
+            if not cm_can_win(player):
+                return {"error": "当前手牌不能胡"}, 409
+            info = cm_win_info(player, self_draw=True)
+            opponents = [item for item in cm_active_players() if item["id"] != player_id]
+            for opponent in opponents:
+                opponent["cmScore"] -= info["points"]
+                player["cmScore"] += info["points"]
+            player["cmWon"] = True
+            STATE["chuanma"]["winRecords"].append({"winnerId": player_id, "fromId": None, "label": info["label"], "points": info["points"]})
+            STATE["chuanma"]["message"] = f"{player['name']} 自摸（{info['label']}，每家{info['points']}分）"
+            STATE["chuanma"]["needsDiscard"] = False
+            if cm_check_end():
+                return {}, 200
+            next_id = cm_next_active_id(player_id)
+            if next_id:
+                cm_draw_for(next_id)
+            return {}, 200
+
+        if action == "cm_gang":
+            if STATE["mode"] != "chuanma" or STATE["phase"] != "cm_play" or STATE["turnPlayerId"] != player_id:
+                return {"error": "当前不能杠"}, 409
+            suit = str(data.get("suit", ""))
+            try:
+                rank = int(data.get("rank", 0))
+            except Exception:
+                rank = 0
+            option = next((item for item in cm_self_gang_options(player) if item["suit"] == suit and item["rank"] == rank), None)
+            if not option:
+                return {"error": "所选牌不能杠"}, 409
+            if option["kind"] == "concealed":
+                removed = 0
+                rest = []
+                for tile in player["cmHand"]:
+                    if tile["suit"] == suit and int(tile["rank"]) == rank and removed < 4:
+                        removed += 1
+                    else:
+                        rest.append(tile)
+                player["cmHand"] = rest
+                player["cmMelds"].append({"type": "gang", "suit": suit, "rank": rank, "kind": "concealed", "fromId": None})
+                cm_score_gang(player, "concealed")
+                STATE["chuanma"]["message"] = f"{player['name']} 暗杠"
+            else:
+                removed = False
+                rest = []
+                for tile in player["cmHand"]:
+                    if not removed and tile["suit"] == suit and int(tile["rank"]) == rank:
+                        removed = True
+                    else:
+                        rest.append(tile)
+                player["cmHand"] = rest
+                meld = next(item for item in player["cmMelds"] if item["type"] == "peng" and item["suit"] == suit and int(item["rank"]) == rank)
+                meld["type"] = "gang"; meld["kind"] = "added"
+                cm_score_gang(player, "added")
+                STATE["chuanma"]["message"] = f"{player['name']} 补杠"
+            player["cmDrawnId"] = None
+            STATE["chuanma"]["needsDiscard"] = False
+            cm_draw_for(player_id)
+            return {}, 200
+

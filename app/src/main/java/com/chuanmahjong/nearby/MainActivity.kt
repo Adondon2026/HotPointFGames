@@ -2,6 +2,7 @@ package com.chuanmahjong.nearby
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -12,6 +13,11 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
+import android.net.Uri
+import com.chaquo.python.Python
+import org.json.JSONObject
+import java.io.File
 import android.view.Gravity
 import android.view.View
 import android.widget.AdapterView
@@ -34,6 +40,15 @@ class MainActivity : Activity() {
     private lateinit var enterButton: Button
     private lateinit var copyButton: Button
     private lateinit var shareButton: Button
+    private lateinit var gameSourceText: TextView
+    private lateinit var importButton: Button
+    private lateinit var restoreButton: Button
+    private var importing = false
+
+    companion object {
+        private const val PICK_GAME = 6201
+        private const val MAX_GAME_BYTES = 4 * 1024 * 1024
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var currentUrls: List<String> = emptyList()
@@ -179,7 +194,33 @@ class MainActivity : Activity() {
                 }
             }
         }
-        content.addView(enterButton, matchWrap())
+        content.addView(enterButton, matchWrap(bottom = 18))
+
+        gameSourceText = TextView(this).apply {
+            textSize = 13f
+            setTextColor(Color.DKGRAY)
+            gravity = Gravity.CENTER
+        }
+        content.addView(gameSourceText, matchWrap(bottom = 6))
+
+        importButton = Button(this).apply {
+            text = "导入新版游戏文件"
+            setOnClickListener { chooseGameFile() }
+        }
+        content.addView(importButton, matchWrap(bottom = 6))
+
+        restoreButton = Button(this).apply {
+            text = "恢复内置游戏"
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("恢复内置游戏？")
+                    .setMessage("保留游戏存档，移除导入的版本。完成后需重新打开 APP。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("恢复") { _, _ -> changeGame(null) }
+                    .show()
+            }
+        }
+        content.addView(restoreButton, matchWrap())
 
         setContentView(ScrollView(this).apply {
             isFillViewport = true
@@ -193,7 +234,7 @@ class MainActivity : Activity() {
             state.running -> {
                 statusText.text = "● 服务器运行中"
                 statusText.setTextColor(Color.rgb(22, 110, 55))
-                hintText.text = "可以锁屏或切到其他应用；请保留“游戏服务器”通知。"
+                hintText.text = state.error.ifBlank { "可以锁屏或切到其他应用；请保留“游戏服务器”通知。" }
                 startStopButton.text = "停止服务器"
                 startStopButton.isEnabled = true
             }
@@ -221,7 +262,102 @@ class MainActivity : Activity() {
         }
 
         enterButton.isEnabled = state.running
+        val stopped = !state.running && !state.desired && !importing
+        val imported = File(filesDir, "gamehall_import.py").isFile
+        gameSourceText.text = if (imported) "游戏版本：本地导入版" else "游戏版本：APP 内置版"
+        importButton.isEnabled = stopped
+        restoreButton.visibility = if (imported) View.VISIBLE else View.GONE
+        restoreButton.isEnabled = stopped
+        if (importing) startStopButton.isEnabled = false
         updateAddresses(state)
+    }
+
+    private fun chooseGameFile() {
+        val state = ServerPrefs.read(this)
+        if (state.running || state.desired || importing) return
+        AlertDialog.Builder(this)
+            .setTitle("导入新版游戏")
+            .setMessage("请选择自己从 HotPointFGames 构建的可信 .py 或 .txt 文件。导入的 Python 文件会在本机执行代码。完成后重新打开 APP 即可使用。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("选择文件") { _, _ ->
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                }
+                startActivityForResult(intent, PICK_GAME)
+            }
+            .show()
+    }
+
+    @Deprecated("Uses Android document picker for API 24 compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_GAME && resultCode == RESULT_OK) {
+            data?.data?.let { changeGame(it) }
+        }
+    }
+
+    private fun changeGame(uri: Uri?) {
+        val state = ServerPrefs.read(this)
+        if (state.running || state.desired || importing) return
+        importing = true
+        refreshUi()
+        val directory = filesDir
+        Thread {
+            var error: String? = null
+            val pending = File(directory, "gamehall_import.pending")
+            try {
+                val bridge = Python.getInstance().getModule("android_bridge")
+                val result = if (uri != null) {
+                    contentResolver.openInputStream(uri).use { input ->
+                        requireNotNull(input) { "无法读取文件" }
+                        pending.outputStream().use { output ->
+                            val buffer = ByteArray(8192)
+                            var total = 0
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                require(total <= MAX_GAME_BYTES) { "游戏文件不能超过 4 MB" }
+                                output.write(buffer, 0, count)
+                            }
+                        }
+                    }
+                    bridge.callAttr("install_game", directory.absolutePath)
+                } else {
+                    bridge.callAttr("restore_builtin", directory.absolutePath)
+                }
+                val response = JSONObject(result.toJava(String::class.java))
+                if (!response.optBoolean("ok")) error = response.optString("error", "操作失败")
+            } catch (e: Throwable) {
+                error = e.message ?: "操作失败"
+            } finally {
+                pending.delete()
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (error != null) {
+                    importing = false
+                    refreshUi()
+                    AlertDialog.Builder(this)
+                        .setTitle("未更换游戏文件")
+                        .setMessage(error)
+                        .setPositiveButton("知道了", null)
+                        .show()
+                } else {
+                    // A new process prevents old Python module state / daemon threads being reused.
+                    AlertDialog.Builder(this)
+                        .setTitle(if (uri == null) "已恢复内置版" else "新版已导入")
+                        .setMessage("APP 将关闭。重新点击桌面图标，再启动游戏厅，即可使用新版。")
+                        .setCancelable(false)
+                        .setPositiveButton("关闭 APP") { _, _ ->
+                            finishAffinity()
+                            Process.killProcess(Process.myPid())
+                        }
+                        .show()
+                }
+            }
+        }.start()
     }
 
     private fun updateAddresses(state: ServerPrefs.Snapshot) {

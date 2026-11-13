@@ -38,11 +38,11 @@ object ServerPrefs {
             .apply()
     }
 
-    fun setRunning(context: Context, port: Int) {
+    fun setRunning(context: Context, port: Int, warning: String = "") {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_RUNNING, true)
             .putInt(KEY_PORT, port)
-            .putString(KEY_ERROR, "")
+            .putString(KEY_ERROR, warning)
             .apply()
     }
 

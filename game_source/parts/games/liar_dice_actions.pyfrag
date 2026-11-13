@@ -1,0 +1,76 @@
+        if action == "dice_bid":
+            if STATE["phase"] != "dice_bidding" or STATE["mode"] != "dice":
+                return {"error": "当前不能叫骰"}, 409
+            if STATE["turnPlayerId"] != player_id:
+                return {"error": "还没轮到你"}, 409
+            try:
+                quantity, face = int(data.get("quantity")), int(data.get("face"))
+            except Exception:
+                return {"error": "叫法无效"}, 400
+            total_dice = sum(p["diceCount"] for p in alive_players())
+            if quantity < 1 or quantity > total_dice or face not in range(1, 7):
+                return {"error": f"叫骰数量应在 1～{total_dice} 之间"}, 400
+            old = STATE["dice"]["currentBid"]
+            if old and not (quantity > old["quantity"] or (quantity == old["quantity"] and face > old["face"])):
+                return {"error": "必须增加数量，或在数量相同时提高点数"}, 409
+            STATE["dice"]["currentBid"] = {
+                "quantity": quantity, "face": face, "playerId": player_id, "playerName": player["name"]
+            }
+            STATE["turnPlayerId"] = next_alive_id(player_id)
+            bump()
+            return {}, 200
+
+        if action == "dice_challenge":
+            if STATE["phase"] != "dice_bidding" or STATE["mode"] != "dice":
+                return {"error": "当前不能开骰"}, 409
+            if STATE["turnPlayerId"] != player_id:
+                return {"error": "还没轮到你"}, 409
+            bid = STATE["dice"]["currentBid"]
+            if not bid:
+                return {"error": "还没人叫骰"}, 409
+            detail = dice_count_detail(bid["face"])
+            STATE["dice"]["lastCount"] = detail
+            actual = detail["total"]
+            bidder = player_by_id(bid["playerId"])
+            breakdown = f"本点 {detail['natural']} 个"
+            if detail["wild"]:
+                breakdown += f" + 万能1点 {detail['wild']} 个"
+            claim = f"至少 {bid['quantity']} 个"
+            if actual >= bid["quantity"]:
+                loser_id = player_id
+                result = f"上一家叫的是{claim}，实际 {actual} 个（{breakdown}），叫法成立；{player['name']} 质疑失败"
+            else:
+                loser_id = bidder["id"]
+                result = f"上一家叫的是{claim}，实际仅 {actual} 个（{breakdown}）；{bidder['name']} 吹大了"
+            finish_dice_round(loser_id, result)
+            return {}, 200
+
+        if action == "dice_exact":
+            if not STATE["settings"]["exactEnabled"]:
+                return {"error": "本局未开启抓准"}, 409
+            if STATE["phase"] != "dice_bidding" or STATE["mode"] != "dice" or STATE["turnPlayerId"] != player_id:
+                return {"error": "当前不能抓准"}, 409
+            bid = STATE["dice"]["currentBid"]
+            if not bid:
+                return {"error": "还没人叫骰"}, 409
+            detail = dice_count_detail(bid["face"])
+            STATE["dice"]["lastCount"] = detail
+            actual = detail["total"]
+            breakdown = f"本点 {detail['natural']} 个"
+            if detail["wild"]:
+                breakdown += f" + 万能1点 {detail['wild']} 个"
+            if actual == bid["quantity"]:
+                old = player["diceCount"]
+                player["diceCount"] = min(STATE["settings"]["diceStart"], player["diceCount"] + 1)
+                result = f"正好 {actual} 个（{breakdown}），{player['name']} 抓准成功"
+                if player["diceCount"] > old:
+                    result += "，恢复 1 颗骰子"
+                STATE["phase"] = "dice_reveal"
+                STATE["turnPlayerId"] = None
+                STATE["roundLoserId"] = player_id
+                STATE["roundResult"] = result
+                bump()
+            else:
+                finish_dice_round(player_id, f"叫数是 {bid['quantity']}，实际 {actual} 个（{breakdown}），{player['name']} 抓准失败")
+            return {}, 200
+
