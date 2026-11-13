@@ -385,7 +385,7 @@ def ddz_event(kind, player=None, **extra):
     """Public, ordered actions; never store unrevealed cards here."""
     d=STATE['ddz']; d.setdefault('dealId', secrets.token_hex(8))
     d['eventSeq']=d.get('eventSeq',0)+1
-    event={'seq':d['eventSeq'],'kind':kind,**extra}
+    event={'seq':d['eventSeq'],'kind':kind,'handCounts':{p['id']:len(p.get('ddzHand',[])) for p in STATE['players']},'multiplier':d.get('multiplier',1),**extra}
     if player: event.update(playerId=player['id'],playerName=player['name'])
     d.setdefault('events',[]).append(event)
     # A full normal deal fits comfortably; keep a bounded replay tail.
@@ -441,13 +441,13 @@ def apply_ddz_play(player, selected):
         "playerId": player["id"], "playerName": player["name"],
         "cards": selected, "combo": combo,
     }
-    ddz_event("play", player, cards=selected, comboLabel=combo["label"])
     ddz["trickLeaderId"] = player["id"]
     ddz["passCount"] = 0
     ddz["message"] = f"{player['name']} 出了 {combo['label']}"
     if combo["type"] in ("bomb", "rocket"):
         ddz["multiplier"] *= 2
         ddz["bombCount"] += 1
+    ddz_event("play", player, cards=selected, comboLabel=combo["label"])
     if player["id"] == ddz["landlordId"]:
         ddz["landlordPlayCount"] += 1
     else:

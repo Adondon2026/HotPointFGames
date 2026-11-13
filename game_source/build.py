@@ -26,8 +26,9 @@ def build_html():
         read("web/table_games.js"),
         read("web/90_common.js"),
         read("web/lite.js"),
+        read("web/feedback.js"),
     ])
-    return markup.replace("</style>", read("web/lite.css") + "\n" + read("web/table_games.css") + "\n</style>", 1) + script + read("web/99_document_end.html")
+    return markup.replace("</style>", read("web/lite.css") + "\n" + read("web/table_games.css") + "\n" + read("web/feedback.css") + "\n</style>", 1) + script + read("web/99_document_end.html")
 
 def build_release():
     html = build_html()
