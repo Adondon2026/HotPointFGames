@@ -29,14 +29,14 @@ try:
  assert state(a,x)['settings']['siegeItemCount']==13
  assert not act(a,y,'siege_settings',itemCount=25)['ok']
  for bad in (-1,26,True,3.5,'13'):assert not act(a,x,'siege_settings',itemCount=bad)['ok']
- assert state(a,x)['settings']['siegeAmmo']==0 and state(a,x)['settings']['siegeMode']=='dynamic'
+ assert state(a,x)['settings']['siegeAmmo']==0 and state(a,x)['settings']['siegeMode']=='random'
  assert not act(a,x,'siege_settings',itemCount=21,ammo=7)['ok']
  assert not act(a,x,'siege_settings',itemCount=21,wind='invalid')['ok']
  assert act(a,x,'siege_settings',itemCount=21,ammo=10,mode='classic',wind='off')['ok'];assert state(a,y)['settings']['siegeItemCount']==21;assert state(b,z)['settings']['siegeItemCount']==13
  assert act(a,x,'start')['ok'];assert len(siege(a,x,'state')['items'])==21
  assert not act(a,x,'siege_settings',itemCount=0)['ok']
  assert siege(a,x,'state')['ammo']==10 and siege(a,x,'state')['mode']=='classic' and siege(a,x,'state')['wind']==0
- assert state(b,z)['settings']['siegeAmmo']==0 and state(b,z)['settings']['siegeMode']=='dynamic'
+ assert state(b,z)['settings']['siegeAmmo']==0 and state(b,z)['settings']['siegeMode']=='random'
  assert state(a,x)['phase']=='siege_play';assert state(b,z)['mode']=='dice'
  assert not siege(a,z,'state')['ok'];assert siege(a,x,'state')['seat']==0;assert siege(a,y,'state')['seat']==1
  fire=siege(a,x,'fire',rev=0,last=0,angle=42,power=65);assert fire['ok'] and fire['shots']==[1,0] and fire['event']['hitId'] is not None

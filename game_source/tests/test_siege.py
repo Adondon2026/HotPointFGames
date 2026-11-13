@@ -36,7 +36,7 @@ print('Siege: rooms, turn validation, duplicate protection, collapse, mirrored s
 import random
 for seed in range(5):
     random.seed(seed);items=m._siege_items();assert len(items)==13
-    assert set(i['kind'] for i in items)==set(m._SIEGE_ITEMS)
+    assert set(i['kind'] for i in items)==set(list(m._SIEGE_ITEMS)[:6])
     for i,j in zip(items[:12:2],items[1:12:2]):
         assert i['x']+j['x']==960 and i['y']==j['y'] and i['kind']==j['kind']
     for it in items:
