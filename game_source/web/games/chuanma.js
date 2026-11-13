@@ -3,6 +3,17 @@ function cmTileClass(tile,mini=false){return (mini?"cm-tile cm-mini":"cm-tile")+
 function renderCmTile(tile,mini=false){const el=document.createElement("div");el.className=cmTileClass(tile,mini);el.innerHTML=`<strong>${tile.rank}</strong><span>${CM_SUIT_LABEL[tile.suit]}</span>`;return el}
 function cmSelectionValidExchange(){if(selectedCmTiles.size!==3)return false;const tiles=(state.chuanma.myHand||[]).filter(t=>selectedCmTiles.has(t.id));return tiles.length===3&&new Set(tiles.map(t=>t.suit)).size===1}
 function selectedCmTile(){const id=[...selectedCmTiles][0];return (state?.chuanma?.myHand||[]).find(t=>t.id===id)}
+// The hand is the only horizontal scroller. Native touch panning handles swipes;
+// mouse dragging also works in a narrow desktop browser without selecting a tile.
+let cmDrag=null,cmSuppressClickUntil=0;
+function cmUpdateScroll(){const h=$('cmHand');h.classList.toggle('cm-scrollable',h.scrollWidth>h.clientWidth+2)}
+const cmHandScroller=$('cmHand');
+cmHandScroller.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse'||e.button!==0||cmHandScroller.scrollWidth<=cmHandScroller.clientWidth)return;cmDrag={id:e.pointerId,x:e.clientX,left:cmHandScroller.scrollLeft,moved:false};cmSuppressClickUntil=0},true);
+cmHandScroller.addEventListener('pointermove',e=>{if(!cmDrag||cmDrag.id!==e.pointerId)return;const dx=e.clientX-cmDrag.x;if(!cmDrag.moved&&Math.abs(dx)<7)return;if(!cmDrag.moved){cmDrag.moved=true;cmHandScroller.setPointerCapture(e.pointerId)}cmHandScroller.scrollLeft=cmDrag.left-dx;e.preventDefault()});
+function cmEndDrag(e){if(!cmDrag||cmDrag.id!==e.pointerId)return;if(cmDrag.moved)cmSuppressClickUntil=performance.now()+350;cmDrag=null}
+window.addEventListener('pointerup',cmEndDrag);window.addEventListener('pointercancel',cmEndDrag);
+cmHandScroller.addEventListener('click',e=>{if(performance.now()<cmSuppressClickUntil){e.preventDefault();e.stopImmediatePropagation();cmSuppressClickUntil=0}},true);
+window.addEventListener('resize',cmUpdateScroll);
 function renderChuanma(){
   if(state.mode!=="chuanma")return;
   const cm=state.chuanma,phase=state.phase,turn=state.players.find(p=>p.id===state.turnPlayerId),mePlayer=me();
@@ -16,13 +27,17 @@ function renderChuanma(){
   if(phase!=="cm_exchange"&&!(phase==="cm_play"&&state.turnPlayerId===playerId))selectedCmTiles.clear();
   const hand=$("cmHand"),source=cm.myHand||[],drawn=source.find(t=>t.id===cm.myDrawnId),tiles=drawn?source.filter(t=>t.id!==drawn.id).concat(drawn):source;
   const selection=[...selectedCmTiles].join(','),key=JSON.stringify([tiles,cm.myDrawnId,selection,phase,cm.canDiscard,cm.exchangeSubmitted,cm.myMissing,cm.myWon,tgBusy()]);
-  if(hand.dataset.key!==key){hand.dataset.key=key;hand.replaceChildren();hand.classList.remove('cm-two-rows');hand.style.setProperty('--cm-count',String(Math.max(1,tiles.length)));hand.style.setProperty('--cm-draw-gap',drawn?'8px':'0px');
+  if(hand.dataset.key!==key){const previousScroll=hand.scrollLeft, previousDraw=hand.dataset.drawnId||'', drawId=String(cm.myDrawnId||'');const match=String(state.tableMatch||'legacy'),newMatch=hand.dataset.match!==match;const newDraw=!!drawId&&(drawId!==previousDraw||newMatch);hand.dataset.match=match;hand.dataset.drawnId=drawId;hand.dataset.key=key;hand.replaceChildren();hand.classList.remove('cm-two-rows');hand.style.setProperty('--cm-count',String(Math.max(1,tiles.length)));hand.style.setProperty('--cm-draw-gap',drawn?'8px':'0px');
     const row=document.createElement('div');row.className='cm-hand-row';hand.append(row);
     const selected=source.find(t=>selectedCmTiles.has(t.id)),mustMissing=cm.myMissing&&source.some(t=>t.suit===cm.myMissing);
     tiles.forEach(tile=>{const el=document.createElement('button');el.type='button';el.className=cmTileClass(tile);el.innerHTML=`<strong>${tile.rank}</strong><span>${CM_SUIT_LABEL[tile.suit]}</span>`;el.dataset.tileId=tile.id;el.setAttribute('aria-label',`${tile.rank}${CM_SUIT_LABEL[tile.suit]}${tile.id===cm.myDrawnId?'，刚摸到':''}`);el.setAttribute('aria-pressed',String(selectedCmTiles.has(tile.id)));el.classList.toggle('selected',selectedCmTiles.has(tile.id));el.classList.toggle('drawn',tile.id===cm.myDrawnId);el.classList.toggle('missing-suit',!!cm.myMissing&&tile.suit===cm.myMissing);
       const blocked=(phase==='cm_exchange'&&selected&&selected.suit!==tile.suit)||(phase==='cm_play'&&cm.canDiscard&&mustMissing&&tile.suit!==cm.myMissing);el.classList.toggle('ineligible',!!blocked);el.disabled=!!blocked||tgBusy()||!((phase==='cm_exchange'&&!cm.exchangeSubmitted)||(phase==='cm_play'&&cm.canDiscard&&state.turnPlayerId===playerId));
       el.onclick=()=>{if(el.disabled||tgBusy())return;if(state.phase==='cm_exchange'){if(selectedCmTiles.has(tile.id))selectedCmTiles.delete(tile.id);else if(selectedCmTiles.size<3)selectedCmTiles.add(tile.id);else return}else if(state.phase==='cm_play'&&state.chuanma.canDiscard){if(selectedCmTiles.has(tile.id))selectedCmTiles.clear();else{selectedCmTiles.clear();selectedCmTiles.add(tile.id)}}renderSafe()};row.append(el);
     });if(cm.myWon)hand.innerHTML='<div class="muted">你已胡牌 · 观战中</div>';
+    // Preserve the player's browsing position through polling and selection; reveal only a genuinely new draw.
+    hand.scrollLeft=newDraw?hand.scrollWidth:newMatch?0:previousScroll;
+    if(newDraw)requestAnimationFrame(()=>{if(hand.dataset.drawnId===drawId&&hand.dataset.match===match){hand.scrollLeft=hand.scrollWidth;cmUpdateScroll()}});
+    cmUpdateScroll();
   }
   const preview=$('cmPickedPreview'),picked=phase==='cm_play'?selectedCmTile():null;preview.classList.toggle('hidden',!picked);if(picked){preview.replaceChildren(renderCmTile(picked,true));preview.setAttribute('aria-label','已选 '+picked.rank+CM_SUIT_LABEL[picked.suit])}else preview.replaceChildren();
 

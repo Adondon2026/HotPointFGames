@@ -46,3 +46,18 @@
 @media(orientation:landscape) and (max-height:500px){#chuanmaGame.cm-board-game{height:calc(100dvh - 46px)}#chuanmaGame #cmRiver{grid-template-rows:minmax(0,1fr) minmax(0,1.2fr) minmax(0,.85fr)}#chuanmaGame .cm-seat-tiles{grid-auto-rows:23px}}
 @media(orientation:landscape) and (max-height:500px){#chuanmaGame #cmNorth .cm-seat-tiles,#chuanmaGame #cmSouth .cm-seat-tiles{max-height:25px}#chuanmaGame #cmWest .cm-seat-tiles,#chuanmaGame #cmEast .cm-seat-tiles{max-height:48px}}
 @media(max-width:380px) and (orientation:portrait){#chuanmaGame #cmNorth .cm-seat-tiles,#chuanmaGame #cmSouth .cm-seat-tiles{max-height:55px}}
+
+/* Wide, single-row Mahjong hand: the table remains fixed; only the hand pans. */
+#chuanmaGame #cmHand{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x;scrollbar-width:thin;scrollbar-color:#829c80 transparent;padding:23px 3px 6px;max-width:100%;box-sizing:border-box}
+#chuanmaGame #cmHand .cm-hand-row{width:max-content;min-width:100%;justify-content:center;gap:2px;padding:0;box-sizing:border-box}
+#chuanmaGame #cmHand .cm-tile{width:44px;flex:0 0 44px;height:62px;touch-action:pan-x;user-select:none}
+#chuanmaGame #cmHand .cm-tile strong{font-size:24px}
+#chuanmaGame #cmHand .cm-tile span{font-size:13px}
+#chuanmaGame #cmHand .cm-tile.drawn{margin-left:12px!important}
+#chuanmaGame #cmHand.cm-scrollable{cursor:grab}
+#chuanmaGame #cmHand.cm-scrollable:active{cursor:grabbing}
+#chuanmaGame #cmHand::-webkit-scrollbar{display:block;height:4px}
+#chuanmaGame #cmHand::-webkit-scrollbar-thumb{background:#829c80;border-radius:4px}
+@media(max-width:380px) and (orientation:portrait){#chuanmaGame #cmHand .cm-tile{width:42px;flex-basis:42px;height:56px}#chuanmaGame #cmHand .cm-tile strong{font-size:22px}#chuanmaGame #cmHand .cm-tile span{font-size:12px}}
+@media(min-width:660px) and (orientation:landscape){#chuanmaGame #cmHand .cm-tile{width:46px;flex-basis:46px;height:62px}}
+@media(orientation:landscape) and (max-height:500px){#chuanmaGame #cmHand{padding:22px 3px 4px}#chuanmaGame #cmHand .cm-tile{width:44px;flex-basis:44px;height:44px}#chuanmaGame #cmHand .cm-tile strong{font-size:20px}#chuanmaGame #cmHand .cm-tile span{font-size:11px}}
