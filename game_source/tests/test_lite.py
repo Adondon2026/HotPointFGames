@@ -15,22 +15,23 @@ def api(path,data=None):
 def acct(kind,name='',pin='',t=''):
     return api('/api/account',{'type':kind,'name':name,'pin':pin,'accountToken':t})
 def join(a):
-    return api('/api/join',{'accountToken':a['accountToken'],'name':'fake','seatKey':'client-test'})
+    return api(room+'/api/join',{'accountToken':a['accountToken'],'name':'fake','seatKey':'client-test'})
 def act(t,kind,**kw):
-    return api('/api/action',dict(token=t,type=kind,requestId=g.secrets.token_hex(8),**kw))
+    return api(room+'/api/action',dict(token=t,type=kind,requestId=g.secrets.token_hex(8),**kw))
 try:
     a=acct('register','甲','1234');b=acct('register','乙','4321');assert a['ok'] and b['ok']
     assert not acct('login','甲','1235')['ok'];assert acct('login','甲','1234')['ok']
-    aa=join(a);bb=join(b);assert aa['ok'] and bb['ok'];assert join(a)['playerId']==aa['playerId']
-    assert not api('/api/join',{'name':'甲','token':aa['token']})['ok']
-    t=aa['token'];u=bb['token'];assert act(t,'set_mode',mode='dice')['ok'];assert act(t,'toggle_ready')['ok'];assert act(u,'toggle_ready')['ok'];assert act(t,'start')['ok']
-    with g.LOCK:
+    created=api('/api/rooms',{'accountToken':a['accountToken'],'name':'fake'});room='/r/'+created['code'];record=g.ROOMS[created['code']]
+    aa=created;bb=join(b);assert aa['ok'] and bb['ok'];assert join(a)['playerId']==aa['playerId']
+    assert not api(room+'/api/join',{'name':'甲','token':aa['token']})['ok']
+    t=aa['token'];u=bb['token'];assert act(t,'set_mode',mode='dice')['ok'];assert act(t,'start')['ok']
+    with g._room_scope(record):
         g.STATE['players'][0]['diceCount']=2;g.STATE['players'][0]['dice']=[4,4]
         g.STATE['players'][1]['diceCount']=1;g.STATE['players'][1]['dice']=[4]
     assert act(t,'dice_bid',quantity=1,face=4)['ok']
     assert act(u,'dice_challenge')['ok']
-    assert g.STATE['phase']=='finished'
-    with g.LOCK: g.bump();g.bump()
+    assert record['state']['phase']=='finished'
+    with g._room_scope(record): g.bump();g.bump()
     p=acct('profile',t=a['accountToken'])['profile'];q=acct('profile',t=b['accountToken'])['profile']
     assert (p['games'],p['wins'],p['points'])==(1,1,3),p;assert (q['games'],q['wins'],q['points'])==(1,0,0),q
     assert act(t,'reset')['ok'];assert acct('profile',t=a['accountToken'])['profile']['games']==1

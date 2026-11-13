@@ -2,7 +2,7 @@
 BOT_NAMES = ('小北', '阿南', '小西')
 
 def trim_bots_for_mode(mode):
-    limit = 2 if mode == 'army' else 3 if mode == 'ddz' else 4
+    limit = 2 if mode in ('army','siege') else 3 if mode == 'ddz' else 4
     humans = sum(not p.get('isBot') for p in STATE['players'])
     bots = [p for p in STATE['players'] if p.get('isBot')]
     keep = min(max(0, limit - humans), 1 if mode == 'draw' else 3)
@@ -10,7 +10,7 @@ def trim_bots_for_mode(mode):
 
 def add_local_bot():
     mode = STATE['mode']
-    if len(STATE['players']) >= (2 if mode=='army' else 3 if mode=='ddz' else 4): return False
+    if len(STATE['players']) >= (2 if mode in ('army','siege') else 3 if mode=='ddz' else 4): return False
     if mode=='draw' and any(p.get('isBot') for p in STATE['players']): return False
     names = {p['name'] for p in STATE['players']}
     name = next(('机器人'+n for n in BOT_NAMES if '机器人'+n not in names), '机器人')

@@ -36,6 +36,11 @@ jobs:
           python game_source/tests/test_army.py
           python game_source/tests/test_army_feedback.py
           node game_source/tests/test_army_presentation.js
+          python game_source/tests/test_siege.py
+          python game_source/tests/test_multiroom.py
+          python game_source/tests/test_siege_dynamic.py
+          python game_source/tests/test_siege_balance.py
+          node game_source/tests/test_army_presentation.js
       - name: Upload importable game files
         uses: actions/upload-artifact@v4
         with:

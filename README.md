@@ -6,9 +6,13 @@
 
 进入 `game_source/`，先执行 `python build.py`，然后双击 `START_GAME.bat` 或执行 `python run_preview.py`。浏览器自动打开本机游戏厅。手机连接同一 Wi-Fi，点击大厅「邀请朋友」扫码加入。账户和历史积分保存在该运行设备，具体规则见 [本地预览说明](game_source/README.md)。
 
+## v0.10 多房间与拆家大战
+
+公共大厅统一账户与二维码；创建或加入好友房间后，房主选择游戏、设置并直接开局。七款游戏均可多房间并行。拆家大战支持动态战场、三种堡垒、风力、无限或有限炮弹、六种可组合道具、炮弹跟随镜头和基础弹/强化弹平衡。旧单房间进行中对局不会迁移；账号和积分数据库保留。
+
 ## 单人 / 好友体验
 
-一个人也可直接开局；六款游戏均支持本地机器人（你画我猜为机器人出题的简笔画练习）。大厅可手动添加或移除机器人，规则与设置按游戏独立披露。无需热点即可在本机浏览器或 Android APP 内单人玩。
+一个人也可直接开局；七款游戏均支持本地机器人（你画我猜为机器人出题的简笔画练习）。大厅可手动添加或移除机器人，规则与设置按游戏独立披露。无需热点即可在本机浏览器或 Android APP 内单人玩。
 
 ## 斗地主牌桌体验
 
@@ -20,7 +24,7 @@
 
 ## 最快的游戏开发方式
 
-唯一开发源码位于 game_source/。六个游戏分别维护后端、动作和 Web UI。不要手改 app/src/main/python/game_hall_lan_v6_2.py，它是构建产物。
+唯一开发源码位于 game_source/。七个游戏分别维护后端、动作和 Web UI。不要手改 app/src/main/python/game_hall_lan_v6_2.py，它是构建产物。
 
     python game_source/build.py
     python game_source/dist/game_hall_lan_v6_2.py
@@ -41,7 +45,7 @@
 推荐 GitHub Actions：
 
 - 游戏规则、UI 或词库更新：Actions → Game files，构建后在 Artifacts 下载可导入的 .py / .txt，无需编译 Android。
-- Android 宿主更新：Actions → Android build → Run workflow，构建成功后在 Artifacts 下载 APK。宿主源码变更时也会自动触发。
+- 首次安装或 Android 宿主更新：Actions → Android build，构建成功后在 Artifacts 下载 HotPointFGames-Android，解压后安装 app-debug.apk。游戏源码及宿主变更均会自动触发。
 
 两种构建均无需在本机安装 Android SDK。
 
@@ -52,7 +56,7 @@
 
 APK：app/build/outputs/apk/debug/app-debug.apk。Linux/macOS 使用 bash gradlew assembleDebug。
 
-当前支持 Android 7+、ARM64。默认产物为调试 APK；不同电脑或 CI 的调试签名可能不同，不能覆盖安装签名不同的 APK。需要长期原位升级 APK 时，应使用同一私有签名密钥（不要提交密钥到仓库）。游戏文件导入无需重新签名或安装 APK。
+当前支持 Android 7+、ARM64。APP 内若已经导入旧版游戏，安装新版 APK 后旧导入文件仍优先加载；请停止游戏厅并恢复内置游戏，或导入同次构建的新版游戏文件，再重新打开 APP。手机热点房主应保持服务运行，好友连接同一热点后扫码进入公共大厅；iPhone 好友使用浏览器即可。默认产物为调试 APK；不同电脑或 CI 的调试签名可能不同，不能覆盖安装签名不同的 APK。需要长期原位升级 APK 时，应使用同一私有签名密钥（不要提交密钥到仓库）。游戏文件导入无需重新签名或安装 APK。
 
 ## 测试
 

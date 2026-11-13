@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'game_source/**'
       - 'app/**'
       - 'tools/**'
       - 'tests/test_android_bridge.py'
@@ -16,6 +17,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'game_source/**'
       - 'app/**'
       - 'tools/**'
       - 'tests/test_android_bridge.py'
@@ -59,6 +61,11 @@ jobs:
           python game_source/tests/test_feedback.py
           python game_source/tests/test_army.py
           python game_source/tests/test_army_feedback.py
+          python game_source/tests/test_siege.py
+          python game_source/tests/test_multiroom.py
+          python game_source/tests/test_siege_dynamic.py
+          python game_source/tests/test_siege_balance.py
+          node game_source/tests/test_army_presentation.js
           python tools/sync_game_source.py
           python tests/test_android_bridge.py
       - name: Build Android APK

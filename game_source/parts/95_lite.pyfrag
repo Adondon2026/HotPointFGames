@@ -138,7 +138,7 @@ def _lite_join(self,data):
                     if mapped==pid: TOKENS.pop(old_token,None)
                 token=secrets.token_urlsafe(24); TOKENS[token]=pid; touch_player(found); bump()
                 return self.reply({'ok':True,'token':token,'playerId':pid,'reconnected':True})
-            if len(STATE['players'])>= (2 if STATE['mode']=='army' else 3 if STATE['mode']=='ddz' else 4): return self.reply({'ok':False,'error':'座位已满'})
+            if len(STATE['players'])>= (4 if globals().get('_ROOM_ACTIVE') else 2 if STATE['mode'] in ('army','siege') else 3 if STATE['mode']=='ddz' else 4): return self.reply({'ok':False,'error':'座位已满'})
             pid='p_'+secrets.token_hex(4)
             found={'id':pid,'name':user['name'],'accountId':uid,'ready':False,'connected':True,'lastSeen':time.time(),'seatKey':secrets.token_urlsafe(24),'life':STATE['settings']['cardLives'],'hand':[],'diceCount':STATE['settings']['diceStart'],'dice':[],'score':0,'ddzHand':[],'ddzScore':0,'ddzHintCursor':0,'isBot':False,'cmHand':[],'cmMelds':[],'cmMissing':None,'cmWon':False,'cmScore':0,'cmDrawnId':None,'cmExchange':[]}
             STATE['players'].append(found)
@@ -233,7 +233,7 @@ def _lite_get(self):
     if p.path=='/api/qr':
         url=parse_qs(p.query).get('url',[''])[0]
         try:
-            u=urlparse(url); assert u.scheme=='http' and u.port==self.server.server_address[1] and u.path in ('','/') and not u.query and not u.fragment and not u.username and not u.password
+            u=urlparse(url); assert u.scheme=='http' and u.port==self.server.server_address[1] and (u.path in ('','/') or re.fullmatch(r'/r/[A-F0-9]{6}/?',u.path)) and not u.query and not u.fragment and not u.username and not u.password
             assert ipaddress.ip_address(u.hostname).version==4
             return self.reply(_qr_svg(url),200,'image/svg+xml')
         except Exception: return self.reply({'error':'请使用本机局域网 IPv4 地址'},400)

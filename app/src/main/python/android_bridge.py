@@ -180,6 +180,13 @@ def _clear_room_for_explicit_stop():
         game.STATE = clean
         game.TOKENS.clear()
         game.ACTION_CACHE.clear()
+        # New multi-room releases keep independent room records; old imports still work.
+        rooms = getattr(game, 'ROOMS', None)
+        if isinstance(rooms, dict):
+            rooms.clear()
+        siege_rooms = getattr(game, '_SIEGE_ROOMS', None)
+        if isinstance(siege_rooms, dict):
+            siege_rooms.clear()
         game.SAVE_EVENT.clear()
     game.flush_state()
 

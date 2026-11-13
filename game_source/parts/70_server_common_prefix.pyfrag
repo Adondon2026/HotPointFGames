@@ -5,7 +5,7 @@ def public_state(player_id, draw_since=-1, draw_revision=-1):
     can_advance = STATE["phase"] in ("cards_reveal", "dice_reveal", "draw_reveal") and (
         player_id == STATE["hostPlayerId"] or player_id == STATE["roundLoserId"] or player_id == STATE["draw"]["drawerId"]
     )
-    max_players = 2 if STATE["mode"] == "army" else 3 if STATE["mode"] == "ddz" else 4
+    max_players = 2 if STATE["mode"] in ("army","siege") else 3 if STATE["mode"] == "ddz" else 4
     min_players = 1 if STATE["mode"] == "ddz" else 2
     last_play = STATE["card"]["lastPlay"]
     return {
@@ -33,7 +33,7 @@ def public_state(player_id, draw_since=-1, draw_revision=-1):
             player_id == STATE["hostPlayerId"] and STATE["phase"] == "lobby"
             and min_players <= len(STATE["players"]) <= max_players
             and any(not p.get("isBot") for p in STATE["players"])
-            and all(p["ready"] and is_connected(p) for p in STATE["players"] if not p.get("isBot"))
+            and all(is_connected(p) for p in STATE["players"] if not p.get("isBot"))
         ),
         "turnPlayerId": STATE["turnPlayerId"],
         "roundNo": STATE["roundNo"],
@@ -194,8 +194,8 @@ class Handler(BaseHTTPRequestHandler):
                 response = {"ok": False, "error": "游戏已经开始，未找到原座位"}
             else:
                 prune_lobby_players()
-                max_players = 2 if STATE["mode"] == "army" else 3 if STATE["mode"] == "ddz" else 4
-                if len(STATE["players"]) >= max_players:
+                max_players = 2 if STATE["mode"] in ("army","siege") else 3 if STATE["mode"] == "ddz" else 4
+                if len(STATE["players"]) >= (4 if globals().get("_ROOM_ACTIVE") else max_players):
                     response = {"ok": False, "error": "座位已满"}
                 else:
                     player_id = "p_" + secrets.token_hex(4)
@@ -300,13 +300,11 @@ class Handler(BaseHTTPRequestHandler):
                 return {"error": "游戏已经开始"}, 409
             humans = [item for item in STATE["players"] if not item.get("isBot")]
             min_players = 1 if STATE["mode"] == "ddz" else 2
-            max_players = 2 if STATE["mode"] == "army" else 3 if STATE["mode"] == "ddz" else 4
+            max_players = 2 if STATE["mode"] in ("army","siege") else 3 if STATE["mode"] == "ddz" else 4
             if not humans or not (min_players <= len(STATE["players"]) <= max_players):
                 return {"error": ("斗地主支持 1～3 名真人，空位自动补机器人" if STATE["mode"] == "ddz" else "川麻支持 2～4 人，可手动添加机器人" if STATE["mode"] == "chuanma" else "当前玩法支持 2～4 人")}, 409
             if not all(is_connected(item) for item in humans):
                 return {"error": "房间里有离线座位，请等待重连或由房主移除"}, 409
-            if not all(item["ready"] for item in humans):
-                return {"error": "还有人没准备"}, 409
             if STATE["mode"] == "ddz":
                 add_ddz_bots()
             STATE["roundNo"] = 0; STATE["winnerId"] = None; STATE["roundResult"] = ""

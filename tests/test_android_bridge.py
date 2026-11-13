@@ -38,12 +38,18 @@ with socket.socket() as occupied:
     r=json.loads(b.start_server(18000,18002,sys.argv[1]))
     assert r['running'] and r['source']=='imported' and r['port']==18001, r
     with urlopen('http://127.0.0.1:18001/',timeout=3) as p:
-        assert '局域网游戏厅' in p.read().decode()
+        assert 'HotPointFGames' in p.read().decode()
+    from urllib.request import Request
+    req=Request('http://127.0.0.1:18001/api/rooms', data=json.dumps({'name':'Android访客'}).encode(),headers={'Content-Type':'application/json'},method='POST')
+    with urlopen(req,timeout=3) as p:
+        created=json.loads(p.read()); assert created['ok'],created
+    assert b.game.ROOMS and created['code'] in b.game.ROOMS
     assert not json.loads(b.restore_builtin(sys.argv[1]))['ok']
     b.game.STATE['players']=[{'id':'stale','name':'旧房主'}]
     b.game.STATE['hostPlayerId']='stale'; b.game.TOKENS['old']='stale'
     assert not json.loads(b.stop_server(True))['running']
     assert b.game.STATE['players']==[] and b.game.TOKENS=={}
+    assert not b.game.ROOMS
 """)
 
     # Syntax-compatible but runtime-broken file must fall back to bundled game.
