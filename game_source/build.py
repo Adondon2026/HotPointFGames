@@ -3,57 +3,58 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-WEB_PARTS = [
-    "web/00_shell_before_games.html",
-    "web/games/liar_cards.html",
-    "web/games/liar_dice.html",
-    "web/games/doudizhu.html",
-    "web/games/chuanma.html",
-    "web/games/draw_guess.html",
-    "web/90_shell_after_games.html",
-    "web/00_common.js",
-    "web/games/liar_cards.js",
-    "web/games/liar_dice.js",
-    "web/games/doudizhu.js",
-    "web/games/chuanma.js",
-    "web/games/draw_guess.js",
-    "web/90_common.js",
-    "web/99_document_end.html"
-]
-PY_PARTS = [
-    "parts/01_draw_constants.pyfrag",
-    "parts/games/doudizhu_backend.pyfrag",
-    "parts/games/chuanma_backend.pyfrag",
-    "parts/20_core_state_room.pyfrag",
-    "parts/games/liar_cards_backend.pyfrag",
-    "parts/games/liar_dice_backend.pyfrag",
-    "parts/games/draw_guess_backend.pyfrag",
-    "parts/70_server_common_prefix.pyfrag",
-    "parts/games/liar_cards_actions.pyfrag",
-    "parts/games/liar_dice_actions.pyfrag",
-    "parts/games/doudizhu_actions.pyfrag",
-    "parts/games/chuanma_actions.pyfrag",
-    "parts/games/draw_guess_actions.pyfrag",
-    "parts/99_server_common_suffix.pyfrag"
-]
-
 def read(rel):
     return (ROOT / rel).read_text(encoding="utf-8")
 
 def build_html():
-    return "".join(read(rel) for rel in WEB_PARTS)
+    markup = "".join([
+        read("web/00_shell_before_games.html"),
+        read("web/games/liar_cards.html"),
+        read("web/games/liar_dice.html"),
+        read("web/games/doudizhu.html"),
+        read("web/games/chuanma.html"),
+        read("web/games/draw_guess.html"),
+        read("web/90_shell_after_games.html"),
+    ])
+    script = "".join([
+        read("web/00_common.js"),
+        read("web/games/liar_cards.js"),
+        read("web/games/liar_dice.js"),
+        read("web/games/doudizhu.js"),
+        read("web/games/chuanma.js"),
+        read("web/games/draw_guess.js"),
+        read("web/90_common.js"),
+        read("web/lite.js"),
+    ])
+    return markup.replace("</style>", read("web/lite.css") + "\n</style>", 1) + script + read("web/99_document_end.html")
 
 def build_release():
-    release = (read("parts/00_header.pyfrag") +
-               "HTML_PAGE = " + repr(build_html()) + "\n\n" +
-               "".join(read(rel) for rel in PY_PARTS))
+    html = build_html()
+    chunks = [
+        read("parts/00_header.pyfrag"),
+        "HTML_PAGE = " + repr(html) + "\n\n",
+        read("parts/01_draw_constants.pyfrag"),
+        read("parts/games/doudizhu_backend.pyfrag"),
+        read("parts/games/chuanma_backend.pyfrag"),
+        read("parts/20_core_state_room.pyfrag"),
+        read("parts/games/liar_cards_backend.pyfrag"),
+        read("parts/games/liar_dice_backend.pyfrag"),
+        read("parts/games/draw_guess_backend.pyfrag"),
+        read("parts/70_server_common_prefix.pyfrag"),
+        read("parts/games/liar_cards_actions.pyfrag"),
+        read("parts/games/liar_dice_actions.pyfrag"),
+        read("parts/games/doudizhu_actions.pyfrag"),
+        read("parts/games/chuanma_actions.pyfrag"),
+        read("parts/games/draw_guess_actions.pyfrag"),
+        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + '\nif __name__ == "__main__":', 1),
+    ]
+    release = "".join(chunks)
     compile(release, "game_hall_lan_v6_2.py", "exec")
     out = ROOT / "dist" / "game_hall_lan_v6_2.py"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(release, encoding="utf-8")
-    (out.with_suffix(".txt")).write_text(release, encoding="utf-8")
+    (ROOT / "dist" / "game_hall_lan_v6_2.txt").write_text(release, encoding="utf-8")
     print(out)
-    return out
 
 if __name__ == "__main__":
     build_release()

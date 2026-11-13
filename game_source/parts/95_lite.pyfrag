@@ -1,0 +1,240 @@
+# Local accounts, durable match ledger, and LAN invitations (standard library only).
+import hashlib
+import hmac
+import sqlite3
+from contextlib import contextmanager
+import ipaddress
+import html as _html
+
+ACCOUNT_DB = STATE_FILE.parent / 'gamehall_accounts.sqlite3'
+_AUTH_ATTEMPTS = {}
+
+@contextmanager
+def _db():
+    ACCOUNT_DB.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(str(ACCOUNT_DB), timeout=5)
+    db.row_factory = sqlite3.Row
+    db.executescript('''CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE COLLATE NOCASE, salt TEXT NOT NULL, pin_hash TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS results(match_id TEXT NOT NULL,user_id TEXT NOT NULL,game TEXT NOT NULL,won INTEGER NOT NULL,points INTEGER NOT NULL,raw INTEGER NOT NULL,ended INTEGER NOT NULL,PRIMARY KEY(match_id,user_id));''')
+    try:
+        with db:
+            yield db
+    finally:
+        db.close()
+
+def _pin_hash(pin, salt):
+    return hashlib.pbkdf2_hmac('sha256', pin.encode(), bytes.fromhex(salt), 200000).hex()
+
+def _token_hash(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+def _account_user(db, token):
+    return db.execute('SELECT u.id,u.name FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>?', (_token_hash(token), int(time.time()))).fetchone() if token else None
+
+def _profile(db, uid):
+    user = db.execute('SELECT id,name FROM users WHERE id=?',(uid,)).fetchone()
+    if not user: return None
+    totals = db.execute('SELECT COUNT(*) AS games,COALESCE(SUM(won),0) AS wins,COALESCE(SUM(points),0) AS points FROM results WHERE user_id=?',(uid,)).fetchone()
+    stats = [dict(r) for r in db.execute('SELECT game,COUNT(*) AS games,SUM(won) AS wins,SUM(points) AS points FROM results WHERE user_id=? GROUP BY game',(uid,))]
+    recent = [dict(r) for r in db.execute('SELECT game,won,points,raw,ended FROM results WHERE user_id=? ORDER BY ended DESC LIMIT 12',(uid,))]
+    return {**dict(user), **dict(totals), 'stats':stats,'recent':recent}
+
+def account_request(data, ip):
+    kind = data.get('type'); token = str(data.get('accountToken',''))[:256]
+    with _db() as db:
+        if kind in ('register','login'):
+            now = time.time()
+            for k in list(_AUTH_ATTEMPTS):
+                if now-_AUTH_ATTEMPTS[k][0]>60: _AUTH_ATTEMPTS.pop(k,None)
+            since,count = _AUTH_ATTEMPTS.get(ip,(now,0))
+            if count>=15: return {'ok':False,'error':'尝试次数过多，请一分钟后再试'}
+            _AUTH_ATTEMPTS[ip]=(since,count+1)
+            name=str(data.get('name','')).strip(); pin=str(data.get('pin',''))
+            if not 1<=len(name)<=10 or not re.fullmatch(r'[0-9]{4,8}',pin): return {'ok':False,'error':'昵称 1～10 字，PIN 为 4～8 位数字'}
+            user=db.execute('SELECT * FROM users WHERE name=? COLLATE NOCASE',(name,)).fetchone()
+            if kind=='register':
+                if user: return {'ok':False,'error':'该昵称已有账户，请登录'}
+                uid=secrets.token_hex(16); salt=secrets.token_hex(16)
+                db.execute('INSERT INTO users VALUES(?,?,?,?)',(uid,name,salt,_pin_hash(pin,salt)))
+            else:
+                if not user or not hmac.compare_digest(user['pin_hash'],_pin_hash(pin,user['salt'])): return {'ok':False,'error':'昵称或 PIN 不正确'}
+                uid=user['id']
+            token=secrets.token_urlsafe(32)
+            db.execute('DELETE FROM sessions WHERE expires<=?',(int(now),))
+            db.execute('INSERT INTO sessions VALUES(?,?,?)',(_token_hash(token),uid,int(now)+90*86400))
+            return {'ok':True,'accountToken':token,'profile':_profile(db,uid)}
+        user=_account_user(db,token)
+        if not user: return {'ok':False,'error':'请重新登录'}
+        if kind=='logout':
+            db.execute('DELETE FROM sessions WHERE token_hash=?',(_token_hash(token),)); return {'ok':True}
+        if kind=='profile': return {'ok':True,'profile':_profile(db,user['id'])}
+        return {'ok':False,'error':'未知账户操作'}
+
+def _settle_match():
+    if STATE.get('phase')!='finished' or not STATE.get('matchId') or STATE.get('settledMatchId')==STATE['matchId']: return
+    mode=STATE['mode']; players=STATE['players']; key={'ddz':'ddzScore','chuanma':'cmScore','draw':'score','cards':'life','dice':'diceCount'}[mode]
+    best=max((int(p.get(key,0)) for p in players),default=0)
+    rows=[]
+    for p in players:
+        uid=p.get('accountId')
+        if not uid or p.get('isBot'): continue
+        raw=int(p.get(key,0)); won=(raw>0 if mode=='ddz' else raw==best if mode in ('draw','chuanma') else p['id']==STATE.get('winnerId'))
+        rows.append((STATE['matchId'],uid,mode,int(won),3 if won else 1,raw,int(time.time())))
+    if rows:
+        with _db() as db: db.executemany('INSERT OR IGNORE INTO results VALUES(?,?,?,?,?,?,?)',rows)
+    STATE['settledMatchId']=STATE['matchId']
+
+_original_bump=bump
+def bump(persist=True):
+    _settle_match()
+    return _original_bump(persist)
+
+_original_action=Handler.handle_action
+def _lite_action(self,player,action,data):
+    if action=='rename' and player.get('accountId'): return {'error':'账户昵称固定；可退出后换账户'},409
+    if action=='start' and STATE['phase']=='lobby':
+        previous=STATE.get('matchId'); STATE['matchId']=secrets.token_hex(16)
+        result=_original_action(self,player,action,data)
+        if result[1]!=200: STATE['matchId']=previous
+        return result
+    if action=='reset': _settle_match()
+    return _original_action(self,player,action,data)
+Handler.handle_action=_lite_action
+
+_original_join=Handler.join_player
+def _lite_join(self,data):
+    # Never restore a registered seat using the weaker legacy nickname/id fallback.
+    data=dict(data); data.pop('playerId',None)
+    with LOCK:
+        account_token=str(data.get('accountToken',''))[:256]
+        with _db() as db:
+            user=_account_user(db,account_token)
+        if account_token and not user: return self.reply({'ok':False,'error':'账户登录已过期，请重新登录'})
+        old=player_by_id(TOKENS.get(str(data.get('token',''))))
+        seat=next((p for p in STATE['players'] if data.get('seatKey') and p.get('seatKey')==data.get('seatKey')),None)
+        if not user:
+            if any(p and p.get('accountId') for p in (old,seat)):
+                return self.reply({'ok':False,'error':'请使用原账户登录后恢复座位'})
+            return _original_join(self,data)
+        uid=user['id']; found=next((p for p in STATE['players'] if p.get('accountId')==uid),None)
+        if not found and STATE['phase']!='lobby': return self.reply({'ok':False,'error':'对局进行中，请等待下一局'})
+        if not found:
+            prune_lobby_players()
+            # If this browser previously occupied a guest seat, reuse it only while in the lobby.
+            if old and not old.get('accountId') and old in STATE['players']:
+                found=old; found['accountId']=uid; found['name']=user['name']; found['seatKey']=secrets.token_urlsafe(24)
+                pid=found['id']
+                for old_token,mapped in list(TOKENS.items()):
+                    if mapped==pid: TOKENS.pop(old_token,None)
+                token=secrets.token_urlsafe(24); TOKENS[token]=pid; touch_player(found); bump()
+                return self.reply({'ok':True,'token':token,'playerId':pid,'reconnected':True})
+            if len(STATE['players'])>=4: return self.reply({'ok':False,'error':'座位已满'})
+            pid='p_'+secrets.token_hex(4)
+            found={'id':pid,'name':user['name'],'accountId':uid,'ready':False,'connected':True,'lastSeen':time.time(),'seatKey':secrets.token_urlsafe(24),'life':STATE['settings']['cardLives'],'hand':[],'diceCount':STATE['settings']['diceStart'],'dice':[],'score':0,'ddzHand':[],'ddzScore':0,'ddzHintCursor':0,'isBot':False,'cmHand':[],'cmMelds':[],'cmMissing':None,'cmWon':False,'cmScore':0,'cmDrawnId':None,'cmExchange':[]}
+            STATE['players'].append(found)
+            if not STATE['hostPlayerId']: STATE['hostPlayerId']=pid
+        else: pid=found['id']
+        token=secrets.token_urlsafe(24); TOKENS[token]=pid; touch_player(found); bump()
+        return self.reply({'ok':True,'token':token,'playerId':pid,'reconnected':True})
+Handler.join_player=_lite_join
+
+_original_public=public_state
+def public_state(player_id,draw_since=-1,draw_revision=-1):
+    result=_original_public(player_id,draw_since,draw_revision)
+    _settle_match()
+    p=player_by_id(player_id); uid=p.get('accountId') if p else None
+    if uid:
+        with _db() as db: result['profile']=_profile(db,uid)
+    else: result['profile']=None
+    return result
+
+# QR code: version 3-L, byte mode, one Reed-Solomon block, mask 0.
+# Fits standard IPv4 HTTP invitation URLs (53 UTF-8 bytes maximum).
+def _qr_svg(text):
+    raw=text.encode('utf-8'); n=29
+    if len(raw)>53: raise ValueError('地址过长')
+    bits='0100'+f'{len(raw):08b}'+''.join(f'{b:08b}' for b in raw)
+    bits+='0'*min(4,440-len(bits)); bits+='0'*((-len(bits))%8)
+    data=[int(bits[i:i+8],2) for i in range(0,len(bits),8)]
+    while len(data)<55: data.append(236 if (len(data)-((len(bits))//8))%2==0 else 17)
+    def mul(a,b):
+        c=0
+        while b:
+            if b&1:c^=a
+            b>>=1; a<<=1
+            if a&256:a^=285
+        return c
+    gen=[1]; a=1
+    for _ in range(15):
+        g=[0]*(len(gen)+1)
+        for i,v in enumerate(gen):g[i]^=v;g[i+1]^=mul(v,a)
+        gen=g;a=mul(a,2)
+    rem=data+[0]*15
+    for i in range(55):
+        v=rem[i]
+        for j,g in enumerate(gen):rem[i+j]^=mul(v,g)
+    stream=''.join(f'{b:08b}' for b in data+rem[55:]); m=[[None]*n for _ in range(n)]
+    def put(x,y,v):
+        if 0<=x<n and 0<=y<n:m[y][x]=int(v)
+    def finder(cx,cy):
+        for y in range(-4,5):
+            for x in range(-4,5):
+                d=max(abs(x),abs(y));put(cx+x,cy+y,d not in (2,4))
+    for x,y in ((3,3),(n-4,3),(3,n-4)):finder(x,y)
+    for i in range(8,n-8):put(i,6,i%2==0);put(6,i,i%2==0)
+    for y in range(-2,3):
+        for x in range(-2,3):put(22+x,22+y,max(abs(x),abs(y))!=1)
+    fmt=0x77c4 # error correction L, mask 0
+    for i in range(6):put(8,i,(fmt>>i)&1)
+    put(8,7,(fmt>>6)&1);put(8,8,(fmt>>7)&1);put(7,8,(fmt>>8)&1)
+    for i in range(9,15):put(14-i,8,(fmt>>i)&1)
+    for i in range(8):put(n-1-i,8,(fmt>>i)&1)
+    for i in range(8,15):put(8,n-15+i,(fmt>>i)&1)
+    put(8,n-8,1)
+    idx=0;right=n-1;up=True
+    while right>=1:
+        if right==6:right-=1
+        for y in (range(n-1,-1,-1) if up else range(n)):
+            for x in (right,right-1):
+                if m[y][x] is None:
+                    v=int(stream[idx]) if idx<len(stream) else 0;idx+=1;put(x,y,v^int((x+y)%2==0))
+        right-=2;up=not up
+    path=''.join(f'M{x+4} {y+4}h1v1h-1z' for y,row in enumerate(m) for x,v in enumerate(row) if v)
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 37 37" shape-rendering="crispEdges"><rect width="37" height="37" fill="white"/><path d="{path}" fill="#111"/></svg>'
+
+def _addresses():
+    out=[]
+    try: out.extend(local_ipv4_addresses())
+    except Exception: pass
+    try: out.extend(socket.gethostbyname_ex(socket.gethostname())[2])
+    except OSError: pass
+    return sorted({a for a in out if ipaddress.ip_address(a).version==4 and not ipaddress.ip_address(a).is_loopback and not ipaddress.ip_address(a).is_link_local})
+
+_original_get=Handler.do_GET
+_original_post=Handler.do_POST
+def _lite_get(self):
+    p=urlparse(self.path)
+    if p.path=='/api/invite':
+        port=self.server.server_address[1]
+        return self.reply({'urls':[f'http://{a}:{port}/' for a in _addresses()]})
+    if p.path=='/api/qr':
+        url=parse_qs(p.query).get('url',[''])[0]
+        try:
+            u=urlparse(url); assert u.scheme=='http' and u.port==self.server.server_address[1] and u.path in ('','/') and not u.query and not u.fragment and not u.username and not u.password
+            assert ipaddress.ip_address(u.hostname).version==4
+            return self.reply(_qr_svg(url),200,'image/svg+xml')
+        except Exception: return self.reply({'error':'请使用本机局域网 IPv4 地址'},400)
+    return _original_get(self)
+def _lite_post(self):
+    if urlparse(self.path).path=='/api/account':
+        try:
+            length=int(self.headers.get('Content-Length','0')); assert 0<length<=4096
+            data=self.read_json()
+            with LOCK: response=account_request(data,self.client_address[0])
+        except Exception: response={'ok':False,'error':'账户请求失败，请重试'}
+        return self.reply(response)
+    return _original_post(self)
+Handler.do_GET=_lite_get
+Handler.do_POST=_lite_post
+

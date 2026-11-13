@@ -2,6 +2,10 @@
 
 离线好友联机：房主开启手机热点，APP 启动本机 Python 服务，其他人通过浏览器扫码加入。无需互联网、云服务器或账号。
 
+## 本地电脑预览（无需 Android SDK）
+
+进入 `game_source/`，先执行 `python build.py`，然后双击 `START_GAME.bat` 或执行 `python run_preview.py`。浏览器自动打开本机游戏厅。手机连接同一 Wi-Fi，点击大厅「邀请朋友」扫码加入。账户和历史积分保存在该运行设备，具体规则见 [本地预览说明](game_source/README.md)。
+
 ## 最快的游戏开发方式
 
 唯一开发源码位于 game_source/。五个游戏分别维护后端、动作和 Web UI。不要手改 app/src/main/python/game_hall_lan_v6_2.py，它是构建产物。

@@ -32,7 +32,7 @@ test('refresh, draw clear, end game and leave work on a phone viewport', async (
       expect(await page.locator('#joinBtn').evaluate(element => typeof element.onclick)).toBe('function');
       await page.getByPlaceholder('你的昵称').fill(name);
       const joinResponse = page.waitForResponse(response => response.url().endsWith('/api/join'));
-      await page.getByRole('button', { name: '进入', exact: true }).click();
+      await page.getByRole('button', { name: '游客进入', exact: true }).click();
       expect((await (await joinResponse).json()).ok).toBe(true);
       await expect(page.getByRole('button', { name: '准备', exact: true })).toBeVisible();
     }
@@ -41,7 +41,7 @@ test('refresh, draw clear, end game and leave work on a phone viewport', async (
     for (const page of pages) {
       await page.getByRole('button', { name: '准备', exact: true }).click();
     }
-    const start = pages[0].getByRole('button', { name: '开始', exact: true });
+    const start = pages[0].getByRole('button', { name: '开始游戏', exact: true });
     await expect(start).toBeEnabled();
     await start.click();
 
@@ -77,12 +77,14 @@ test('refresh, draw clear, end game and leave work on a phone viewport', async (
     expect((await (await clearResponse).json()).ok).toBe(true);
     await expect(drawer.locator('#canvasEmpty')).toBeVisible();
 
-    await pages[0].getByRole('button', { name: '刷新', exact: true }).click();
+    await pages[0].locator('#liteMenuBtn').click();
+    await pages[0].getByRole('button', { name: '刷新连接', exact: true }).click();
     await expect(pages[0].locator('#toast')).toHaveText('已刷新最新状态');
 
     pages[0].once('dialog', dialog => dialog.accept());
     const resetResponse = pages[0].waitForResponse(response => isAction(response, 'reset'));
-    await pages[0].getByRole('button', { name: '结束游戏', exact: true }).click();
+    await pages[0].locator('#liteMenuBtn').click();
+    await pages[0].getByRole('button', { name: '结束本局', exact: true }).click();
     expect((await (await resetResponse).json()).ok).toBe(true);
     for (const page of pages) {
       await expect(page.locator('#lobbyCard')).toBeVisible();
@@ -90,12 +92,14 @@ test('refresh, draw clear, end game and leave work on a phone viewport', async (
     }
 
     pages[1].once('dialog', dialog => dialog.accept());
-    await pages[1].getByRole('button', { name: '离开', exact: true }).click();
-    await expect(pages[1].getByRole('button', { name: '进入', exact: true })).toBeVisible();
+    await pages[1].locator('#liteMenuBtn').click();
+    await pages[1].getByRole('button', { name: '退出房间', exact: true }).click();
+    await expect(pages[1].getByRole('button', { name: '游客进入', exact: true })).toBeVisible();
 
     pages[0].once('dialog', dialog => dialog.accept());
-    await pages[0].getByRole('button', { name: '离开', exact: true }).click();
-    await expect(pages[0].getByRole('button', { name: '进入', exact: true })).toBeVisible();
+    await pages[0].locator('#liteMenuBtn').click();
+    await pages[0].getByRole('button', { name: '退出房间', exact: true }).click();
+    await expect(pages[0].getByRole('button', { name: '游客进入', exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
     for (const context of contexts) await context.close();

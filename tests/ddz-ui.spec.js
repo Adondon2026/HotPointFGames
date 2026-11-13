@@ -15,17 +15,17 @@ test('three players can see cards, bid points and bid history without render err
       pages.push(page);
       await page.goto('/');
       await page.getByPlaceholder('你的昵称').fill(name);
-      await page.getByRole('button', { name: '进入', exact: true }).click();
+      await page.getByRole('button', { name: '游客进入', exact: true }).click();
       await expect(page.getByRole('button', { name: '准备', exact: true })).toBeVisible();
     }
 
     await pages[0].getByText('斗地主', { exact: true }).click();
     for (const page of pages) {
-      await expect(page.getByText('斗地主固定 3 人', { exact: false })).toBeVisible();
+      await expect(page.getByText('1～3 真人 · 自动补足三家', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: '准备', exact: true }).click();
     }
 
-    const start = pages[0].getByRole('button', { name: '开始', exact: true });
+    const start = pages[0].getByRole('button', { name: '开始游戏', exact: true });
     await expect(start).toBeEnabled();
     await start.click();
 

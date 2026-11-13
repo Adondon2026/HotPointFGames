@@ -10,6 +10,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 import json
+import os
 import random
 import secrets
 import socket
@@ -25,9 +26,11 @@ except Exception:
     fcntl = None
 
 HOST = "0.0.0.0"
-PORT = 8000
-STATE_FILE = Path.home() / ".game_hall_state_v6_2.json"
-LEGACY_STATE_FILE = Path.home() / ".game_hall_state_v6_1.json"
+PORT = int(os.environ.get("GAMEHALL_PORT", "8000"))
+DATA_DIR = Path(os.environ.get("GAMEHALL_DATA_DIR", str(Path.home())))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+STATE_FILE = DATA_DIR / ".game_hall_state_v6_2.json"
+LEGACY_STATE_FILE = DATA_DIR / ".game_hall_state_v6_1.json"
 LOCK = threading.RLock()
 ONLINE_TIMEOUT = 30
 ZOMBIE_TIMEOUT = 180

@@ -52,6 +52,7 @@ jobs:
       - name: Test and sync game source
         run: |
           python game_source/tests/smoke_test.py
+          python game_source/tests/test_lite.py
           python tools/sync_game_source.py
           python tests/test_android_bridge.py
       - name: Build Android APK
