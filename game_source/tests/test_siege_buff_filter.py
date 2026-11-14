@@ -6,7 +6,7 @@ spec=importlib.util.spec_from_file_location('game',root/'dist/game_hall_lan_v6_2
 g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
 random.seed(40412)
 ALL=set(g._SIEGE_ITEMS)
-assert len(ALL)==16
+assert len(ALL)==24
 for allowed in ([],['big'],['splitshot','shock'],['gunteleport','heal'],list(ALL)):
     for mode in ('classic','standard','random','sky','floating','movingwall'):
         r=g._siege_new('Alice','alice',True,13,mode,'off',0,'stock',allowed)
