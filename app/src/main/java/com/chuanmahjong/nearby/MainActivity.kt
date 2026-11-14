@@ -100,7 +100,7 @@ class MainActivity : Activity() {
         }
 
         content.addView(TextView(this).apply {
-            text = "热点游戏厅 · ZMZ v1.4.0"
+            text = "热点游戏厅 · ZMZ v0.19.0"
             textSize = 30f
             setTextColor(Color.rgb(90, 20, 16))
             gravity = Gravity.CENTER

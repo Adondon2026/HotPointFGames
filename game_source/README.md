@@ -1,9 +1,9 @@
-# HotPointFGames Lite · ZMZ v1.4.0（拆家音效、增益筛选、开发版独立更新）
+# HotPointFGames Lite · ZMZ v0.19.0（拆家音效、增益筛选、开发版独立更新）
 
-Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；也可 `python run_preview.py`。Python 3.10+，无需第三方库。ZMZ 分支手机房主使用 Android ZMZ v1.4.0 检查本分支更新，或运行器手动导入 `dist/game_hall_lan_v6_2.py`（或 .txt），关闭 APP 再重新打开。手机本机单人游戏不需要开启热点。
+Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；也可 `python run_preview.py`。Python 3.10+，无需第三方库。ZMZ 分支手机房主使用 Android ZMZ v0.19.0 检查本分支更新，或运行器手动导入 `dist/game_hall_lan_v6_2.py`（或 .txt），关闭 APP 再重新打开。手机本机单人游戏不需要开启热点。
 
 ## 玩法
-- **ZMZ v1.4.0**：作为一次统一版本交付：拆家大战允许房主逐项筛选全部 16 种增益（含全部关闭，刷新道具同样遵守筛选）；两首原创合成音乐「海浪琶音／轻快像素」和关闭模式可在战场随时切换；保留可爱炮声并按增益添加不同音效，炮击音效可独立开关。Android 调试版采用独立包名／APK 文件名，在线更新独立跟踪 `Zmz_dev` 对应的 `zmz-game-v1.4.0-*` 发布包，不覆盖主线 APP。见 [统一更新说明](../docs/ZMZ_v1.4.0_更新说明.md)。
+- **ZMZ v0.19.0**：作为一次统一版本交付：拆家大战允许房主逐项筛选全部 16 种增益（含全部关闭，刷新道具同样遵守筛选）；两首原创合成音乐「海浪琶音／轻快像素」和关闭模式可在战场随时切换；保留可爱炮声并按增益添加不同音效，炮击音效可独立开关。Android 调试版采用独立包名／APK 文件名，在线更新独立跟踪 `Zmz_dev` 对应的 `zmz-game-v0.19.0-*` 发布包，不覆盖主线 APP。见 [统一更新说明](../docs/ZMZ_v0.19.0_更新说明.md)。
 - v0.18.2：机器人禁用两类瞬移，按目标位置选择射击方向；巨型弹炮口被建筑挡住可确认强制发射，地面碰撞仍受保护。
 - v0.18.1：同步开炮增加无限准备时间，仅双方确认后发射；炮台与核心瞬移仅单份生成、各最多储存一份，机器人仍可使用。
 - v0.18：同步开炮替代实时互殴；5/10/15秒准备，双方准备或倒计时结束共同发射，共享物理关键帧回放。旧实时模式自动迁移。
@@ -31,7 +31,7 @@ Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；�
 
 ## 开发
 
-协作：main 为正式发布线，friend/dev 为朋友开发线；feature/* 也可独立开发。分支 push 和 PR 会构建测试产物，main 的成功构建发布主线更新；Zmz_dev 的成功构建发布单独的 ZMZ v1.4.0 通道，分别由对应 APP 检查更新。测试包在 Actions 的 HotPointFGames-game-files artifact 中，下载解压后手动导入游戏文件。测试数据请独立保存。
+协作：main 为正式发布线，friend/dev 为朋友开发线；feature/* 也可独立开发。分支 push 和 PR 会构建测试产物，main 的成功构建发布主线更新；Zmz_dev 的成功构建发布单独的 ZMZ v0.19.0 通道，分别由对应 APP 检查更新。测试包在 Actions 的 HotPointFGames-game-files artifact 中，下载解压后手动导入游戏文件。测试数据请独立保存。
 
 `python build.py` 生成单文件；`python tests/smoke_test.py`、`python tests/test_lite.py`、`python tests/test_bots.py`、`python tests/test_table.py` 验证核心功能。机器人由服务端根据公开信息和自身手牌/骰子行动；无需网络或 AI 模型。用户仍需通过局域网连接才能与朋友联机。
 

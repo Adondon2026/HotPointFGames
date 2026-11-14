@@ -68,7 +68,7 @@ object GameUpdates {
                 conn.instanceFollowRedirects = false
                 conn.connectTimeout = 8000
                 conn.readTimeout = 15000
-                conn.setRequestProperty("User-Agent", "HotPointFGames-ZMZ-Android/1.4.0")
+                conn.setRequestProperty("User-Agent", "HotPointFGames-ZMZ-Android/0.19.0")
                 conn.setRequestProperty("Accept", if (url.host == "api.github.com") "application/vnd.github+json" else "application/octet-stream")
                 val code = conn.responseCode
                 if (code in 300..399) {

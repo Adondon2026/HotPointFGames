@@ -1,11 +1,11 @@
-# HotPointFGames · ZMZ v1.4.0 更新说明
+# HotPointFGames · ZMZ v0.19.0 更新说明
 
 > 发布分支：`Zmz_dev`  
-> 统一版本号：**ZMZ v1.4.0**（Android `versionName = 1.4.0-ZMZ`、`versionCode = 5`）  
+> 统一版本号：**ZMZ v0.19.0**（Android `versionName = 0.19.0-ZMZ`、`versionCode = 6`）  
 > 更新类型：拆家大战声音与可选增益 + ZMZ 专用 Android 安装包 + 独立游戏在线更新通道  
 > 源码仓库：`Adondon2026/HotPointFGames`
 
-本次把此前完成的**音乐、炮声和增益筛选**与本次的**Android 独立安装及独立更新**合并为一次 **ZMZ v1.4.0** 交付，不拆分发布为多个新版本。历史版本（如拆家 v0.18.2）仍作为上游开发记录保留。
+本次把此前完成的**音乐、炮声和增益筛选**与本次的**Android 独立安装及独立更新**合并为一次 **ZMZ v0.19.0** 交付，不拆分发布为多个新版本。历史版本（如拆家 v0.18.2）仍作为上游开发记录保留。
 
 ## 一、拆家大战：开局增益筛选
 
@@ -26,23 +26,23 @@
 
 ## 三、Android ZMZ APK：与主线并存
 
-| 项目 | 师兄主线 | ZMZ v1.4.0 开发版 |
+| 项目 | 师兄主线 | ZMZ v0.19.0 开发版 |
 | --- | --- | --- |
 | GitHub 分支 | `main` | `Zmz_dev` |
 | 调试版应用包名 | `com.chuanmahjong.nearby.debug` | **`com.chuanmahjong.nearby.zmz.debug`** |
 | 安装后应用名称 | 热点游戏厅 | **热点游戏厅 ZMZ** |
-| Android 版本 | 主线独立维护 | **1.4.0-ZMZ（versionCode 5）** |
-| 构建输出文件 | `app-debug.apk` | **`HotPointFGames-ZMZ-v1.4.0-debug.apk`** |
-| Actions 下载条目 | `HotPointFGames-Android` | **`HotPointFGames-ZMZ-v1.4.0-Android`** |
-| 游戏在线更新发布标签 | `game-...` | **`zmz-game-v1.4.0-...`** |
+| Android 版本 | 主线独立维护 | **0.19.0-ZMZ（versionCode 6）** |
+| 构建输出文件 | `app-debug.apk` | **`HotPointFGames-ZMZ-v0.19.0-debug.apk`** |
+| Actions 下载条目 | `HotPointFGames-Android` | **`HotPointFGames-ZMZ-v0.19.0-Android`** |
+| 游戏在线更新发布标签 | `game-...` | **`zmz-game-v0.19.0-...`** |
 
 **注意：只重命名 APK 文件不能并存安装。** 本次同时更换了 Android `applicationId`，因此 Android 系统会把 ZMZ 版识别为**不同应用**。两版可以分别安装，互不覆盖；各自的应用私有账户、积分和服务器存档也不会自动互通。Android 源码 `namespace` 保持原值，以保持 Kotlin、R 和 Chaquopy 代码兼容。
 
 ## 四、在线更新通道隔离
 
-**ZMZ 版**在 APP 启动或手动点击「检查更新」时，访问同一个仓库的 GitHub Releases，但只接受符合 `zmz-game-vX.Y.Z-<run>-<attempt>-<sha>` 格式的发布标签。本版本生成的是 `zmz-game-v1.4.0-...`。
+**ZMZ 版**在 APP 启动或手动点击「检查更新」时，访问同一个仓库的 GitHub Releases，但只接受符合 `zmz-game-vX.Y.Z-<run>-<attempt>-<sha>` 格式的发布标签。本版本生成的是 `zmz-game-v0.19.0-...`。
 
-**发布流程：** `Zmz_dev` 提交游戏代码 → `Game files` 自动测试与单文件构建 → 生成 SHA-256 更新清单 → 发布该分支专用 `zmz-game-v1.4.0-...` Release → ZMZ APK 检查并提供下载；不会接受师兄主线的 `game-...` Release。反过来，师兄的原 APK 只接受原先的 `game-...` 标签，不识别 `zmz-game-v1.4.0-...`。
+**发布流程：** `Zmz_dev` 提交游戏代码 → `Game files` 自动测试与单文件构建 → 生成 SHA-256 更新清单 → 发布该分支专用 `zmz-game-v0.19.0-...` Release → ZMZ APK 检查并提供下载；不会接受师兄主线的 `game-...` Release。反过来，师兄的原 APK 只接受原先的 `game-...` 标签，不识别 `zmz-game-v0.19.0-...`。
 
 ZMZ 专用 Release 不会抢占 GitHub 仓库的全局「Latest」主线发布标记。更新下载采用 HTTPS、文件大小限制、SHA-256 校验和安全的原子替换／回退机制。
 
@@ -51,8 +51,8 @@ ZMZ 专用 Release 不会抢占 GitHub 仓库的全局「Latest」主线发布�
 ## 五、取得本次 APK
 
 1. 打开 GitHub 仓库的 **Actions → Android build**，选择来自 `Zmz_dev` 的**成功**运行记录。
-2. 页面底部 **Artifacts** 下载 **`HotPointFGames-ZMZ-v1.4.0-Android`**。
-3. 解压得到 **`HotPointFGames-ZMZ-v1.4.0-debug.apk`**，安装到 Android 手机即可。
+2. 页面底部 **Artifacts** 下载 **`HotPointFGames-ZMZ-v0.19.0-Android`**。
+3. 解压得到 **`HotPointFGames-ZMZ-v0.19.0-debug.apk`**，安装到 Android 手机即可。
 4. 桌面上可同时保留师兄的「热点游戏厅」和新的「热点游戏厅 ZMZ」。
 5. 此后仅改游戏规则或音乐时，可通过 ZMZ 游戏在线更新通道接收新游戏单文件，不必每次重新装 APK。
 
