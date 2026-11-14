@@ -78,6 +78,8 @@ jobs:
           python game_source/tests/test_siege_v18.py
           python game_source/tests/test_siege_v181.py
           python game_source/tests/test_siege_v182.py
+          python game_source/tests/test_siege_v20.py
+          python game_source/tests/test_siege_v201.py
           python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
           python tools/sync_game_source.py
