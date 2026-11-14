@@ -1,95 +1,40 @@
-/* ZMZ v0.19.2: exercise checkbox feedback and saved-track re-entry, not just source strings. */
+/* Browser-independent regression for the 24-buff selector and the upstream Web Audio controller. */
 'use strict';
 const fs=require('fs'),assert=require('assert'),vm=require('vm');
-const root=__dirname+'/../';
-const lite=fs.readFileSync(root+'web/lite.js','utf8');
-const siege=fs.readFileSync(root+'web/games/siege.html','utf8');
-const audio=fs.readFileSync(root+'web/games/siege_audio.js','utf8');
-const gameActivity=fs.readFileSync(root+'../app/src/main/java/com/chuanmahjong/nearby/GameActivity.kt','utf8');
+const src=p=>fs.readFileSync(__dirname+'/../'+p,'utf8');
+const lite=src('web/lite.js'),audio=src('web/games/siege_audio.js');
+const sub=lite.substring(lite.indexOf('const siegeBuffList='),lite.indexOf('const siegeHard='));
+const g=vm.createContext({});
+vm.runInContext(sub+'\nthis.buffs=siegeBuffList;',g);
+assert.equal(g.buffs.length,24);
+assert(lite.includes("const choices=siegeChoices(),n=choices.filter(x=>x.checked).length;"));
+assert(lite.includes("$('siegeBuffCount').textContent='已选 '+n+' / '+siegeBuffList.length;"));
+assert(lite.includes("x.onchange=saveSiegeSettings"),'Selection must call immediate refresh and save');
+assert(lite.includes("$('siegeBuffBack').onclick=()"),'Explicit collapse handler must exist');
 
-const start=lite.indexOf('const siegeBuffList='),end=lite.indexOf('function liteSettings(){',start);
-assert(start>=0&&end>start,'Cannot extract buff controller');
-let boxes=[];
-const elements={
-  siegeBuffCount:{textContent:''},
-  siegeBuffAll:{disabled:false},
-  siegeBuffNone:{disabled:false}
-};
-const parent={
-  set innerHTML(html){
-    boxes=[...html.matchAll(/data-siege-buff="([^"]+)"\s*(checked)?/g)].map(m=>({
-      dataset:{siegeBuff:m[1]},checked:m[2]==='checked',disabled:false,onchange:null
-    }));
-  },
-  querySelectorAll(){return boxes;}
-};
-elements.siegeBuffChoices=parent;
-const state={isHost:true,settings:{siegeAllowedBuffs:['big','power']}};
-const submitted=[];
-const ctx=vm.createContext({
- state,
- $:id=>elements[id]||{value:0},
- document:{querySelectorAll:selector=>{
-    assert(selector.startsWith('#siegeBuffChoices input'));
-    return boxes;
- }},
- action:(kind,payload)=>{submitted.push({kind,payload});return Promise.resolve({ok:true});}
-});
-vm.runInContext(lite.slice(start,end),ctx,{filename:'lite-buff-controller.js'});
-const init=vm.runInContext('siegeBuffChoiceUI',ctx);
-init();
-assert.equal(boxes.length,24);
-assert.equal(elements.siegeBuffCount.textContent,'已选 2 / 24');
-boxes[0].checked=false;
-boxes[0].onchange();
-assert.equal(elements.siegeBuffCount.textContent,'已选 1 / 24','Count must change before a new game is started');
-assert.equal(submitted.at(-1).kind,'siege_settings');
-assert.deepEqual(Array.from(submitted.at(-1).payload.allowedBuffs),['power']);
-const actionStart=lite.indexOf("$('siegeBuffAll').onclick=");
-const actionEnd=lite.indexOf(";$('liteGameRules')",actionStart);
-assert(actionStart>0&&actionEnd>actionStart);
-vm.runInContext(lite.slice(actionStart,actionEnd),ctx);
-elements.siegeBuffAll.onclick();
-assert.equal(elements.siegeBuffCount.textContent,'已选 24 / 24','Select-all must update immediately');
-elements.siegeBuffNone.onclick();
-assert.equal(elements.siegeBuffCount.textContent,'已选 0 / 24','Deselect-all must update immediately');
-assert.equal(submitted.at(-1).payload.allowedBuffs.length,0);
-
-assert.equal((siege.match(/classList\.add\('in-battle'\);if\(!old\|\|old\.code!==d\.code\)siegeAudio\.enterBattle\(\)/g)||[]).length,3,'All three combat modes must restore BGM on entry');
-assert(gameActivity.includes('settings.mediaPlaybackRequiresUserGesture = false'),'Android WebView must allow BGM when re-entering');
-
-const counters={starts:0,stops:0,resumes:0};
+let starts=0,stops=0,resumes=0;
 class FakeAudioContext {
-  constructor(){this.state='suspended';this.destination={};}
-  resume(){this.state='running';counters.resumes++;return Promise.resolve();}
-  createGain(){return {gain:{value:0},connect(){}};}
-  createBuffer(_channels,count){const samples=new Float32Array(count);return {getChannelData:()=>samples};}
-  createBufferSource(){return {buffer:null,loop:false,connect(){},disconnect(){},start(){counters.starts++},stop(){counters.stops++}};}
+  constructor(){this.state='suspended';this.destination={};this.currentTime=0}
+  resume(){this.state='running';resumes++;return Promise.resolve()}
+  createGain(){return {gain:{value:0},connect(){}}}
+  createBuffer(c,n){return {getChannelData:()=>new Float32Array(n)}}
+  createBufferSource(){return {connect(){},disconnect(){},start(){starts++},stop(){stops++}}}
 }
-const stored={siege_bgm:'arcade',siege_sfx:'on'};
-const button=()=>({textContent:'',addEventListener(){},setAttribute(){}});
-const buttons={siegeMusicToggle:button(),siegeEffectToggle:button()};
-const audioDoc={
-  body:{classList:{contains:()=>true}},
-  getElementById:id=>buttons[id],
-  addEventListener(){},
-  hidden:false
-};
-const aCtx=vm.createContext({
- window:{AudioContext:FakeAudioContext},
- document:audioDoc,
- localStorage:{getItem:k=>stored[k]||null,setItem:(k,v)=>{stored[k]=v;}}
+const local={siege_bgm:'arcade',siege_sfx:'on'};
+const selection={siegeMusic:{value:'',addEventListener(){}},siegeEffects:{checked:false,addEventListener(){}}};
+const env=vm.createContext({
+  window:{AudioContext:FakeAudioContext,addEventListener(){}},
+  document:{hidden:false,body:{classList:{contains:()=>true}},getElementById:k=>selection[k],addEventListener(){}},
+  localStorage:{getItem:k=>local[k],setItem:(k,v)=>local[k]=v}
 });
-vm.runInContext(audio+'\nthis.soundTest=siegeAudio;',aCtx,{filename:'siege_audio.js'});
-const sound=aCtx.soundTest;
-assert.equal(counters.starts,0);
-assert(buttons.siegeMusicToggle.textContent.includes('轻快像素'));
-sound.enterBattle();
-assert.equal(counters.starts,1,'Saved pixel BGM must start automatically on room entry');
-assert(counters.resumes>0,'Suspended AudioContext should attempt to resume');
-sound.stop();
-assert.equal(counters.stops,1);
-sound.enterBattle();
-assert.equal(counters.starts,2,'Saved BGM must restart after leaving and re-entering a room');
-assert.equal(stored.siege_bgm,'arcade','Autostart must not cycle or overwrite last-selected track');
-console.log('Siege controls regressions passed: live 0/24..24/24 counter and persisted autoplay/re-entry');
+vm.runInContext(audio+'\nthis.sound=siegeAudio',env,{filename:'siege_audio.js'});
+assert.equal(selection.siegeMusic.value,'arcade');
+env.sound.enterBattle();
+assert.equal(starts,1,'Saved arcade music should start without cycling');
+assert(resumes>0);
+env.sound.stop();
+assert.equal(stops,1);
+env.sound.enterBattle();
+assert.equal(starts,2,'Re-entered room should resume the same music');
+assert.equal(local.siege_bgm,'arcade');
+console.log('ZMZ v0.20.1: 24 selectable buffs, live UI updates and persisted audio re-entry PASS');

@@ -2,9 +2,11 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+# Single source for Web game version; regenerated with every online game update.
+GAME_DISPLAY_VERSION = "ZMZ v0.20.1"
 
 def read(rel):
-    return (ROOT / rel).read_text(encoding="utf-8")
+    return (ROOT / rel).read_text(encoding="utf-8").replace("@@ZMZ_GAME_VERSION@@", GAME_DISPLAY_VERSION)
 
 def build_html():
     markup = "".join([

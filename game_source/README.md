@@ -1,8 +1,9 @@
-# HotPointFGames Lite · ZMZ v0.20.0（24 种增益、负面弹种与边界反弹）
+# HotPointFGames Lite · ZMZ v0.20.1（学长 UI 整合、24 类增益和可返回设置）
 
-Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；也可 `python run_preview.py`。Python 3.10+，无需第三方库。ZMZ 分支手机房主使用 Android ZMZ v0.20.0 检查本分支更新，或运行器手动导入 `dist/game_hall_lan_v6_2.py`（或 .txt），关闭 APP 再重新打开。手机本机单人游戏不需要开启热点。
+Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；也可 `python run_preview.py`。Python 3.10+，无需第三方库。ZMZ 分支手机房主使用 Android ZMZ v0.20.1 检查本分支更新，或运行器手动导入 `dist/game_hall_lan_v6_2.py`（或 .txt），关闭 APP 再重新打开。手机本机单人游戏不需要开启热点。
 
 ## 玩法
+- **ZMZ v0.20.1**：合并最新 `main` 的沉浸式拆家 HUD、横竖屏适配、迷你地图、战术库存数字输入、道具独立叠加上限和堡垒强度；保留 ZMZ v0.20.0 的 24 类道具、克隆、负面弹和左右墙。修复设置中的 24 类选项可收起和滚动；游戏首页与战斗页显示由 `build.py` 注入的游戏版本号，支持在线更新后的版本刷新。详见 [整合说明](../docs/ZMZ_v0.20.1_整合说明.md)。
 - **ZMZ v0.20.0**：游戏主页版本文字随游戏文件更新到 v0.20.0；新增螺旋、连续、推进、克隆四类正面增益，以及重重、湮灭、不稳定、屁屁四类下一发强制生效的负面增益；全部 24 类可由房主逐项勾选，左/右边界作为无限血量障碍触发弹跳或爆炸。保留旧玩法、音乐、增益组合和三种开炮模式，见 [完整说明](../docs/ZMZ_v0.20.0_更新说明.md)。
 - **ZMZ v0.19.2**：拆家设置的「已选 X / 16」在单项勾选、全选与全不选时同步即时更新；进入战场时尝试自动恢复之前选择的背景音乐，Android WebView 支持启动播放，浏览器因自动播放策略受限时在首次点击战场后恢复。保留 v0.19.1 的弹窗/房间初始化修复与 v0.19.0 的原功能。见 [补丁说明](../docs/ZMZ_v0.19.2_补丁说明.md)。
 - **ZMZ v0.19.1**：修复房间加载卡住，以及增益设置导致旧选项被挤出、手机无法滚动的问题。见 [修复记录](../docs/ZMZ_v0.19.1_补丁说明.md)。
@@ -34,7 +35,7 @@ Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；�
 
 ## 开发
 
-协作：main 为正式发布线，friend/dev 为朋友开发线；feature/* 也可独立开发。分支 push 和 PR 会构建测试产物，main 的成功构建发布主线更新；Zmz_dev 的成功构建发布单独的 ZMZ v0.20.0 通道，分别由对应 APP 检查更新。测试包在 Actions 的 HotPointFGames-game-files artifact 中，下载解压后手动导入游戏文件。测试数据请独立保存。
+协作：main 为正式发布线，friend/dev 为朋友开发线；feature/* 也可独立开发。分支 push 和 PR 会构建测试产物，main 的成功构建发布主线更新；Zmz_dev 的成功构建发布单独的 ZMZ v0.20.1 通道，分别由对应 APP 检查更新。测试包在 Actions 的 HotPointFGames-game-files artifact 中，下载解压后手动导入游戏文件。测试数据请独立保存。
 
 `python build.py` 生成单文件；`python tests/smoke_test.py`、`python tests/test_lite.py`、`python tests/test_bots.py`、`python tests/test_table.py` 验证核心功能。机器人由服务端根据公开信息和自身手牌/骰子行动；无需网络或 AI 模型。用户仍需通过局域网连接才能与朋友联机。
 
