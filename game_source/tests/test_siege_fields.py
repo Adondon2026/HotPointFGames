@@ -34,7 +34,7 @@ for name,field in g._SIEGE_FIELDS.items():
             if got:break
         assert got,(name,it);checks+=1
     g._siege_rematch(r);assert r['field']==name and r['shots']==[0,0]
-random.seed(6);seen={g._siege_new('A','a',True,0,'random')['field'] for _ in range(80)};assert seen==set(g._SIEGE_FIELDS)
+random.seed(6);seen={g._siege_new('A','a',True,0,'random')['field'] for _ in range(80)};assert seen==set(g._SIEGE_FIELDS)|set(g._SIEGE_NEW_FIELDS)
 # Vision does not change flight or damage; consumes one charge only on own shot.
 r=g._siege_new('A','a',True,0,'standard');q=copy.deepcopy(r);q['buffs'][0]['vision']=2
 for x in (r,q):g._siege_fire(x,42,65)

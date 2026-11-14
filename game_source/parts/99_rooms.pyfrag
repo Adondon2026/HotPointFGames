@@ -87,7 +87,7 @@ def _room_start_siege(player,solo=False):
         player['ready']=True
     if len(STATE['players'])!=2 or not humans or not all(is_connected(p) for p in humans):return {'error':'需要两名在线玩家'},409
     seats=sorted(STATE['players'],key=lambda p: p['id']!=STATE['hostPlayerId'])
-    r=_siege_new(seats[0]['name'],seats[0]['id'],bool(seats[1].get('isBot')),STATE['settings'].get('siegeItemCount',_SIEGE_DEFAULT_ITEMS),('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),STATE['settings'].get('siegeWind','medium'),STATE['settings'].get('siegeAmmo',0))
+    r=_siege_new(seats[0]['name'],seats[0]['id'],bool(seats[1].get('isBot')),STATE['settings'].get('siegeItemCount',_SIEGE_DEFAULT_ITEMS),('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),STATE['settings'].get('siegeWind','medium'),STATE['settings'].get('siegeAmmo',0),STATE['settings'].get('siegeBuffMode','auto'))
     r.update(code=_ROOM_ACTIVE['code'],players=[{'name':p['name'],'key':p['id']} for p in seats],phase='play')
     STATE.update(siege=r,phase='siege_play',matchId=secrets.token_hex(16),turnPlayerId=seats[0]['id'],roundNo=1);bump();return {},200
 
@@ -110,7 +110,9 @@ def _room_action(self,player,action,data):
             if type(count) is not int or not 0<=count<=_SIEGE_MAX_ITEMS:return {'error':'道具数量须为 0–25 的整数'},400
             ammo=data.get('ammo',STATE['settings'].get('siegeAmmo',0));mode=data.get('mode',('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')));wind=data.get('wind',STATE['settings'].get('siegeWind','medium'))
             if type(ammo) is not int or ammo not in _SIEGE_AMMO or type(mode) is not str or mode not in _SIEGE_MODES or type(wind) is not str or wind not in _SIEGE_WIND:return {'error':'战场设置无效'},400
-            STATE['settings'].update(siegeItemCount=count,siegeAmmo=ammo,siegeMode=mode,siegeWind=wind);bump();return {},200
+            buff_mode=data.get('buffMode',STATE['settings'].get('siegeBuffMode','auto'))
+            if buff_mode not in ('auto','stock'):return {'error':'增益模式无效'},400
+            STATE['settings'].update(siegeItemCount=count,siegeAmmo=ammo,siegeMode=mode,siegeWind=wind,siegeBuffMode=buff_mode);bump();return {},200
         if action in ('start','solo_start'):return _room_start_siege(player,action=='solo_start')
         if action=='reset':
             if player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可结束本局'},403
@@ -139,11 +141,13 @@ def _room_siege(data):
         a,power=data.get('angle'),data.get('power')
         if r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']:return {'ok':False,'error':'当前不能发射，请等待回合'}
         if type(a) not in (int,float) or type(power) not in (int,float) or not (5<=a<=175 and 15<=power<=100):return {'ok':False,'error':'角度或力度无效'}
-        _siege_fire(r,a,power);save_state()
+        try:_siege_fire(r,a,power,data.get('selection'))
+        except ValueError as e:return {'ok':False,'error':str(e)}
+        save_state()
     elif kind=='rematch':
         if pid!=STATE['hostPlayerId'] or r['phase']!='over' or now<r['until']:return {'ok':False,'error':'等待房主开始下一局'}
         # Existing v0.8 matches finish under their original rules; new rounds use room settings.
-        r.update(itemCount=STATE['settings'].get('siegeItemCount',13),mode=('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),windLevel=STATE['settings'].get('siegeWind','medium'),ammo=STATE['settings'].get('siegeAmmo',0))
+        r.update(itemCount=STATE['settings'].get('siegeItemCount',13),mode=('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),windLevel=STATE['settings'].get('siegeWind','medium'),ammo=STATE['settings'].get('siegeAmmo',0),buffMode=STATE['settings'].get('siegeBuffMode','auto'))
         _siege_rematch(r);save_state()
     elif kind=='return':
         if pid!=STATE['hostPlayerId']:return {'ok':False,'error':'请等待房主返回房间'}
