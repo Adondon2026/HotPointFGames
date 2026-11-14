@@ -1,8 +1,9 @@
-# HotPointFGames Lite · v0.18.2 同步开炮与协作开发
+# HotPointFGames Lite · v0.19 沉浸式战场
 
 Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；也可 `python run_preview.py`。Python 3.10+，无需第三方库。手机房主使用 Android 1.3 检查更新，或运行器手动导入 `dist/game_hall_lan_v6_2.py`（或 .txt），关闭 APP 再重新打开。手机本机单人游戏不需要开启热点。
 
 ## 玩法
+- v0.19：拆家大战采用顶部紧凑状态栏与底部操作条；地图、房间菜单和角度/力度微调按需展开，删除地图左右按钮；两种模式均松手保留瞄准，点击开炮或准备才发射。飞行时隐藏操作，拾取提示在战场位置显示。自动增益可查看库存。
 - v0.18.2：机器人禁用两类瞬移，按目标位置选择射击方向；巨型弹炮口被建筑挡住可确认强制发射，地面碰撞仍受保护。
 - v0.18.1：同步开炮增加无限准备时间，仅双方确认后发射；炮台与核心瞬移仅单份生成、各最多储存一份，机器人仍可使用。
 - v0.18：同步开炮替代实时互殴；5/10/15秒准备，双方准备或倒计时结束共同发射，共享物理关键帧回放。旧实时模式自动迁移。
@@ -29,6 +30,8 @@ Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；�
 `local_data/` 保存账户 SQLite 数据和房间状态。更新请保留原文件夹的 `local_data`，停止旧服务器后覆盖程序文件。导入 Android 版本会保留运行器私有数据（房间主动停止会清空）。
 
 ## 开发
+
+可选浏览器回归测试：安装 Playwright (`python -m pip install playwright`、`playwright install chromium`)，在 game_source 下运行 `python build.py`、`python tests/test_siege_ui_v19.py`，也可指定 `CHROMIUM_PATH` 使用本机 Chromium。覆盖触屏保留瞄准、实际护盾选择、地图定位、微调和双客户端同步开炮。
 
 协作：main 为正式发布线，friend/dev 为朋友开发线；feature/* 也可独立开发。分支 push 和 PR 会构建测试产物，只有 main 的成功构建会发布手机正式更新。测试包在 Actions 的 HotPointFGames-game-files artifact 中，下载解压后手动导入游戏文件。测试数据请独立保存。
 
