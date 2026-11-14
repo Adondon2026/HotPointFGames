@@ -59,7 +59,7 @@ def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None,allowed=None)
         random.shuffle(featured)
         # Mix the new pickups with old featured ones, keeping both discoverable.
         others=[k for k in kinds if k not in featured];random.shuffle(others)
-        kinds=featured[:1]+others+featured[1:]
+        kinds=featured+others
     # Each game samples a new formation, rather than perturbing the same grid.
     # Sample the actual ballistic envelope above the left fort, mirrored for fairness.
     if field:
