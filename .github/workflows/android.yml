@@ -56,6 +56,7 @@ jobs:
       - name: Test and sync game source
         run: |
           python tests/test_game_update_manifest.py
+          python tests/test_zmz_channel.py
           python game_source/tests/smoke_test.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py
@@ -88,8 +89,8 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: HotPointFGames-Android
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: HotPointFGames-ZMZ-v1.4.0-Android
+          path: app/build/outputs/apk/debug/HotPointFGames-ZMZ-v1.4.0-debug.apk
           if-no-files-found: error
       - name: Upload importable game files
         uses: actions/upload-artifact@v4

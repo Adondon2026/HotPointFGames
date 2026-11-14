@@ -14,9 +14,10 @@ object GameUpdates {
     private const val MAX_GAME = 4 * 1024 * 1024
     private const val MANIFEST = "game-update.json"
     private const val GAME = "game_hall_lan_v6_2.py"
-    private const val HOST_VERSION = 4
+    private const val HOST_VERSION = 5
     private val allowedHosts = setOf("api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
-    private val releaseTag = Regex("game-[0-9]+-[0-9]+-[a-f0-9]{7,40}")
+    // This channel never accepts mainline game-* releases.
+    private val releaseTag = Regex("zmz-game-v[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+-[0-9]+-[a-f0-9]{7,40}")
     private val hashPattern = Regex("[a-f0-9]{64}")
 
     data class Info(val version: String, val source: String, val sourceEpoch: Long, val sha256: String, val size: Int, val minHost: Int) {
@@ -67,7 +68,7 @@ object GameUpdates {
                 conn.instanceFollowRedirects = false
                 conn.connectTimeout = 8000
                 conn.readTimeout = 15000
-                conn.setRequestProperty("User-Agent", "HotPointFGames-Android/1.3")
+                conn.setRequestProperty("User-Agent", "HotPointFGames-ZMZ-Android/1.4.0")
                 conn.setRequestProperty("Accept", if (url.host == "api.github.com") "application/vnd.github+json" else "application/octet-stream")
                 val code = conn.responseCode
                 if (code in 300..399) {
@@ -91,11 +92,11 @@ object GameUpdates {
         return "https://github.com/$REPO/releases/download/$tag/$name"
     }
     fun check(context: Context): Available? {
-        val releases = JSONArray(get("https://api.github.com/repos/$REPO/releases?per_page=20", 1024 * 1024).toString(Charsets.UTF_8))
+        val releases = JSONArray(get("https://api.github.com/repos/$REPO/releases?per_page=100", 2 * 1024 * 1024).toString(Charsets.UTF_8))
         val candidates = (0 until releases.length()).map { releases.getJSONObject(it) }.filter {
             !it.optBoolean("draft") && !it.optBoolean("prerelease") && releaseTag.matches(it.optString("tag_name"))
         }
-        val release = candidates.maxWithOrNull(compareBy<JSONObject> { it.optString("tag_name").split('-')[1].toLong() }.thenBy { it.optString("tag_name").split('-')[2].toLong() }) ?: return null
+        val release = candidates.maxWithOrNull(compareBy<JSONObject> { it.optString("tag_name").split('-')[3].toLong() }.thenBy { it.optString("tag_name").split('-')[4].toLong() }) ?: return null
         val tag = release.getString("tag_name")
         val assets = release.getJSONArray("assets")
         val names = (0 until assets.length()).map { assets.getJSONObject(it).optString("name") }

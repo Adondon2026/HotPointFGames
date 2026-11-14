@@ -6,6 +6,12 @@
 
 进入 `game_source/`，先执行 `python build.py`，然后双击 `START_GAME.bat` 或执行 `python run_preview.py`。浏览器自动打开本机游戏厅。手机连接同一 Wi-Fi，点击大厅「邀请朋友」扫码加入。账户和历史积分保存在该运行设备，具体规则见 [本地预览说明](game_source/README.md)。
 
+## ZMZ v1.4.0 开发版（独立安装／独立更新）
+
+`Zmz_dev` 分支的 Android 调试版使用独立应用包名 `com.chuanmahjong.nearby.zmz.debug`，桌面名称为「热点游戏厅 ZMZ」，可以与师兄的主线 APK 共存，不覆盖原 APP 的账号与存档。输出文件为 `HotPointFGames-ZMZ-v1.4.0-debug.apk`，Actions 产物名为 `HotPointFGames-ZMZ-v1.4.0-Android`。
+
+ZMZ 版在线游戏更新仅接受 `zmz-game-v1.4.0-<run>-<attempt>-<sha>` 发布包，由 `Zmz_dev` 的 **Game files** 工作流构建并发布；主线仍使用 `game-...`，更新通道互相隔离。此次 **v1.4.0** 同时包含拆家大战的增益种类勾选、两首原创合成背景音乐切换与炮击音效，以及 Android 应用独立安装、独立更新机制。完整说明见 [ZMZ v1.4.0 版本更新说明](docs/ZMZ_v1.4.0_更新说明.md)。
+
 ## v0.10 多房间与拆家大战
 
 公共大厅统一账户与二维码；创建或加入好友房间后，房主选择游戏、设置并直接开局。七款游戏均可多房间并行。拆家大战支持动态战场、三种堡垒、风力、无限或有限炮弹、六种可组合道具、炮弹跟随镜头和基础弹/强化弹平衡。旧单房间进行中对局不会迁移；账号和积分数据库保留。
