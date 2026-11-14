@@ -138,7 +138,7 @@ def _room_siege(data):
     if kind=='fire':
         a,power=data.get('angle'),data.get('power')
         if r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']:return {'ok':False,'error':'当前不能发射，请等待回合'}
-        if type(a) not in (int,float) or type(power) not in (int,float) or not (5<=a<=85 and 15<=power<=100):return {'ok':False,'error':'角度或力度无效'}
+        if type(a) not in (int,float) or type(power) not in (int,float) or not (5<=a<=175 and 15<=power<=100):return {'ok':False,'error':'角度或力度无效'}
         _siege_fire(r,a,power);save_state()
     elif kind=='rematch':
         if pid!=STATE['hostPlayerId'] or r['phase']!='over' or now<r['until']:return {'ok':False,'error':'等待房主开始下一局'}

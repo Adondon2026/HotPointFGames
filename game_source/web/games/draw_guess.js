@@ -1,5 +1,5 @@
 function canvas(){return $("drawCanvas")}
-function drawStroke(ctx,s){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle=s.color;ctx.lineWidth=s.width;if(s.erase){ctx.globalCompositeOperation="destination-out";ctx.lineWidth=s.width*2}ctx.beginPath();s.points.forEach((p,i)=>{const x=p[0]*800,y=p[1]*600;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});if(s.points.length===1)ctx.lineTo(s.points[0][0]*800+.1,s.points[0][1]*600+.1);ctx.stroke();ctx.restore()}
+function drawStroke(ctx,s){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle=s.color;ctx.lineWidth=s.width;if(s.erase){ctx.globalCompositeOperation="destination-out";ctx.lineWidth=s.width*2}ctx.beginPath();s.points.forEach((p,i)=>{const x=p[0]*ctx.canvas.width,y=p[1]*ctx.canvas.height;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});if(s.points.length===1)ctx.lineTo(s.points[0][0]*ctx.canvas.width+.1,s.points[0][1]*ctx.canvas.height+.1);ctx.stroke();ctx.restore()}
 function applyDrawCanvas(force=false){
   if(state.mode!=="draw")return;
   const d=state.draw,c=canvas(),ctx=c.getContext("2d");
@@ -19,7 +19,7 @@ function renderDraw(){
   (d.choices||[]).forEach((w,i)=>{const b=document.createElement("button");b.className="word-choice";b.innerHTML=`${esc(w.word)}<small>${esc(w.category)} · ${w.difficultyLabel} · ${w.libraryLabel}</small>`;b.onclick=()=>action("draw_choose",{index:i});$("wordChoices").appendChild(b)});}
   const showCanvas=["draw_play","draw_reveal"].includes(state.phase);$("canvasPanel").classList.toggle("hidden",!showCanvas);$("drawTools").classList.toggle("hidden",!(state.phase==="draw_play"&&isDrawer));
   const guessed=(d.correctIds||[]).includes(playerId);$("guessRow").classList.toggle("hidden",!(state.phase==="draw_play"&&!isDrawer&&!guessed));const guessKey=JSON.stringify(d.guesses||[]);if($("guessFeed").dataset.key!==guessKey){$("guessFeed").dataset.key=guessKey;$("guessFeed").innerHTML="";
-  (d.guesses||[]).slice(-8).forEach(g=>{const x=document.createElement("div");x.className="guess-chip"+(g.correct?" correct":"");x.textContent=g.correct?`${g.name} 猜对了`:`${g.name}：${g.text}`;$("guessFeed").appendChild(x)});}
+  (d.guesses||[]).slice(-20).forEach(g=>{const x=document.createElement("div");x.className="guess-chip"+(g.correct?" correct":"");x.textContent=g.correct?`${g.name} 猜对了`:`${g.name}：${g.text}`;$("guessFeed").appendChild(x)});$("guessFeed").scrollTop=$("guessFeed").scrollHeight;}
   $("drawReveal").classList.toggle("hidden",state.phase!=="draw_reveal");$("drawResult").textContent=d.result||"";$("drawNextBtn").classList.toggle("hidden",!state.canAdvanceRound);
   applyDrawCanvas(drawCanvasRevision!==d.canvasRevision);startTimer();lastPhase=state.phase;
 }

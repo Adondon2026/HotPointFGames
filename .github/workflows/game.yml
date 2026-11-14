@@ -27,7 +27,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,6 +49,7 @@ jobs:
           python game_source/tests/test_siege_dynamic.py
           python game_source/tests/test_siege_balance.py
           python game_source/tests/test_siege_fields.py
+          python game_source/tests/test_siege_v12.py
           node game_source/tests/test_army_presentation.js
       - name: Generate update manifest
         run: |

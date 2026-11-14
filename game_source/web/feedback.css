@@ -61,3 +61,18 @@
 @media(max-width:380px) and (orientation:portrait){#chuanmaGame #cmHand .cm-tile{width:42px;flex-basis:42px;height:56px}#chuanmaGame #cmHand .cm-tile strong{font-size:22px}#chuanmaGame #cmHand .cm-tile span{font-size:12px}}
 @media(min-width:660px) and (orientation:landscape){#chuanmaGame #cmHand .cm-tile{width:46px;flex-basis:46px;height:62px}}
 @media(orientation:landscape) and (max-height:500px){#chuanmaGame #cmHand{padding:22px 3px 4px}#chuanmaGame #cmHand .cm-tile{width:44px;flex-basis:44px;height:44px}#chuanmaGame #cmHand .cm-tile strong{font-size:20px}#chuanmaGame #cmHand .cm-tile span{font-size:11px}}
+
+/* Portrait drawing workspace: the canvas owns the available viewport; chat never sets intrinsic page width. */
+body[data-game="draw"][data-view="game"] .app{max-width:980px;padding:4px 8px 8px;min-width:0;width:100%;overflow-x:clip}
+body[data-game="draw"][data-view="game"] .top{height:34px;margin:0 0 4px}
+body[data-game="draw"][data-view="game"] #playersGame,body[data-game="draw"][data-view="game"] #liteGameContext{display:none!important}
+body[data-game="draw"][data-view="game"] #gameCard{background:transparent;border:0;padding:0;margin:0;min-width:0}
+#drawGame{width:100%;min-width:0;max-width:100%;grid-template-columns:minmax(0,1fr);overflow:hidden;padding:6px;gap:5px;min-height:calc(100dvh - 50px)}
+#drawGame .tg-head,#drawGame .draw-heading,#drawGame .draw-side,#drawGame #canvasPanel{min-width:0;max-width:100%}
+#drawGame .draw-heading{padding:3px!important;gap:3px}#drawGame .draw-heading .stage-sub{overflow-wrap:anywhere}
+#drawGame .guess-feed{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-start;gap:4px;width:100%;min-width:0;max-width:100%;overflow-x:hidden;overflow-y:auto;max-height:74px;padding:2px 0;margin:2px 0;scrollbar-width:thin;overscroll-behavior:contain}
+#drawGame .guess-chip{white-space:normal;overflow-wrap:anywhere;word-break:break-word;max-width:100%;min-width:0;flex:0 1 auto;border-radius:8px;padding:4px 6px}
+#drawGame .guess-row{min-width:0;max-width:100%}#drawGame .guess-row input{width:0;min-width:0}#drawGame .guess-row button{flex:none}
+#drawGame .draw-tools{gap:4px}#drawGame .draw-tools .tool-btn{min-width:36px;padding:4px 6px}
+@media(orientation:portrait){#drawGame{height:calc(100dvh - 50px);grid-template-rows:auto auto minmax(0,1fr) auto}#drawGame #canvasPanel{display:flex;flex-direction:column;justify-content:stretch;min-height:0;gap:4px}#drawGame #canvasPanel.hidden{display:none}#drawGame .canvas-shell{max-width:100%;width:100%;flex:1 1 0;min-height:0;margin:0;border-radius:10px}#drawGame .draw-canvas{width:100%;height:100%;aspect-ratio:auto}#drawGame .draw-side{flex:0 0 auto}#drawGame .guess-feed:empty{display:none}#drawGame #wordChoicePanel{grid-row:3}#drawGame #drawReveal{grid-row:4}}
+@media(orientation:landscape){#drawGame{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto}#drawGame #canvasPanel{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:10px;align-items:center}#drawGame #canvasPanel.hidden{display:none}#drawGame .canvas-shell{max-width:min(100%,calc((100dvh - 140px)*2/3));width:100%;margin:auto}#drawGame .draw-canvas{aspect-ratio:2/3;height:auto}#drawGame .guess-feed{max-height:110px}}

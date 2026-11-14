@@ -116,7 +116,7 @@ def bot_step(p):
             return _bot_move(p,'cm_discard',tileId=tile['id'])
     if mode=='draw' and phase=='draw_choose':
         begin_draw_word(0); d=STATE['draw']; strokes=BOT_PICTURES[d['word']]
-        d['strokes']=[{'seq':i+1,'color':'#111111','width':7,'erase':False,'points':[[.13+x*.0074,.05+y*.009] for x,y in line]} for i,line in enumerate(strokes)]
+        d['strokes']=[{'seq':i+1,'color':'#111111','width':7,'erase':False,'points':[[.13+x*.0074,.275+y*.0045] for x,y in line]} for i,line in enumerate(strokes)]
         d['strokeSeq']=len(strokes);d['canvasRevision']+=1;bump();return True
     return False
 
