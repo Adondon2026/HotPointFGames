@@ -3,7 +3,7 @@ from pathlib import Path
 os.environ['GAMEHALL_DATA_DIR']=tempfile.mkdtemp()
 spec=importlib.util.spec_from_file_location('g',Path(__file__).resolve().parents[1]/'dist/game_hall_lan_v6_2.py');g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
 def new(mode='standard',buff='stock'):return g._siege_new('A','a',True,0,mode,'off',0,buff)
-r=new();r['buffs'][0].update(big=3,power=2,shield=3,vision=2);g._siege_fire(r,42,65,{});assert r['buffs'][0]['big']==3 and not r['event']['attacks'];g._siege_fire(r,42,65,{});g._siege_fire(r,42,65,{'big':2,'power':1,'shield':2});assert r['event']['radius']==18 and r['event']['blastRadius']==124 and r['buffs'][0]['big']==1 and r['armed'][0]=={'shield':2};g._siege_fire(r,42,65,{});assert r['event']['defenseCounts']=={'shield':2} and not r['armed'][0] and r['buffs'][0]['shield']==1
+r=new();r['buffs'][0].update(big=3,power=2,shield=3);g._siege_fire(r,42,65,{});assert r['buffs'][0]['big']==3 and not r['event']['attacks'];g._siege_fire(r,42,65,{});g._siege_fire(r,42,65,{'big':2,'power':1,'shield':2});assert r['event']['radius']==18 and r['event']['blastRadius']==124 and r['buffs'][0]['big']==1 and r['armed'][0]=={'shield':2};g._siege_fire(r,42,65,{});assert r['event']['defenseCounts']=={'shield':2} and not r['armed'][0] and r['buffs'][0]['shield']==1
 before=copy.deepcopy(r);r['turn']=0
 for bad in ({'big':9},{'vision':2},{'heal':1},{'power':True},{'big':-1}):
     try:g._siege_fire(r,42,65,bad)

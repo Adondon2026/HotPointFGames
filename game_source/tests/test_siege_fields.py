@@ -35,18 +35,15 @@ for name,field in g._SIEGE_FIELDS.items():
         assert got,(name,it);checks+=1
     g._siege_rematch(r);assert r['field']==name and r['shots']==[0,0]
 random.seed(6);seen={g._siege_new('A','a',True,0,'random')['field'] for _ in range(80)};assert seen==set(g._SIEGE_FIELDS)|set(g._SIEGE_NEW_FIELDS)
-# Vision does not change flight or damage; consumes one charge only on own shot.
-r=g._siege_new('A','a',True,0,'standard');q=copy.deepcopy(r);q['buffs'][0]['vision']=2
-for x in (r,q):g._siege_fire(x,42,65)
-assert q['event']['frames']==r['event']['frames'] and q['buffs'][0]['vision']==1
-q['turn']=1;g._siege_fire(q,5,15);assert q['buffs'][0]['vision']==1
-q['turn']=0;g._siege_fire(q,5,15);assert q['buffs'][0]['vision']==0
+# Legacy vision charges become usable power charges, not a required camera entitlement.
+r=g._siege_new('A','a',True,0,'standard');r['buffs'][0]['vision']=2;g._siege_normalize_buffs(r)
+assert 'vision' not in r['buffs'][0] and r['buffs'][0]['power']==2
 # Moving pickup at a known point in flight, not at its static anchor.
 r=g._siege_new('A','a',True,0);r['motionEpoch']=g.time.time();t=.5;a=math.radians(42);x=235+520*math.cos(a)*t;y=390-520*math.sin(a)*t+230*t*t
-r['items']=[dict(id=0,kind='vision',x=x-60*math.sin(t*1.35),y=y,r=15,mx=60,my=0,phase=0)];g._siege_fire(r,42,65);assert r['buffs'][0]['vision']==1
+r['items']=[dict(id=0,kind='power',x=x-60*math.sin(t*1.35),y=y,r=15,mx=60,my=0,phase=0)];g._siege_fire(r,42,65);assert r['buffs'][0]['power']==1
 # New buffs actually change the shot/impact; old base balance remains separate.
 r=g._siege_new('A','a',True,0);q=copy.deepcopy(r);q['buffs'][0].update(through=1,splitshot=1);g._siege_fire(r,42,65);g._siege_fire(q,42,65);assert q['event']['passed'] and len(q['event']['extraBlasts'])==2 and q['buffs'][0]['through']==0
 r=g._siege_new('A','a',True,0);q=copy.deepcopy(r);r['buffs'][0]['shock']=1;q['buffs'][0]['shock']=1;q['buffs'][1]['buffer']=1;g._siege_fire(r,42,65);g._siege_fire(q,42,65);assert q['event']['defenses']==['buffer'] and q['buffs'][1]['buffer']==0 and q['event']['frames']!=r['event']['frames']
 r=g._siege_new('A','a',True,0,'obstacle');assert any(b['side']==-1 for b in r['bodies']);r['wind']=0
 p=aim(r,0,480,365,20);assert p;g._siege_fire(r,20,p);assert r['event']['hitId']==16
-print('Six fields:',checks,'actual trajectory checks; random, motion, vision, penetration, fragments, buffer, obstacle PASS')
+print('Six fields:',checks,'actual trajectory checks; random, motion, migration, penetration, fragments, buffer, obstacle PASS')
