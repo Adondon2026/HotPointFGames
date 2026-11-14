@@ -4,7 +4,7 @@ _SIEGE_ROOMS={}
 _SIEGE_W,_SIEGE_H,_SIEGE_G=960,480,416
 _SIEGE_GRAV=460.0
 _SIEGE_MAX_SHOTS=6
-_SIEGE_AMMO=(0,6,10,15,20)
+_SIEGE_AMMO=tuple(range(0,101))
 _SIEGE_WIND={"off":0,"low":30,"medium":70,"high":125}
 _SIEGE_FIELDS={
     'standard': {'label':'标准对射','offset':0,'layout':'tower','rise':0,'pool':('power','big','heal')},
