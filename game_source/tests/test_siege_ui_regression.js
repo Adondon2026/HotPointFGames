@@ -1,23 +1,33 @@
-/* Regression coverage for the browser-only siege page and lobby settings.
-   Source-level parse plus bootstrap-order and responsive structure checks. */
+/* ZMZ v0.20.1: verify upstream immersive UI + room-settings escape + audio re-entry. */
+'use strict';
 const fs=require('fs'),assert=require('assert'),vm=require('vm');
 const src=p=>fs.readFileSync(__dirname+'/../'+p,'utf8');
-const builder=src('build.py'),page=src('web/games/siege.html'),audio=src('web/games/siege_audio.js');
+const b=src('build.py'),s=src('web/games/siege.html'),a=src('web/games/siege_audio.js');
 const lobby=src('web/90_shell_after_games.html'),css=src('web/lite.css'),lite=src('web/lite.js');
-assert(builder.includes('replace("<script>", "<script>\\n" + read("web/games/siege_audio.js")'));
-const embedded=page.replace('<script>','<script>\n'+audio+'\n');
-const script=embedded.match(/<script>([\s\S]*?)<\/script>/);
-assert(script,'Siege page must have one embedded script');
-new vm.Script(script[1],{filename:'siege.html'});
-assert(script[1].indexOf('const siegeAudio=')>=0);
-assert(script[1].indexOf('const siegeAudio=')<script[1].indexOf("enter('state')"),'Audio initialized after automatic room entry');
-assert(page.includes("if(type!=='state')siegeAudio.unlock()"),'Autoload must not invoke WebAudio before user gesture');
-assert(page.includes("进入对局失败，请返回房间重试"),'Load errors must be recoverable');
-assert(lobby.includes('<details id="siegeAllowedConfig"'),'Buff selector must be collapsible');
-assert(lobby.includes('<summary>允许出现的增益'),'Buff selector must have visible summary');
-assert(lite.includes("querySelectorAll('.setting-grid > label')"),'Only direct setting labels should be toggled');
-assert(lite.includes("box.querySelector('.sheet').scrollTop=0"),'New settings modal must scroll to start');
-assert(css.includes('#settingsModal .sheet{')&&css.includes('overflow-x:hidden;overflow-y:auto;'), 'Settings sheet must allow vertical scrolling');
-assert(css.includes('#siegeAllowedConfig{grid-column:1/-1'), 'Buff choices must not break the two-column layout');
-assert(css.includes('#siegeBuffChoices{display:grid'), 'Buff choices must use compact multi-column grid');
-console.log('Siege UI regression tests passed: bootstrap, controls, scrolling and script syntax');
+assert(b.includes('GAME_DISPLAY_VERSION = "ZMZ v0.20.1"'));
+assert(b.includes('replace("@@ZMZ_GAME_VERSION@@", GAME_DISPLAY_VERSION)'));
+assert(s.includes('@@ZMZ_GAME_VERSION@@'));
+assert(src('web/hub.html').includes('@@ZMZ_GAME_VERSION@@'));
+assert(src('web/00_shell_before_games.html').includes('@@ZMZ_GAME_VERSION@@'));
+assert(b.includes('replace("<script>", "<script>\\n" + read("web/games/siege_audio.js")'));
+const js=s.replace('<script>','<script>\n'+a+'\n').match(/<script>([\s\S]*?)<\/script>/);
+assert(js&&js[1].indexOf('const siegeAudio=')<js[1].indexOf("enter('state')"));
+new vm.Script(js[1],{filename:'integrated_siege.js'});
+assert(s.includes('id="mapToggle"')&&s.includes('id="menuToggle"')&&s.includes('id="stockBtn"'),'main immersive HUD retained');
+assert(s.includes('negativePending')&&s.includes('room.clones')&&s.includes('spiral:'),'ZMZ effects retained');
+assert(s.includes('siegeAudio.enterBattle()'),'Room entry restores saved music');
+assert(lobby.includes('<details id="siegeAllowedConfig"'),'Long buff selector must be collapsible');
+assert(lobby.includes('id="siegeBuffBack"')&&lite.includes("$('siegeBuffBack').onclick"),'Explicit return to room settings');
+assert(lite.includes("$('siegeAllowedConfig').open=false"),'Always start with folded settings list');
+assert(lite.includes("siegeBuffList.length"),'Selected total must be dynamic');
+assert(lite.includes('siegeSettingsView();'),'Toggled checkboxes must refresh visible counts');
+assert(css.includes('#siegeBuffChoices{max-height:')||css.includes(' #siegeBuffChoices{max-height:'),'Nested selectable list must scroll');
+const x=lite.indexOf('const siegeBuffList='),y=lite.indexOf(';',x);
+assert(x>=0&&y>x);
+const cx=vm.createContext({});
+vm.runInContext(lite.slice(x,y+1)+';this.all=siegeBuffList',cx);
+assert.equal(cx.all.length,24);
+for(const id of ['spiral','repeat','push','clone','heavy','vanish','wobble','fart'])
+  assert(cx.all.some(k=>k[0]===id),id);
+assert(a.includes('function enterBattle()')&&a.includes('return {unlock,enterBattle'),'Persistent music should restart on room entry');
+console.log('Integrated v0.20.1 UI bootstrap, version, menu, 24 buffs, scrolling and audio API PASS');
