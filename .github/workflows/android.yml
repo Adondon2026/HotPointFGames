@@ -72,6 +72,7 @@ jobs:
           python game_source/tests/test_siege_v12.py
           python game_source/tests/test_siege_v13.py
           python game_source/tests/test_siege_v14.py
+          python game_source/tests/test_siege_v15.py
           node game_source/tests/test_army_presentation.js
           python tools/sync_game_source.py
           python tests/test_android_bridge.py
