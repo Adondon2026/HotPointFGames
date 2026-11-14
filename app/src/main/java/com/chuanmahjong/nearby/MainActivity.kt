@@ -100,7 +100,7 @@ class MainActivity : Activity() {
         }
 
         content.addView(TextView(this).apply {
-            text = "热点游戏厅 · ZMZ v0.19.0"
+            text = "热点游戏厅"
             textSize = 30f
             setTextColor(Color.rgb(90, 20, 16))
             gravity = Gravity.CENTER
@@ -305,7 +305,7 @@ class MainActivity : Activity() {
     private fun checkUpdates(manual: Boolean) {
         if (checkingUpdate || importing) return
         checkingUpdate = true
-        updateMessage = "正在检查 ZMZ 专属游戏更新…"
+        updateMessage = "正在检查 GitHub 版本…"
         refreshUi()
         Thread {
             var found: GameUpdates.Available? = null

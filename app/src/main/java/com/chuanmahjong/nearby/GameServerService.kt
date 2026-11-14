@@ -175,7 +175,7 @@ class GameServerService : Service() {
         }
         return builder
             .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("热点游戏厅 ZMZ")
+            .setContentTitle("热点游戏厅")
             .setContentText(text)
             .setContentIntent(openIntent)
             .setOngoing(true)

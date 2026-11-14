@@ -49,7 +49,7 @@ def build_release():
         read("parts/00_header.pyfrag"),
         "HTML_PAGE = " + repr(html) + "\n\n",
         "HUB_PAGE = " + repr(read("web/hub.html")) + "\n\n",
-        "SIEGE_PAGE = " + repr(read("web/games/siege.html").replace("</script>", "\n" + read("web/games/siege_audio.js") + "\n</script>", 1)) + "\n\n",
+        "SIEGE_PAGE = " + repr(read("web/games/siege.html").replace("<script>", "<script>\n" + read("web/games/siege_audio.js") + "\n", 1)) + "\n\n",
         read("parts/01_draw_constants.pyfrag"),
         read("parts/games/doudizhu_backend.pyfrag"),
         read("parts/games/chuanma_backend.pyfrag"),

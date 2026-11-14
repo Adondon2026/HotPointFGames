@@ -17,7 +17,9 @@ object GameUpdates {
     private const val HOST_VERSION = 5
     private val allowedHosts = setOf("api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
     // This channel never accepts mainline game-* releases.
-    private val releaseTag = Regex("zmz-game-v[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+-[0-9]+-[a-f0-9]{7,40}")
+    private val releaseTag = if (BuildConfig.ZMZ_BUILD)
+        Regex("zmz-game-v[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+-[0-9]+-[a-f0-9]{7,40}")
+    else Regex("game-[0-9]+-[0-9]+-[a-f0-9]{7,40}")
     private val hashPattern = Regex("[a-f0-9]{64}")
 
     data class Info(val version: String, val source: String, val sourceEpoch: Long, val sha256: String, val size: Int, val minHost: Int) {
@@ -96,7 +98,11 @@ object GameUpdates {
         val candidates = (0 until releases.length()).map { releases.getJSONObject(it) }.filter {
             !it.optBoolean("draft") && !it.optBoolean("prerelease") && releaseTag.matches(it.optString("tag_name"))
         }
-        val release = candidates.maxWithOrNull(compareBy<JSONObject> { it.optString("tag_name").split('-')[3].toLong() }.thenBy { it.optString("tag_name").split('-')[4].toLong() }) ?: return null
+        val release = candidates.maxWithOrNull(compareBy<JSONObject> {
+            it.optString("tag_name").split('-')[if (BuildConfig.ZMZ_BUILD) 3 else 1].toLong()
+        }.thenBy {
+            it.optString("tag_name").split('-')[if (BuildConfig.ZMZ_BUILD) 4 else 2].toLong()
+        }) ?: return null
         val tag = release.getString("tag_name")
         val assets = release.getJSONArray("assets")
         val names = (0 until assets.length()).map { assets.getJSONObject(it).optString("name") }
