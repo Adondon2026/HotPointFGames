@@ -1,8 +1,9 @@
-# HotPointFGames Lite · v0.19.1 横屏布局与显示设置
+# HotPointFGames Lite · v0.20 音效、房间设置与增益规则
 
 Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；也可 `python run_preview.py`。Python 3.10+，无需第三方库。手机房主使用 Android 1.3 检查更新，或运行器手动导入 `dist/game_hall_lan_v6_2.py`（或 .txt），关闭 APP 再重新打开。手机本机单人游戏不需要开启热点。
 
 ## 玩法
+- v0.20：吸收 Zmz_dev 原创 Web Audio 音乐及炮声，菜单内切换；主线战场界面保持不变。房间设置改为数字直接输入、模式直接选择、条件显示和可折叠增益选择；每种增益可独立设置单发上限，弹跳最多20层、穿透最多10层，其余常规增益最多5层，修复与瞬移固定1。堡垒强度提供原版、建筑减伤25%/45%，核心不变。道具生成和刷新由服务端筛选，设置按原有账号/游客记忆机制保存。
 - v0.19.1：小地图独立手动开关，瞄准与飞行期间保持显示；删除地图标题行，回炮台移入菜单。手机横屏顶部与底部紧凑化，竖屏尺寸不变；界面和地图不透明度独立可调、本机记忆。
 - v0.19：拆家大战采用顶部紧凑状态栏与底部操作条；地图、房间菜单和角度/力度微调按需展开，删除地图左右按钮；两种模式均松手保留瞄准，点击开炮或准备才发射。飞行时隐藏操作，拾取提示在战场位置显示。自动增益可查看库存。
 - v0.18.2：机器人禁用两类瞬移，按目标位置选择射击方向；巨型弹炮口被建筑挡住可确认强制发射，地面碰撞仍受保护。
@@ -31,6 +32,8 @@ Windows：解压后双击 `START_GAME.bat`，浏览器自动打开游戏厅；�
 `local_data/` 保存账户 SQLite 数据和房间状态。更新请保留原文件夹的 `local_data`，停止旧服务器后覆盖程序文件。导入 Android 版本会保留运行器私有数据（房间主动停止会清空）。
 
 ## 开发
+
+v0.20 后端专项：`python tests/test_siege_v20.py`；可选 Playwright 房间设置回归：`python tests/test_siege_settings_ui_v20.py`（先 `python build.py`，安装 Playwright Chromium）。
 
 可选浏览器回归测试：安装 Playwright (`python -m pip install playwright`、`playwright install chromium`)，在 game_source 下运行 `python build.py`、`python tests/test_siege_ui_v19.py`，也可指定 `CHROMIUM_PATH` 使用本机 Chromium。覆盖触屏保留瞄准、实际护盾选择、地图定位、微调和双客户端同步开炮。
 

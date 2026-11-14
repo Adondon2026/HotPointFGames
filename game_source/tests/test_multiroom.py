@@ -30,7 +30,8 @@ try:
  assert not act(a,y,'siege_settings',itemCount=25)['ok']
  for bad in (-1,26,True,3.5,'13'):assert not act(a,x,'siege_settings',itemCount=bad)['ok']
  assert state(a,x)['settings']['siegeAmmo']==0 and state(a,x)['settings']['siegeMode']=='random'
- assert not act(a,x,'siege_settings',itemCount=21,ammo=7)['ok']
+ assert not act(a,x,'siege_settings',itemCount=21,ammo=101)['ok']
+ assert act(a,x,'siege_settings',itemCount=21,ammo=7)['ok']
  assert not act(a,x,'siege_settings',itemCount=21,wind='invalid')['ok']
  assert act(a,x,'siege_settings',itemCount=21,ammo=10,mode='classic',wind='off')['ok'];assert state(a,y)['settings']['siegeItemCount']==21;assert state(b,z)['settings']['siegeItemCount']==13
  assert act(a,x,'start')['ok'];assert len(siege(a,x,'state')['items'])==21
