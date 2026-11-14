@@ -383,7 +383,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if b.get('floatFort') and b['kind']!='core' and damage>=8:
             b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
 
-    def snap(t,p):return [round(t,3),(p+[round(draw_radius,2)] if p is not None else None),[_siege_pos(b) for b in bodies],[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)]]
+    def snap(t,p):return [round(t,3),p,[_siege_pos(b) for b in bodies],[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)],round(draw_radius,2)]
     frames.append(snap(0,[round(px,1),round(py,1)]))
     shot_no=r['shots'][side]+1
     def sample(t,p):

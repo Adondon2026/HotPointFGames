@@ -32,7 +32,7 @@ base=fresh();baseline=fire(base)
 heavy=fresh();heavy['negativePending'][0]['heavy']=1;eh=fire(heavy)
 assert eh['impact'][0]<baseline['impact'][0]-120,(eh['impact'],baseline['impact'])
 vanish=fresh();vanish['negativePending'][0]['vanish']=1;ev=fire(vanish)
-sizes=[f[1][2] for f in ev['frames'] if f[1]]
+sizes=[f[4] for f in ev['frames'] if f[1]]
 assert sizes[0]>sizes[-1] and min(sizes)>=2.5
 fart=fresh();fart['negativePending'][0]['fart']=1;ep=fire(fart)
 assert len(ep['puffs'])>3 and ep['impact'][1]<baseline['impact'][1]-50
