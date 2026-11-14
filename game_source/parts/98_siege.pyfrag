@@ -500,10 +500,12 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     if live is not None:
         live['physicsFns'][side]=integrate
         t=0.;yield sample(0,[round(px,1),round(py,1)])
-    for step in range(1,1081):
+    # Honor the upstream 20-bounce cap: high stack counts need longer than 10s flight.
+    flight_limit=10+max(0,attack_counts.get('bounce',0)-5)*.8
+    for step in range(1,int((flight_limit+8)*60)+1):
         t=step*dt
         _siege_motion(r,motion_start+t)
-        if impact is None and t>=10:
+        if impact is None and t>=flight_limit:
             impact=[round(px,1),round(py,1)];hit_at=t;last_hit=t;teleport_target=(px,py)
         if impact is None and blocked is not None and step==1:
             # A deliberately forced shot detonates at the actual obstructed muzzle.
@@ -547,7 +549,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     frames.append(snap(t,[round(px,1),round(y,1)]));break
         for f in fragments:
             if not f['live'] or t<f.get('bornAt',0):continue
-            if t>=10:f['live']=False;continue
+            if t>=flight_limit:f['live']=False;continue
             ox,oy=f['x'],f['y'];f['x']+=f['vx']*dt;f['y']+=f['vy']*dt
             a1,b1=_siege_v20_offset(t-f.get('bornAt',0),spiral_n,negatives);a0,b0=_siege_v20_offset(t-dt-f.get('bornAt',0),spiral_n,negatives)
             f['x']+=a1-a0;f['y']+=b1-b0;f['travel']=f.get('travel',0)+math.hypot(f['x']-ox,f['y']-oy)
