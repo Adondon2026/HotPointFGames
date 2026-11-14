@@ -710,7 +710,7 @@ def _siege_sync_runtime(r,now=None):
     return {'room':r,'round':1,'deadline':_siege_prep_deadline(r,now),'plans':[None,None],'force':[False,False],'locked':[False,False],'replay':None,'until':0.,'notice':['','']}
 
 def _siege_prep_seconds(r):
-    n=r.get('reloadSeconds',15);return n if n in (0,5,10,15) else 15
+    n=r.get('reloadSeconds',15);return n if type(n) is int and 0<=n<=120 else 15
 
 def _siege_prep_deadline(r,now):
     seconds=_siege_prep_seconds(r)
