@@ -18,9 +18,9 @@ else:raise AssertionError('blocked rear muzzle')
 assert r['buffs'][0]['big']==5 and r['shots']==[0,0]
 # Real inherited modifiers; split children do not recursively split.
 r=new();r['buffs'][0].update(big=2,power=2,splitshot=1,bounce=1,blackhole=1,wooddrop=1,through=1);g._siege_fire(r,42,43,{k:n for k,n in r['buffs'][0].items() if n});e=r['event'];assert e['fragmentRadius']==18 and any(len(f[3])==2 for f in e['frames']);assert len(e['holes'])>=2 and len(e['drops'])>=2,(e['holes'],e['drops']);assert e['duration']>=max(h[2]+2 for h in e['holes'])-.02
-# Separate teleports retain hp, target own safe territory and consume only one.
+# Separate teleports retain hp, target safe full-map column and consume only one.
 for kind in ('gunteleport','coreteleport'):
- r=new();r['buffs'][0][kind]=3;core=next(b for b in r['bodies'] if b['side']==0 and b['kind']=='core');core['hp']=73;old=g._siege_launcher(0,r) if kind=='gunteleport' else (core['x'],core['y']);g._siege_fire(r,42,30,{kind:1});e=r['event'];assert e['teleports'] and e['teleports'][0][0]==kind and e['teleports'][0][4]<=430;assert r['buffs'][0][kind]==2 and 0<core['hp']<=73;assert old!=(g._siege_launcher(0,r) if kind=='gunteleport' else (core['x'],core['y']))
+ r=new();r['buffs'][0][kind]=3;core=next(b for b in r['bodies'] if b['side']==0 and b['kind']=='core');core['hp']=73;old=g._siege_launcher(0,r) if kind=='gunteleport' else (core['x'],core['y']);g._siege_fire(r,42,30,{kind:1});e=r['event'];assert e['teleports'] and e['teleports'][0][0]==kind and 45<=e['teleports'][0][4]<=915;assert r['buffs'][0][kind]==2 and 0<core['hp']<=73;assert old!=(g._siege_launcher(0,r) if kind=='gunteleport' else (core['x'],core['y']))
 # Blackhole is an actual two-second attraction, stronger with more charges; no object disappears into it.
 r=new();g._siege_fire(r,42,30);x,y=r['event']['impact'];base=new();b=next(b for b in base['bodies'] if b['side']==0 and b['kind']=='stone');b.update(x=x-100,y=350,w=24,h=24,hp=1000,max=1000);base['bodies']=[b]+[c for c in base['bodies'] if c['kind']=='core'];results=[]
 for n in (0,1,3):

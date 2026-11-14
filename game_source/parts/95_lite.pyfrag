@@ -15,6 +15,7 @@ def _db():
     db = sqlite3.connect(str(ACCOUNT_DB), timeout=5)
     db.row_factory = sqlite3.Row
     db.executescript('''CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE COLLATE NOCASE, salt TEXT NOT NULL, pin_hash TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS room_preferences(owner TEXT PRIMARY KEY, settings TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS results(match_id TEXT NOT NULL,user_id TEXT NOT NULL,game TEXT NOT NULL,won INTEGER NOT NULL,points INTEGER NOT NULL,raw INTEGER NOT NULL,ended INTEGER NOT NULL,PRIMARY KEY(match_id,user_id));''')
     # One-time, additive schema change. Historical results stay as recorded;

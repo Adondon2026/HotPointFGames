@@ -234,11 +234,11 @@ def _siege_box_bounce(b,ox,oy,x,y,vx,vy,radius):
     if dot<0:vx-=1.76*dot*nx;vy-=1.76*dot*ny
     return cx+nx*.5,cy+ny*.5,vx,vy
 
-def _siege_selection(r,selection):
+def _siege_selection(r,selection,side=None):
     if r.get('buffMode','auto')!='stock':return {}
     if selection is None:selection={}
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
-    _siege_normalize_buffs(r);inv=r['buffs'][r['turn']];out={}
+    _siege_normalize_buffs(r);inv=r['buffs'][r['turn'] if side is None else side];out={}
     for k,n in selection.items():
         if k not in _SIEGE_SELECTABLE or type(n) is not int or not 0<=n<=min(1 if k in _SIEGE_ONE_SHOT else _SIEGE_STACK_MAX,inv[k]):raise ValueError('增益数量超出库存或单次上限')
         if n:out[k]=n
@@ -260,24 +260,30 @@ def _siege_reflect(r,ox,oy,x,y,vy,radius):
     return None
 
 def _siege_fire(r,angle,power,selection=None):
+    for _ in _siege_fire_steps(r,angle,power,selection):pass
+
+def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None):
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
-    side=r['turn']; direction=1 if side==0 else -1; motion_start=max(0,time.time()-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get("wind",0)
+    side=r['turn'] if side is None else side; direction=1 if side==0 else -1; motion_start=max(0,(live['clock'] if live is not None else time.time())-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get('windPair',0)*direction if live is not None else r.get('wind',0)
     a=math.radians(angle);speed=power*8.0;px,py=sx,sy;vx=direction*speed*math.cos(a);vy=-speed*math.sin(a)
     bodies=r['bodies'];bodies[:]=[b for b in bodies if not b.get('generated') or b['hp']>0]; dt=1/60;frames=[];impact=None;hit_at=None;settled=0;hit_id=None
     _siege_normalize_buffs(r)
     items_before=[dict(i) for i in r['items']]; buffs_before=[dict(b) for b in r['buffs']]
     stock=r.get('buffMode','auto')=='stock'
     armed=r.setdefault('armed',[{},{}]);armed_before=[dict(x) for x in armed]
-    chosen=_siege_selection(r,selection)
+    chosen=_siege_selection(r,selection,side)
     launch_radius=6+6*(chosen.get('big',0) if stock else int(r['buffs'][side]['big']>0))
     _siege_motion(r,motion_start)
     mx,my=_siege_muzzle(side,r,angle,launch_radius,motion_start)
     if launch_radius>6 and any(b['hp']>0 and abs(mx-b['x'])<b['w']/2+launch_radius and abs(my-b['y'])<b['h']/2+launch_radius for b in bodies):
         raise ValueError('巨型弹的炮口被建筑挡住，请提高角度或减少巨型弹层数')
     if stock:
+        if live is not None and any(armed[side].get(k,0)+n>_SIEGE_STACK_MAX for k,n in chosen.items() if k in _SIEGE_DEFENSE):raise ValueError('已有防御待命，请等待对方开炮后再启用')
         attack_counts={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
         defense_counts=dict(armed[1-side]);armed[1-side]={}
-        armed[side]={k:n for k,n in chosen.items() if k in _SIEGE_DEFENSE}
+        if live is not None:
+            armed[side]={**armed[side],**{k:armed[side].get(k,0)+n for k,n in chosen.items() if k in _SIEGE_DEFENSE}}
+        else:armed[side]={k:n for k,n in chosen.items() if k in _SIEGE_DEFENSE}
         for k,n in chosen.items():r['buffs'][side][k]-=n
     else:
         attack_counts={k:1 for k in (*_SIEGE_ATTACK,*_SIEGE_EXTRA_ATTACK) if r['buffs'][side][k]>0}
@@ -286,6 +292,7 @@ def _siege_fire(r,angle,power,selection=None):
         for k in defense_counts:r['buffs'][1-side][k]-=1
     attacks=list(attack_counts);defenses=list(defense_counts)
     pickups=[];passed=set();extra_blasts=[];fragments=[];fragment_hits=[];split_done=False;last_hit=None;bounces=[];ground_left=attack_counts.get('bounce',0);drop_queue=[];drop_events=[];holes=[];teleports=[];teleport_target=None
+    if live is not None:live['dropQueues'][side]=drop_queue
     launchers_before=[list(r['launchers'][i]) if r.get('launchers') else list(_siege_launcher(i,r,motion_start)) for i in (0,1)];gun_motion_before=[dict(m) for m in r.get('gunMotion',[])]
     _siege_motion(r,motion_start)
     n=attack_counts.get('big',0);radius=6+6*n;blast_radius=52+36*n
@@ -305,6 +312,9 @@ def _siege_fire(r,angle,power,selection=None):
 
     def snap(t,p):return [round(t,3),p,[_siege_pos(b) for b in bodies],[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live']]]
     frames.append(snap(0,[round(px,1),round(py,1)]))
+    shot_no=r['shots'][side]+1
+    def sample(t,p):
+        return {'side':side,'shotNo':shot_no,'p':p,'radius':radius,'angle':angle,'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live']], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports}
     def blast(x,y,target,scale=1.,br=None):
         nonlocal hit_id
         if scale==1:hit_id=target['id'] if target else None
@@ -327,7 +337,7 @@ def _siege_fire(r,angle,power,selection=None):
                 n=max(18,math.hypot(dx,dy));b['vx']+=mag*dx/n;b['vy']+=min(-12*buffer,mag*dy/n-20*impulse_scale*scale*buffer)
     def schedule_drops(x,y,t,refund=False):
         kinds=[k for k in ('wooddrop','stonedrop') for _ in range(attack_counts.get(k,0))]
-        free=max(0,60-sum(b.get('generated',False) and b['hp']>0 for b in bodies)-len(drop_queue))
+        free=max(0,60-sum(b.get('generated',False) and b['hp']>0 for b in bodies)-(sum(map(len,live['dropQueues'].values())) if live is not None else len(drop_queue)))
         if refund:
             for k in kinds[free:]:r['buffs'][side][k]+=1
         for j,k in enumerate(kinds[:free]):drop_queue.append((t+.15+j*.52,k,max(19,min(941,x)),min(-100,y-250)))
@@ -376,12 +386,32 @@ def _siege_fire(r,angle,power,selection=None):
                     gain=min(18*item.get('amount',1),max(0,core['max']-core['hp'])) if core['hp']>0 else 0
                     core['hp']+=gain;pickups[-1]['healed']=gain
                 else:r['buffs'][side][item['kind']]+=item.get('amount',1)
-                if 'slot' in item:r.setdefault('respawns',[]).append({**item,'readyAt':sum(r['shots'])+5})
+                if 'slot' in item:r.setdefault('respawns',[]).append({**item,'readyAt':sum(r['shots'])+(4 if live is not None else 5)})
+    def integrate():
+        nonlocal last_hit,settled
+        for b in bodies:
+            if not b.get('falling') or b['hp']<=0:continue
+            bottom=b['y']+b['h']/2;next_bottom=bottom+(b['vy']+_SIEGE_GRAV*dt)*dt
+            contacts=[c for c in bodies if c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and bottom<=c['y']-c['h']/2+1 and next_bottom>=c['y']-c['h']/2]
+            c=min(contacts,key=lambda c:c['y']-c['h']/2) if contacts else None
+            floor=_siege_floor(r,b['x'])
+            if c or next_bottom>=floor:
+                b['y']=(c['y']-c['h']/2 if c else floor)-b['h']/2;b['vy']=0.;b['falling']=False;last_hit=t
+                if c and not c.get('generated'):hurt(c,(22 if b['kind']=='stone' else 12) if c['kind']=='core' else (8 if b['kind']=='stone' else 4))
+        for b in bodies:
+            if b['hp']<=0 or b.get('fixed'):continue
+            b['vy']+=_SIEGE_GRAV*dt;b['x']+=b['vx']*dt;b['y']+=b['vy']*dt;b['vx']*=.994
+        collide()
+        active=max((abs(b['vx'])+abs(b['vy']) for b in bodies if b['hp']>0),default=0)
+        settled=settled+1 if active<14 else 0
+    if live is not None:
+        live['physicsFns'][side]=integrate
+        t=0.;yield sample(0,[round(px,1),round(py,1)])
     for step in range(1,1081):
         t=step*dt
         _siege_motion(r,motion_start+t)
         if impact is None and t>=10:
-            impact=[round(px,1),round(py,1)];hit_at=t;last_hit=t
+            impact=[round(px,1),round(py,1)];hit_at=t;last_hit=t;teleport_target=(px,py)
         if impact is None:
             # The two child shells branch in the air, not at an invented impact point.
             if 'splitshot' in attacks and not split_done and (t>=.45 or (t>=.20 and vy>=0)):
@@ -406,10 +436,10 @@ def _siege_fire(r,angle,power,selection=None):
                     ground_left-=1;px=x;py=_siege_floor(r,x)-radius-.2;vy=-max(135,vy*.76);vx*=.86;bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 if target or y>=_siege_floor(r,x)-radius or x<0 or x>960:
                     px,py=x,y;impact=[round(x,1),round(y,1)];hit_at=t;last_hit=t
-                    if target or y>=_siege_floor(r,x)-radius:
+                    teleport_target=(x,y)
+                    if target or (0<=x<=960 and y>=_siege_floor(r,x)-radius):
                         blast(x,y,target)
                         schedule_drops(x,y,t,True)
-                        teleport_target=(x,y)
                     frames.append(snap(t,[round(x,1),round(y,1)]));break
         for f in fragments:
             if not f['live']:continue
@@ -452,49 +482,50 @@ def _siege_fire(r,angle,power,selection=None):
                     accel=(130+105*level)*(1-dist/(120+22*level))
                     b['vx']+=dx/dist*accel*dt;b['vy']+=(dy/dist*accel-350)*dt
                     b['vx']=max(-350,min(350,b['vx']));b['vy']=max(-350,min(350,b['vy']))
-            for b in bodies:
-                if not b.get('falling') or b['hp']<=0:continue
-                bottom=b['y']+b['h']/2;next_bottom=bottom+(b['vy']+_SIEGE_GRAV*dt)*dt
-                contacts=[c for c in bodies if c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and bottom<=c['y']-c['h']/2+1 and next_bottom>=c['y']-c['h']/2]
-                c=min(contacts,key=lambda c:c['y']-c['h']/2) if contacts else None
-                floor=_siege_floor(r,b['x'])
-                if c or next_bottom>=floor:
-                    b['y']=(c['y']-c['h']/2 if c else floor)-b['h']/2;b['vy']=0.;b['falling']=False;last_hit=t
-                    if c and not c.get('generated'):hurt(c,(22 if b['kind']=='stone' else 12) if c['kind']=='core' else (8 if b['kind']=='stone' else 4))
-            for b in bodies:
-                if b['hp']<=0 or b.get('fixed'):continue
-                b['vy']+=_SIEGE_GRAV*dt;b['x']+=b['vx']*dt;b['y']+=b['vy']*dt;b['vx']*=.994
-            collide()
-            active=max((abs(b['vx'])+abs(b['vy']) for b in bodies if b['hp']>0),default=0)
-            settled=settled+1 if active<14 else 0
-        if step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
+        if live is None and last_hit is not None:integrate()
+        if live is None and step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
+        if live is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
         if impact is not None and not drop_queue and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
-    # Relocate one entity once at the final main-shell impact, never heal or overlap.
+    # Teleport to the actual impact column anywhere on the battlefield. The descent is
+    # kinematic and collision-safe; gravity gives its timing, not impact damage.
     for kind in _SIEGE_ONE_SHOT:
         if not attack_counts.get(kind):continue
         core=next(b for b in bodies if b['side']==side and b['kind']=='core')
         old=_siege_launcher(side,r,motion_start+t) if kind=='gunteleport' else (core['x'],core['y'])
         if teleport_target is None or core['hp']<=0:
             r['buffs'][side][kind]+=1;continue
-        desired=teleport_target[0];lo,hi=(45,430) if side==0 else (530,915)
-        w,h=(90,96) if kind=='gunteleport' else (core['w'],core['h'])
-        for x in sorted(range(lo,hi+1,5),key=lambda x:abs(x-desired)):
-            y=_siege_floor(r,x)-(48 if kind=='gunteleport' else h/2)
-            if any(b['hp']>0 and (kind=='gunteleport' or b is not core) and abs(x-b['x'])<(w+b['w'])/2+3 and abs(y-b['y'])<(h+b['h'])/2+3 for b in bodies):continue
-            if kind=='coreteleport' and abs(x-_siege_launcher(side,r,motion_start+t)[0])<50:continue
-            if kind=='gunteleport':
-                r.setdefault('launchers',[list(_siege_launcher(i,r,motion_start+t)) for i in (0,1)])
-                r['launchers'][side]=[x,y]
-                if r.get('gunMotion'):r['gunMotion'][side]={'amplitude':0,'phase':0}
-            else:
-                core.update(x=x,y=y,vx=0.,vy=0.);core.pop('fixed',None);core.pop('motionY',None);core.pop('floatFort',None)
-            teleports.append([kind,side,*old,x,y,round(t,3)]);break
-        else:r['buffs'][side][kind]+=1
-    for b in bodies:b['vx']=b['vy']=0.
-    frames.append(snap(t,None));r['shots'][side]+=1;r['rev']+=1
+        desired=max(45,min(915,teleport_target[0]));w,h=(52,96) if kind=='gunteleport' else (core['w'],core['h'])
+        other_guns=[_siege_launcher(i,r,motion_start+t) for i in (0,1) if i!=side or kind=='coreteleport']
+        x=next((v for v in sorted(range(45,916,5),key=lambda v:abs(v-desired)) if all(abs(v-gx)>w/2+24 for gx,gy in other_guns)),desired)
+        def support():
+            return min([_siege_floor(r,x)]+[b['y']-b['h']/2 for b in bodies if (kind=='gunteleport' or b is not core) and b['hp']>0 and abs(x-b['x'])<(w+b['w'])/2+1]) - h/2
+        start_y=min(-100,teleport_target[1]-h/2-30,support()-60);y=start_y;v=0.;begin=t
+        if kind=='gunteleport':
+            r.setdefault('launchers',[list(_siege_launcher(i,r,motion_start+t)) for i in (0,1)])
+            if r.get('gunMotion'):r['gunMotion'][side]={'amplitude':0,'phase':0}
+            r['launchers'][side]=[x,y]
+        else:
+            core.update(x=x,y=y,vx=0.,vy=0.,fixed=True,teleportFall=True);core.pop('motionY',None);core.pop('floatFort',None)
+        record=[kind,side,*old,x,y,round(begin,3),start_y,round(begin,3)];teleports.append(record)
+        for j in range(1,241):
+            t=begin+j*dt;_siege_motion(r,motion_start+t);v+=_SIEGE_GRAV*dt;y=min(y+v*dt,support())
+            if kind=='gunteleport':r['launchers'][side]=[x,y]
+            else:core.update(x=x,y=y,vx=0.,vy=0.)
+            record[5]=y;record[8]=round(t,3)
+            if live is None and j%4==0:frames.append(snap(t,None))
+            if live is not None:yield sample(t,None)
+            if y>=support()-.01:break
+        if kind=='coreteleport':
+            core.pop('fixed',None);core.pop('teleportFall',None)
+        record[5]=y;record[8]=round(t,3)
+    if live is None:
+        for b in bodies:b['vx']=b['vy']=0.
+    frames.append(snap(t,None))
+    if live is None:r['shots'][side]+=1;r['rev']+=1
     refreshed=_siege_refill(r)
     cores=[_siege_core(bodies,i) for i in (0,1)]
     ammo=r.get("ammo",_SIEGE_MAX_SHOTS)
+    if live is not None:return
     if min(cores)<=0 or (ammo and all(n>=ammo for n in r['shots'])):
         r['phase']='over';r['winner']=None if abs(cores[0]-cores[1])<.01 else int(cores[1]>cores[0])
     else:
@@ -504,22 +535,78 @@ def _siege_fire(r,angle,power,selection=None):
     r['event']={'id':r['rev'],'side':side,'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':angle,'fragmentRadius':fragment_radius,'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(x) for x in r.get('launchers',[])],'gunMotion':r.get('gunMotion',[])}
     r['until']=time.time()+t+.35
 
-def _siege_bot_fire(r,a,p):
+_SIEGE_LIVE_DT=1/60
+
+def _siege_live_runtime(r,now=None):
+    now=time.time() if now is None else now
+    # A restarted server has no resumable Python generators. Recover a falling core safely.
+    for b in r['bodies']:
+        if b.pop('teleportFall',False):
+            b.pop('fixed',None);b['y']=min(b['y'],_siege_floor(r,b['x'])-b['h']/2);b['vy']=0.
+    return {'room':r,'clock':now,'active':{},'ready':[now,now],'physicsFns':{},'dropQueues':{}}
+
+def _siege_live_can_fire(r,rt,side,now):
+    return (r['phase']=='play' and min(_siege_core(r['bodies'],i) for i in (0,1))>0 and side not in rt['active'] and now>=rt['ready'][side] and (not r.get('ammo') or r['shots'][side]<r['ammo']))
+
+def _siege_live_start(r,rt,side,angle,power,selection=None,now=None):
+    now=time.time() if now is None else now
+    if not _siege_live_can_fire(r,rt,side,now):raise ValueError('上一发尚未结束、正在装填或弹药耗尽')
+    gen=_siege_fire_steps(r,angle,power,selection,side,rt)
+    sample=next(gen) # validates and reserves buffs before exposing shot
+    r['shots'][side]+=1;r['rev']+=1
+    rt['active'][side]={'gen':gen,'sample':sample};rt['ready'][side]=float('inf')
+
+def _siege_live_tick(r,rt,now=None):
+    now=time.time() if now is None else now;changed=False
+    # Both shots share bodies/items and advance on the same fixed timestep.
+    # Limit catch-up after a device sleeps; no huge CPU burst under the room lock.
+    if not rt['active']:rt['clock']=now;_siege_motion(r,max(0,now-r['motionEpoch']))
+    else:
+        steps=min(180,max(0,int((now-rt['clock'])/_SIEGE_LIVE_DT)))
+        for _ in range(steps):
+            rt['clock']+=_SIEGE_LIVE_DT
+            sides=list(rt['active'])
+            for side in sides:
+                entry=rt['active'][side]
+                try:entry['sample']=next(entry['gen'])
+                except StopIteration:
+                    del rt['active'][side];rt['physicsFns'].pop(side,None);rt['dropQueues'].pop(side,None);rt['ready'][side]=max(rt['clock'],now)+r.get('reloadSeconds',5);r['rev']+=1;changed=True
+            if not rt['active']:break
+            # Shared rigid-body world advances once, even if a shot is in teleport descent.
+            rt['physicsFns'][next(iter(rt['active']))]()
+    cores=[_siege_core(r['bodies'],i) for i in (0,1)];ammo=r.get('ammo',0)
+    if r['phase']=='play' and not rt['active'] and (min(cores)<=0 or (ammo and all(n>=ammo for n in r['shots']))):
+        r['phase']='over';r['winner']=None if abs(cores[0]-cores[1])<.01 else int(cores[1]>cores[0]);r['rev']+=1;changed=True
+    return changed
+
+def _siege_live_public(r,rt,key):
+    v=_siege_public(r,key,r['rev']);now=time.time();seat=v['seat'];v.update(combatMode='live',event=None,busy=seat in rt['active'],liveShots=[e['sample'] for e in rt['active'].values()],reload=[0 if i in rt['active'] else max(0,round(rt['ready'][i]-now,2)) for i in (0,1)],canFire=_siege_live_can_fire(r,rt,seat,now),liveActive=bool(rt['active']),motionTime=max(0,rt['clock']-r['motionEpoch']),wind=r.get('windPair',0)*(1 if seat==0 else -1))
+    return v
+
+def _siege_bot_fire(r,a,p,live=None):
     selection={k:min(1 if k in _SIEGE_ONE_SHOT else 2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE} if r.get('buffMode')=='stock' else None
+    if live is not None and selection is not None:
+        for k in _SIEGE_DEFENSE:
+            if k in selection:
+                selection[k]=min(selection[k],max(0,_SIEGE_STACK_MAX-r.get('armed',[{},{}])[1].get(k,0)))
+                if not selection[k]:selection.pop(k)
+    def shoot(angle,selection):
+        if live is not None:_siege_live_start(r,live,1,angle,p,selection)
+        else:_siege_fire(r,angle,p,selection)
     for angle in (a,45,25,5,75,90,115,145,175):
-        try:_siege_fire(r,angle,p,selection);return
+        try:shoot(angle,selection);return
         except ValueError:continue
     # A fort can physically surround the gun; fire an ordinary round if blocked.
-    if selection is not None:selection.pop('big',None);_siege_fire(r,a,p,selection)
+    if selection is not None:selection.pop('big',None);shoot(a,selection)
     else:
         n=r['buffs'][1]['big'];r['buffs'][1]['big']=0
-        try:_siege_fire(r,a,p)
+        try:shoot(a,None)
         finally:r['buffs'][1]['big']+=n
 
-def _siege_bot(r):
+def _siege_bot(r,live=None):
     # For unusual layouts, choose a trajectory that clears our own fort and any platforms.
     if r.get('field') in _SIEGE_NEW_FIELDS:
-        sx,sy=_siege_launcher(1,r);wind=r.get('wind',0);now=max(0,time.time()-r.get('motionEpoch',time.time()));choices=[]
+        sx,sy=_siege_launcher(1,r);wind=-r.get('windPair',0) if live is not None else r.get('wind',0);now=max(0,time.time()-r.get('motionEpoch',time.time()));choices=[]
         for a in range(25,86,5):
             for p in range(40,101,5):
                 rad=math.radians(a);v=p*8;score=-1
@@ -532,21 +619,21 @@ def _siege_bot(r):
                 if score>=2:choices.append((score,a,p))
         if choices:
             _,a,p=random.choice([x for x in choices if x[0]==max(y[0] for y in choices)])
-            _siege_bot_fire(r,a,p);return
+            _siege_bot_fire(r,a,p,live);return
     # Invert the same ballistic equations, then add small aiming error.
     targets=[b for b in r['bodies'] if b['side']==0 and b['hp']>0]
     target=random.choice(targets) if targets else None
     a=random.uniform(30,65);x,y=_siege_muzzle(1,r,a);tx=target['x'] if target else 122;ty=target['y'] if target else 380
-    rad=math.radians(a);wind=r.get('wind',0);dx=tx-x;dy=ty-y
+    rad=math.radians(a);wind=-r.get('windPair',0) if live is not None else r.get('wind',0);dx=tx-x;dy=ty-y
     # x = -v cos(a)t + .5 wind t², y = -v sin(a)t + .5 g t².
     den=.5*(_SIEGE_GRAV-wind*math.tan(rad));t=math.sqrt(max(.01,(dy-dx*math.tan(rad))/den))
     v=(.5*wind*t*t-dx)/(math.cos(rad)*t)
-    _siege_bot_fire(r,a,max(15,min(100,v/8+random.uniform(-2.5,2.5))))
+    _siege_bot_fire(r,a,max(15,min(100,v/8+random.uniform(-2.5,2.5))),live)
 
 def _siege_public(r,key,last):
     _siege_normalize_buffs(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
-    return {'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'armed':r.get('armed',[{},{}]),'stackMax':_SIEGE_STACK_MAX,'reflectors':r.get('reflectors',[])}
+    return {'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'stackMax':_SIEGE_STACK_MAX,'reflectors':r.get('reflectors',[])}
 
 def siege_request(data):
     key=str(data.get('key',''));kind=data.get('type');code=str(data.get('code','')).upper();now=time.time()
