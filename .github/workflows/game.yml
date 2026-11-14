@@ -3,7 +3,7 @@ name: Game files
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'friend/**', 'feature/**']
+    branches: [main, 'friend/**', 'feature/**', 'Zmz_dev']
     paths:
       - 'game_source/**'
       - '.github/workflows/game.yml'
@@ -58,6 +58,7 @@ jobs:
           python game_source/tests/test_siege_v18.py
           python game_source/tests/test_siege_v181.py
           python game_source/tests/test_siege_v182.py
+          python game_source/tests/test_siege_buff_filter.py
           python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
       - name: Generate update manifest

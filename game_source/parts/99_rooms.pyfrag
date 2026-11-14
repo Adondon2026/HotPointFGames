@@ -112,7 +112,7 @@ def _room_start_siege(player,solo=False):
         player['ready']=True
     if len(STATE['players'])!=2 or not humans or not all(is_connected(p) for p in humans):return {'error':'需要两名在线玩家'},409
     seats=sorted(STATE['players'],key=lambda p: p['id']!=STATE['hostPlayerId'])
-    r=_siege_new(seats[0]['name'],seats[0]['id'],bool(seats[1].get('isBot')),STATE['settings'].get('siegeItemCount',_SIEGE_DEFAULT_ITEMS),('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),STATE['settings'].get('siegeWind','medium'),STATE['settings'].get('siegeAmmo',0),STATE['settings'].get('siegeBuffMode','auto'))
+    r=_siege_new(seats[0]['name'],seats[0]['id'],bool(seats[1].get('isBot')),STATE['settings'].get('siegeItemCount',_SIEGE_DEFAULT_ITEMS),('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),STATE['settings'].get('siegeWind','medium'),STATE['settings'].get('siegeAmmo',0),STATE['settings'].get('siegeBuffMode','auto'),STATE['settings'].get('siegeAllowedBuffs'))
     r.update(code=_ROOM_ACTIVE['code'],players=[{'name':p['name'],'key':p['id']} for p in seats],phase='play')
     r.update(combatMode='sync' if STATE['settings'].get('siegeCombatMode')=='live' else STATE['settings'].get('siegeCombatMode','turn'),reloadSeconds=STATE['settings'].get('siegeReload',15) if STATE['settings'].get('siegeReload',15) in (0,5,10,15) else 15)
     _ROOM_ACTIVE['runtime'].pop('siegeLive',None);_ROOM_ACTIVE['runtime'].pop('siegeSync',None)
@@ -145,7 +145,11 @@ def _room_action(self,player,action,data):
             combat=data.get('combatMode',STATE['settings'].get('siegeCombatMode','turn'));reload=data.get('reloadSeconds',STATE['settings'].get('siegeReload',5))
             if combat=='live':combat,reload='sync',15
             if combat not in ('turn','sync') or type(reload) is not int or reload not in (0,5,10,15):return {'error':'对战或装填设置无效'},400
-            STATE['settings'].update(siegeItemCount=count,siegeAmmo=ammo,siegeMode=mode,siegeWind=wind,siegeBuffMode=buff_mode,siegeCombatMode=combat,siegeReload=reload);_room_save_settings(player);bump();return {},200
+            allowed=data.get('allowedBuffs',STATE['settings'].get('siegeAllowedBuffs'))
+            if allowed is not None and (type(allowed) is not list or len(allowed)>len(_SIEGE_ITEMS) or any(type(x) is not str or x not in _SIEGE_ITEMS for x in allowed) or len(set(allowed))!=len(allowed)):
+                return {'error':'请选择有效的增益类型'},400
+            allowed=list(_SIEGE_ITEMS) if allowed is None else [k for k in _SIEGE_ITEMS if k in allowed]
+            STATE['settings'].update(siegeItemCount=count,siegeAmmo=ammo,siegeMode=mode,siegeWind=wind,siegeBuffMode=buff_mode,siegeCombatMode=combat,siegeReload=reload,siegeAllowedBuffs=allowed);_room_save_settings(player);bump();return {},200
         if action in ('start','solo_start'):return _room_start_siege(player,action=='solo_start')
         if action=='reset':
             if player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可结束本局'},403
@@ -213,7 +217,7 @@ def _room_siege(data):
     elif kind=='rematch':
         if pid!=STATE['hostPlayerId'] or r['phase']!='over' or now<r['until']:return {'ok':False,'error':'等待房主开始下一局'}
         # Existing v0.8 matches finish under their original rules; new rounds use room settings.
-        r.update(itemCount=STATE['settings'].get('siegeItemCount',13),mode=('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),windLevel=STATE['settings'].get('siegeWind','medium'),ammo=STATE['settings'].get('siegeAmmo',0),buffMode=STATE['settings'].get('siegeBuffMode','auto'))
+        r.update(itemCount=STATE['settings'].get('siegeItemCount',13),mode=('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),windLevel=STATE['settings'].get('siegeWind','medium'),ammo=STATE['settings'].get('siegeAmmo',0),buffMode=STATE['settings'].get('siegeBuffMode','auto'),allowedBuffs=list(_siege_allowed({'allowedBuffs':STATE['settings'].get('siegeAllowedBuffs')})))
         r.update(combatMode='sync' if STATE['settings'].get('siegeCombatMode')=='live' else STATE['settings'].get('siegeCombatMode','turn'),reloadSeconds=STATE['settings'].get('siegeReload',15) if STATE['settings'].get('siegeReload',15) in (0,5,10,15) else 15)
         _settle_match();_siege_rematch(r);_ROOM_ACTIVE['runtime'].pop('siegeLive',None);_ROOM_ACTIVE['runtime'].pop('siegeSync',None);live=r['combatMode']=='live';rt=_room_siege_live(r) if live else None;sync=r['combatMode']=='sync';sr=_room_siege_sync(r) if sync else None;STATE['matchId']=secrets.token_hex(16);save_state()
     elif kind=='return':

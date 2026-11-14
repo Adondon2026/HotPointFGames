@@ -40,11 +40,22 @@ def _siege_amount():return random.choices((1,2,3,5),weights=(66,20,10,4))[0]
 _SIEGE_DEFAULT_ITEMS=13
 _SIEGE_MAX_ITEMS=25
 
-def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None):
+def _siege_allowed(r):
+    """Room-authoritative whitelist. None means all (including legacy saved rooms)."""
+    allowed=r.get('allowedBuffs')
+    if allowed is None:return tuple(_SIEGE_ITEMS)
+    return tuple(k for k in _SIEGE_ITEMS if k in allowed)
+
+def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None,allowed=None):
     count=max(0,min(_SIEGE_MAX_ITEMS,int(count)))
-    kinds=list(_SIEGE_ITEMS) if field else list(_SIEGE_ITEMS)[:6];random.shuffle(kinds)
+    allowed_set=set(_SIEGE_ITEMS if allowed is None else allowed)
+    kinds=[k for k in (list(_SIEGE_ITEMS) if field else list(_SIEGE_ITEMS)[:6]) if k in allowed_set]
+    if not count or not kinds:return []
+    random.shuffle(kinds)
     if field:
-        featured=list(field['pool']);random.shuffle(featured);kinds=featured+[k for k in kinds if k not in featured]
+        featured=[k for k in field['pool'] if k in allowed_set]
+        random.shuffle(featured)
+        kinds=featured+[k for k in kinds if k not in featured]
     # Each game samples a new formation, rather than perturbing the same grid.
     # Sample the actual ballistic envelope above the left fort, mirrored for fairness.
     if field:
@@ -93,10 +104,14 @@ def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None):
 def _siege_refill(r):
     # A collected slot becomes available after four more shots (two full rounds).
     turn=sum(r['shots']);waiting=r.setdefault('respawns',[]);new=[]
+    allowed=_siege_allowed(r)
+    if not allowed:
+        waiting.clear()
+        return new
     for item in waiting[:]:
         if turn<item['readyAt']:continue
         waiting.remove(item);it={k:v for k,v in item.items() if k not in ('readyAt','kind','id')}
-        it['kind']=random.choice(list(_SIEGE_ITEMS));it['amount']=1 if it['kind'] in _SIEGE_SINGLE_ITEMS else _siege_amount();it['id']=r.get('nextItemId',1000);r['nextItemId']=it['id']+1
+        it['kind']=random.choice(allowed);it['amount']=1 if it['kind'] in _SIEGE_SINGLE_ITEMS else _siege_amount();it['id']=r.get('nextItemId',1000);r['nextItemId']=it['id']+1
         r['items'].append(it);new.append(it)
     return new
 
@@ -158,14 +173,14 @@ def _siege_field(r):
     dynamic=r.get('mode','classic')=='dynamic'
     offset=random.randint(-30,55) if dynamic else 0
     layout=random.choice(('tower','wall','split')) if dynamic else 'tower'
-    r.update(offset=offset,layout=layout,bodies=_siege_fort(offset,layout),items=_siege_items(r['itemCount']),buffs=_siege_buffs(),windPair=_siege_weather(r.get('windLevel','off')))
+    r.update(offset=offset,layout=layout,bodies=_siege_fort(offset,layout),items=_siege_items(r['itemCount'],allowed=_siege_allowed(r)),buffs=_siege_buffs(),windPair=_siege_weather(r.get('windLevel','off')))
     mode=r.get('mode','classic')
     field_key=random.choice(tuple((*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS))) if mode=='random' else mode
     field=(_SIEGE_FIELDS|_SIEGE_NEW_FIELDS).get(field_key)
     r.pop('launchers',None);r['armed']=[{},{}];r['reflectors']=[];r['gunMotion']=[];r['nextBodyId']=100
     if field:
         offset=field['offset']+random.randint(-5,5);layout=field['layout'];rise=field['rise']
-        r.update(offset=offset,gunShift=field.get('gunShift',0),layout=layout,rise=rise,field=field_key,fieldLabel=field['label'],bodies=_siege_fort(offset,layout,rise),items=_siege_items(r['itemCount'],field))
+        r.update(offset=offset,gunShift=field.get('gunShift',0),layout=layout,rise=rise,field=field_key,fieldLabel=field['label'],bodies=_siege_fort(offset,layout,rise),items=_siege_items(r['itemCount'],field,allowed=_siege_allowed(r)))
         if field_key in _SIEGE_NEW_FIELDS:
             x=field['gunX'];r['launchers']=[(x,390),(960-x,390)]
             if field_key=='sky':
@@ -186,17 +201,17 @@ def _siege_field(r):
                 r['gunMotion']=[dict(amplitude=55,phase=1.6),dict(amplitude=55,phase=1.6)]
             elif field_key=='movingwall':
                 r['bodies'].append(dict(id=len(r['bodies']),side=-1,x=480,y=210,w=42,h=112,kind='stone',hp=125,max=125,vx=0.,vy=0.,fixed=True,motionY=105,baseY=210,phase=0))
-            r['items']=_siege_items(r['itemCount'],field,r['bodies'])
+            r['items']=_siege_items(r['itemCount'],field,r['bodies'],allowed=_siege_allowed(r))
             if field_key in ('sky','floating','floatingcenter'):r['reflectors']=[dict(x1=0,x2=960,y=-55)]
             elif field_key=='movingwall':r['reflectors']=[dict(x1=300,x2=660,y=-55)]
         if field_key=='obstacle':
             r['bodies'].append({'id':len(r['bodies']),'side':-1,'x':480,'y':351,'w':52,'h':130,'kind':'stone','hp':95,'max':95,'vx':0.,'vy':0.})
-    else:r.update(rise=0,gunShift=0,field=mode,fieldLabel='经典战场' if mode=='classic' else '动态战场',items=_siege_items(r['itemCount'],{'offset':offset,'rise':0,'pool':('power','big','heal')}))
+    else:r.update(rise=0,gunShift=0,field=mode,fieldLabel='经典战场' if mode=='classic' else '动态战场',items=_siege_items(r['itemCount'],{'offset':offset,'rise':0,'pool':('power','big','heal')},allowed=_siege_allowed(r)))
     r['motionEpoch']=time.time();r['respawns']=[];r['nextItemId']=1000
     r['wind']=r['windPair'] # world +x; reverse for right shooter for equal relative wind
 
-def _siege_new(name,identity,bot=False,item_count=_SIEGE_DEFAULT_ITEMS,mode='classic',wind_level='off',ammo=0,buff_mode='auto'):
-    r={'code':'','players':[{'name':name,'key':identity}]+([{'name':'练习炮手','key':'bot'}] if bot else []),'bot':bot,'turn':0,'shots':[0,0],'phase':'play' if bot else 'wait','winner':None,'rev':0,'event':None,'until':0.,'touched':time.time(),'itemCount':item_count,'mode':mode,'windLevel':wind_level,'ammo':ammo,'buffMode':buff_mode}
+def _siege_new(name,identity,bot=False,item_count=_SIEGE_DEFAULT_ITEMS,mode='classic',wind_level='off',ammo=0,buff_mode='auto',allowed_buffs=None):
+    r={'code':'','players':[{'name':name,'key':identity}]+([{'name':'练习炮手','key':'bot'}] if bot else []),'bot':bot,'turn':0,'shots':[0,0],'phase':'play' if bot else 'wait','winner':None,'rev':0,'event':None,'until':0.,'touched':time.time(),'itemCount':item_count,'mode':mode,'windLevel':wind_level,'ammo':ammo,'buffMode':buff_mode,'allowedBuffs':list(_siege_allowed({'allowedBuffs':allowed_buffs}))}
     _siege_field(r);return r
 
 def _siege_rematch(r):
@@ -760,7 +775,7 @@ def _siege_bot(r,live=None):
 def _siege_public(r,key,last):
     _siege_normalize_buffs(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
-    return {'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'stackMax':_SIEGE_STACK_MAX,'reflectors':r.get('reflectors',[])}
+    return {'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'stackMax':_SIEGE_STACK_MAX,'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
 
 def siege_request(data):
     key=str(data.get('key',''));kind=data.get('type');code=str(data.get('code','')).upper();now=time.time()
@@ -771,7 +786,11 @@ def siege_request(data):
         if len(_SIEGE_ROOMS)>=64:return {'ok':False,'error':'房间已满'}
         code=secrets.token_hex(3).upper()
         while code in _SIEGE_ROOMS:code=secrets.token_hex(3).upper()
-        name=str(data.get('name','玩家')).strip()[:12] or '玩家';r=_siege_new(name,key,data.get('bot') is True);r['code']=code;_SIEGE_ROOMS[code]=r;return _siege_public(r,key,-1)
+        name=str(data.get('name','玩家')).strip()[:12] or '玩家'
+        allowed=data.get('allowedBuffs')
+        if allowed is not None and (not isinstance(allowed,list) or len(allowed)>len(_SIEGE_ITEMS) or len(set(map(str,allowed)))!=len(allowed) or any(type(x) is not str or x not in _SIEGE_ITEMS for x in allowed)):
+            return {'ok':False,'error':'增益选择无效'}
+        r=_siege_new(name,key,data.get('bot') is True,allowed_buffs=allowed);r['code']=code;_SIEGE_ROOMS[code]=r;return _siege_public(r,key,-1)
     r=_SIEGE_ROOMS.get(code)
     if not r:return {'ok':False,'error':'房间不存在或已关闭'}
     seat=next((i for i,p in enumerate(r['players']) if p['key']==key),None)
