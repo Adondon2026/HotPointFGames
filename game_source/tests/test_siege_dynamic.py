@@ -4,7 +4,7 @@ from pathlib import Path
 os.environ['GAMEHALL_DATA_DIR']=tempfile.mkdtemp();root=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('g',root/'dist/game_hall_lan_v6_2.py');g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
 def aim(r,side,x,y,a):
-    sx,sy=g._siege_launcher(side,r);dir=1 if side==0 else -1;rad=math.radians(a);w=r['wind'];dx=(x-sx)*dir;dy=y-sy
+    sx,sy=g._siege_muzzle(side,r,a);dir=1 if side==0 else -1;rad=math.radians(a);w=r['wind'];dx=(x-sx)*dir;dy=y-sy
     den=.5*(g._SIEGE_GRAV+dir*w*math.tan(rad));t2=(dy+dx*math.tan(rad))/den
     if t2<=0:return None
     t=math.sqrt(t2);v=(dx-.5*dir*w*t*t)/(math.cos(rad)*t);p=v/8
@@ -29,7 +29,7 @@ for seed in range(9):
         for it in r['items']:
             got=False
             for side in (0,1):
-                for angle in range(15,86,3):
+                for angle in range(8,174,3):
                     q=copy.deepcopy(r);q['turn']=side;q['wind']=wind;q['items']=[dict(it)];p=aim(q,side,it['x'],it['y'],angle)
                     if p is None:continue
                     g._siege_fire(q,angle,p)

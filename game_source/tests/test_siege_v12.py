@@ -4,7 +4,7 @@ from pathlib import Path
 os.environ['GAMEHALL_DATA_DIR']=tempfile.mkdtemp()
 spec=importlib.util.spec_from_file_location('g',Path(__file__).resolve().parents[1]/'dist/game_hall_lan_v6_2.py');g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
 def aim(r,side,x,y,a):
-    sx,sy=g._siege_launcher(side,r);d=1 if side==0 else -1;rad=math.radians(a);dx=(x-sx)*d;dy=y-sy;w=r['wind'];den=.5*(g._SIEGE_GRAV+d*w*math.tan(rad))
+    sx,sy=g._siege_muzzle(side,r,a);d=1 if side==0 else -1;rad=math.radians(a);dx=(x-sx)*d;dy=y-sy;w=r['wind'];den=.5*(g._SIEGE_GRAV+d*w*math.tan(rad))
     if abs(den)<1e-8:return None
     t2=(dy+dx*math.tan(rad))/den
     if t2<=0:return None
@@ -42,7 +42,7 @@ for name,field in g._SIEGE_FIELDS.items():
 # Specific rear projectile with a healing pickup, 18 HP capped; refill only after four additional shots.
 r=g._siege_new('A','a',True,0,'standard');r['wind']=0
 core=next(b for b in r['bodies'] if b['side']==0 and b['kind']=='core');core['hp']=70
-sx,sy=g._siege_launcher(0,r);t=.35;a=math.radians(110);v=640
+sx,sy=g._siege_muzzle(0,r,110);t=.35;a=math.radians(110);v=640
 r['items']=[dict(id=0,slot=0,kind='heal',x=sx+v*math.cos(a)*t,y=sy-v*math.sin(a)*t+230*t*t,r=15)]
 g._siege_fire(r,110,80);assert r['event']['pickups'][0]['healed']==18 and r['buffs'][0]['heal']==0
 assert not r['items'] and len(r['respawns'])==1

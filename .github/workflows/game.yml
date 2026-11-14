@@ -53,6 +53,8 @@ jobs:
           python game_source/tests/test_siege_v13.py
           python game_source/tests/test_siege_v14.py
           python game_source/tests/test_siege_v15.py
+          python game_source/tests/test_siege_v16.py
+          python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
       - name: Generate update manifest
         run: |

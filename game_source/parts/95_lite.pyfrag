@@ -77,7 +77,22 @@ def account_request(data, ip):
         return {'ok':False,'error':'未知账户操作'}
 
 def _settle_match():
-    if STATE.get('phase')!='finished' or not STATE.get('matchId') or STATE.get('settledMatchId')==STATE['matchId']: return
+    if not STATE.get('matchId') or STATE.get('settledMatchId')==STATE['matchId']: return
+    if STATE.get('mode')=='siege':
+        r=STATE.get('siege')
+        if not r or r.get('phase')!='over':return
+        by_id={p['key']:i for i,p in enumerate(r['players'])}
+        practice=bool(r.get('bot')) or any(p.get('isBot') for p in STATE['players'])
+        rows=[]
+        for p in STATE['players']:
+            uid=p.get('accountId');seat=by_id.get(p['id'])
+            if not uid or p.get('isBot') or seat is None:continue
+            won=seat==r.get('winner');raw=int(round(_siege_core(r['bodies'],seat)))
+            rows.append((STATE['matchId'],uid,'siege',int(won),0 if practice else 3 if won else 0,raw,int(time.time()),'practice' if practice else 'friends'))
+        if rows:
+            with _db() as db:db.executemany('INSERT OR IGNORE INTO results(match_id,user_id,game,won,points,raw,ended,queue) VALUES(?,?,?,?,?,?,?,?)',rows)
+        STATE['settledMatchId']=STATE['matchId'];return
+    if STATE.get('phase')!='finished':return
     mode=STATE['mode']; players=STATE['players']; key={'ddz':'ddzScore','chuanma':'cmScore','draw':'score','cards':'life','dice':'diceCount','army':'armyScore'}[mode]
     best=max((int(p.get(key,0)) for p in players),default=0)
     rows=[]

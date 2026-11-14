@@ -97,7 +97,7 @@ def _room_action(self,player,action,data):
     if action=='toggle_ready':return {},200  # legacy clients; no readiness gate
     if action=='dissolve':
         if player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可解散房间'},403
-        ROOMS.pop(_ROOM_ACTIVE['code'],None);save_state();return {'dissolved':True},200
+        _settle_match();ROOMS.pop(_ROOM_ACTIVE['code'],None);save_state();return {'dissolved':True},200
     if action=='set_mode' and data.get('mode')=='siege':
         if STATE['phase']!='lobby' or player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可在房间选择游戏'},403
         STATE['mode']='siege';_ROOM_ACTIVE['selected']=True;trim_bots_for_mode('siege')
@@ -118,7 +118,7 @@ def _room_action(self,player,action,data):
             if player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可结束本局'},403
             r=STATE.get('siege');
             if r and r['phase']=='play' and time.time()<r['until']:return {'error':'请等待炮击动画结束'},409
-            STATE.pop('siege',None);STATE.update(phase='lobby',turnPlayerId=None,roundNo=0,winnerId=None);bump();return {},200
+            _settle_match();STATE.pop('siege',None);STATE.update(phase='lobby',turnPlayerId=None,roundNo=0,winnerId=None);bump();return {},200
     result=_room_action_base(self,player,action,data)
     if action=='set_mode' and result[1]==200:_ROOM_ACTIVE['selected']=True;save_state()
     return result
@@ -143,19 +143,24 @@ def _room_siege(data):
         if type(a) not in (int,float) or type(power) not in (int,float) or not (5<=a<=175 and 15<=power<=100):return {'ok':False,'error':'角度或力度无效'}
         try:_siege_fire(r,a,power,data.get('selection'))
         except ValueError as e:return {'ok':False,'error':str(e)}
-        save_state()
+        _settle_match();save_state()
     elif kind=='rematch':
         if pid!=STATE['hostPlayerId'] or r['phase']!='over' or now<r['until']:return {'ok':False,'error':'等待房主开始下一局'}
         # Existing v0.8 matches finish under their original rules; new rounds use room settings.
         r.update(itemCount=STATE['settings'].get('siegeItemCount',13),mode=('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),windLevel=STATE['settings'].get('siegeWind','medium'),ammo=STATE['settings'].get('siegeAmmo',0),buffMode=STATE['settings'].get('siegeBuffMode','auto'))
-        _siege_rematch(r);save_state()
+        _settle_match();_siege_rematch(r);STATE['matchId']=secrets.token_hex(16);save_state()
     elif kind=='return':
         if pid!=STATE['hostPlayerId']:return {'ok':False,'error':'请等待房主返回房间'}
         if now<r['until']:return {'ok':False,'error':'请等待炮击结束'}
-        STATE.pop('siege',None);STATE.update(phase='lobby',turnPlayerId=None,roundNo=0);bump();return {'ok':True,'returned':True}
+        _settle_match();STATE.pop('siege',None);STATE.update(phase='lobby',turnPlayerId=None,roundNo=0);bump();return {'ok':True,'returned':True}
     elif kind!='state':return {'ok':False,'error':'未知操作'}
-    if r['bot'] and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:_siege_bot(r);save_state()
-    v=_siege_public(r,pid,data.get('last',-1));v['host']=pid==STATE['hostPlayerId'];return v
+    if r['bot'] and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:_siege_bot(r);_settle_match();save_state()
+    _settle_match()
+    v=_siege_public(r,pid,data.get('last',-1));v['host']=pid==STATE['hostPlayerId']
+    if r['phase']=='over' and p.get('accountId'):
+        with _db() as db:
+            v['profile']=_profile(db,p['accountId']);row=db.execute('SELECT won,points,raw,queue FROM results WHERE match_id=? AND user_id=?',(STATE.get('matchId'),p['accountId'])).fetchone();v['myResult']=dict(row) if row else None
+    return v
 
 _rooms_get_base=Handler.do_GET;_rooms_post_base=Handler.do_POST
 
