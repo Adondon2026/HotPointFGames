@@ -32,6 +32,7 @@ _SIEGE_ATTACK=('big','power','shock','pierce')
 _SIEGE_DEFENSE=('shield','armor','buffer')
 _SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport')
 _SIEGE_ONE_SHOT=('gunteleport','coreteleport')
+_SIEGE_SINGLE_ITEMS=('heal',*_SIEGE_ONE_SHOT)
 _SIEGE_BARREL=35
 _SIEGE_MAX_RADIUS=36
 
@@ -86,7 +87,7 @@ def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None):
     if field:
         for i in range(0,len(items),2):
             amount=_siege_amount()
-            for it in items[i:i+2]:it['amount']=1 if it['kind']=='heal' else amount
+            for it in items[i:i+2]:it['amount']=1 if it['kind'] in _SIEGE_SINGLE_ITEMS else amount
     return items
 
 def _siege_refill(r):
@@ -95,7 +96,7 @@ def _siege_refill(r):
     for item in waiting[:]:
         if turn<item['readyAt']:continue
         waiting.remove(item);it={k:v for k,v in item.items() if k not in ('readyAt','kind','id')}
-        it['kind']=random.choice(list(_SIEGE_ITEMS));it['amount']=1 if it['kind']=='heal' else _siege_amount();it['id']=r.get('nextItemId',1000);r['nextItemId']=it['id']+1
+        it['kind']=random.choice(list(_SIEGE_ITEMS));it['amount']=1 if it['kind'] in _SIEGE_SINGLE_ITEMS else _siege_amount();it['id']=r.get('nextItemId',1000);r['nextItemId']=it['id']+1
         r['items'].append(it);new.append(it)
     return new
 
@@ -118,8 +119,10 @@ def _siege_normalize_buffs(r):
             for k in _SIEGE_ITEMS:b.setdefault(k,0)
             # Retire legacy vision charges without losing collected resources.
             b['power']+=b.pop('vision',0)
+        for k in _SIEGE_ONE_SHOT:r['buffs'][i][k]=min(1,max(0,r['buffs'][i][k]))
     for it in (*r.get('items',[]),*r.get('respawns',[])):
         if it.get('kind')=='vision':it['kind']='power'
+        if it.get('kind') in _SIEGE_SINGLE_ITEMS:it['amount']=1
 
 def _siege_fort(offset=0,layout="tower",rise=0):
     bodies=[]
@@ -385,6 +388,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None):
                     core=next(b for b in bodies if b['side']==side and b['kind']=='core')
                     gain=min(18*item.get('amount',1),max(0,core['max']-core['hp'])) if core['hp']>0 else 0
                     core['hp']+=gain;pickups[-1]['healed']=gain
+                elif item['kind'] in _SIEGE_ONE_SHOT:
+                    pickups[-1]['gained']=1-r['buffs'][side][item['kind']];r['buffs'][side][item['kind']]=1
                 else:r['buffs'][side][item['kind']]+=item.get('amount',1)
                 if 'slot' in item:r.setdefault('respawns',[]).append({**item,'readyAt':sum(r['shots'])+(4 if live is not None else 5)})
     def integrate():
@@ -493,7 +498,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None):
         core=next(b for b in bodies if b['side']==side and b['kind']=='core')
         old=_siege_launcher(side,r,motion_start+t) if kind=='gunteleport' else (core['x'],core['y'])
         if teleport_target is None or core['hp']<=0:
-            r['buffs'][side][kind]+=1;continue
+            r['buffs'][side][kind]=1;continue
         desired=max(45,min(915,teleport_target[0]));w,h=(52,96) if kind=='gunteleport' else (core['w'],core['h'])
         other_guns=[_siege_launcher(i,r,motion_start+t) for i in (0,1) if i!=side or kind=='coreteleport']
         x=next((v for v in sorted(range(45,916,5),key=lambda v:abs(v-desired)) if all(abs(v-gx)>w/2+24 for gx,gy in other_guns)),desired)
@@ -585,10 +590,14 @@ def _siege_live_public(r,rt,key):
 
 def _siege_sync_runtime(r,now=None):
     now=time.time() if now is None else now
-    return {'room':r,'round':1,'deadline':now+_siege_prep_seconds(r),'plans':[None,None],'locked':[False,False],'replay':None,'until':0.,'notice':['','']}
+    return {'room':r,'round':1,'deadline':_siege_prep_deadline(r,now),'plans':[None,None],'locked':[False,False],'replay':None,'until':0.,'notice':['','']}
 
 def _siege_prep_seconds(r):
-    n=r.get('reloadSeconds',15);return n if n in (5,10,15) else 15
+    n=r.get('reloadSeconds',15);return n if n in (0,5,10,15) else 15
+
+def _siege_prep_deadline(r,now):
+    seconds=_siege_prep_seconds(r)
+    return now+seconds if seconds else None
 
 def _siege_sync_plan(r,rt,side,data,lock=False):
     if r['phase']!='play' or rt['replay'] or rt['locked'][side]:raise ValueError('当前不能调整炮击')
@@ -654,19 +663,19 @@ def _siege_sync_tick(r,rt,now=None):
     now=time.time() if now is None else now
     if rt['replay']:
         if now<rt['until']:return False
-        rt.update(round=rt['round']+1,deadline=now+_siege_prep_seconds(r),plans=[None,None],locked=[False,False],replay=None,notice=['',''])
+        rt.update(round=rt['round']+1,deadline=_siege_prep_deadline(r,now),plans=[None,None],locked=[False,False],replay=None,notice=['',''])
         if r['phase']=='play':r['windPair']=_siege_weather(r.get('windLevel','off'))
         return False
     if r['phase']!='play':return False
     if r['bot'] and not rt['locked'][1]:
         plan={'planOnly':True};_siege_bot(r,plan);rt['plans'][1]=plan['plan'];rt['locked'][1]=True
-    if all(rt['locked']) or now>=rt['deadline']:
+    if all(rt['locked']) or (rt['deadline'] is not None and now>=rt['deadline']):
         _siege_sync_compute(r,rt,now);return True
     return False
 
 def _siege_sync_public(r,rt,key,last=-1):
     v=_siege_public(r,key,r['rev']);seat=v['seat'];replay=rt['replay'];busy=bool(replay)
-    v.update(combatMode='sync',event=None,busy=busy,round=rt['round'],ready=list(rt['locked']),remaining=max(0,round(rt['deadline']-time.time(),2)) if not busy else 0,canFire=r['phase']=='play' and not busy,liveShots=[],wind=r.get('windPair',0)*(1 if seat==0 else -1),syncNotice=rt['notice'][seat],myPlan=rt['plans'][seat],replayId=replay['id'] if replay else None)
+    v.update(combatMode='sync',event=None,busy=busy,round=rt['round'],ready=list(rt['locked']),remaining=(None if rt['deadline'] is None else max(0,round(rt['deadline']-time.time(),2))) if not busy else 0,canFire=r['phase']=='play' and not busy,liveShots=[],wind=r.get('windPair',0)*(1 if seat==0 else -1),syncNotice=rt['notice'][seat],myPlan=rt['plans'][seat],replayId=replay['id'] if replay else None)
     if replay and last!=replay['id']:v['replay']=replay;v['replayElapsed']=max(0,replay['duration']+.35-(rt['until']-time.time()))
     return v
 
