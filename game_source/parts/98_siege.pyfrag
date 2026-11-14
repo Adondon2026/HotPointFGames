@@ -291,6 +291,13 @@ def _siege_reflect(r,ox,oy,x,y,vy,radius):
             if rail['x1']<=cx<=rail['x2']:return cx,surface+.1
     return None
 
+def _siege_wall_contact(ox,oy,x,y,vx,radius):
+    # Vertical arena walls collide with the shell footprint, not its centre.
+    edge=radius if vx<0 and x<=radius else 960-radius if vx>0 and x>=960-radius else None
+    if edge is None:return None
+    u=max(0.,min(1.,(edge-ox)/(x-ox))) if x!=ox else 0.
+    return edge,oy+(y-oy)*u
+
 def _siege_fire(r,angle,power,selection=None,force=False):
     for _ in _siege_fire_steps(r,angle,power,selection,force=force):pass
 
@@ -464,6 +471,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 contact=_siege_reflect(r,oldx,oldy,x,y,vy-_SIEGE_GRAV*dt,radius)
                 if contact:
                     px,py=contact;vy=-vy*.88;vx*=.97;bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
+                wall=_siege_wall_contact(oldx,oldy,x,y,vx,radius)
+                if wall:x,y=wall
                 collect(x,y,radius,t)
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+radius and abs(y-b['y'])<=b['h']/2+radius),None)
                 if target and 'through' in attacks and len(passed)<attack_counts['through'] and target['kind']!='core' and not target.get('platform'):
@@ -472,12 +481,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     ground_left-=1;px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,radius);bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 if not target and 0<=x<=960 and y>=_siege_floor(r,x)-radius and vy>0 and ground_left>0:
                     ground_left-=1;px=x;py=_siege_floor(r,x)-radius-.2;vy=-max(135,vy*.76);vx*=.86;bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
-                if target or y>=_siege_floor(r,x)-radius or x<0 or x>960:
+                if wall and not target and ground_left>0:
+                    ground_left-=1;px=x+(.2 if vx<0 else -.2);py=y;vx=-vx*.88;vy*=.97
+                    bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
+                if target or y>=_siege_floor(r,x)-radius or wall:
                     px,py=x,y;impact=[round(x,1),round(y,1)];hit_at=t;last_hit=t
                     teleport_target=(x,y)
-                    if target or (0<=x<=960 and y>=_siege_floor(r,x)-radius):
-                        blast(x,y,target)
-                        schedule_drops(x,y,t,True)
+                    blast(x,y,target)
+                    schedule_drops(x,y,t,True)
                     frames.append(snap(t,[round(x,1),round(y,1)]));break
         for f in fragments:
             if not f['live']:continue
@@ -488,6 +499,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 contact=_siege_reflect(r,ox,oy,x,y,f['vy']-_SIEGE_GRAV*dt,fragment_radius)
                 if contact:
                     f['x'],f['y']=contact;f['vy']=-f['vy']*.88;f['vx']*=.97;bounces.append([round(contact[0],1),round(contact[1],1),round(t,3),f['id']]);break
+                wall=_siege_wall_contact(ox,oy,x,y,f['vx'],fragment_radius)
+                if wall:x,y=wall
                 collect(x,y,fragment_radius,t)
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fragment_radius and abs(y-b['y'])<=b['h']/2+fragment_radius),None)
                 if target and 'through' in attacks and len(f['passed'])<attack_counts['through'] and target['kind']!='core' and not target.get('platform'):
@@ -496,10 +509,12 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     f['groundLeft']-=1;f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);break
                 if not target and 0<=x<=960 and y>=_siege_floor(r,x)-fragment_radius and f['vy']>0 and f['groundLeft']>0:
                     f['groundLeft']-=1;f['x']=x;f['y']=_siege_floor(r,x)-fragment_radius-.2;f['vy']=-max(135,f['vy']*.76);f['vx']*=.86;bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);break
-                if target or y>=_siege_floor(r,x)-fragment_radius or x<0 or x>960:
+                if wall and not target and f['groundLeft']>0:
+                    f['groundLeft']-=1;f['x']=x+(.2 if f['vx']<0 else -.2);f['y']=y;f['vx']=-f['vx']*.88;f['vy']*=.97
+                    bounces.append([round(f['x'],1),round(y,1),round(t,3),f['id']]);break
+                if target or y>=_siege_floor(r,x)-fragment_radius or wall:
                     f['live']=False;last_hit=t
-                    if target or (0<=x<=960 and y>=_siege_floor(r,x)-fragment_radius):
-                        blast(x,y,target,.42,blast_radius);schedule_drops(x,y,t);extra_blasts.append([round(x,1),round(y,1)]);fragment_hits.append([round(x,1),round(y,1),round(t,3)])
+                    blast(x,y,target,.42,blast_radius);schedule_drops(x,y,t);extra_blasts.append([round(x,1),round(y,1)]);fragment_hits.append([round(x,1),round(y,1),round(t,3)])
                     break
         while drop_queue and t>=drop_queue[0][0]:
             _,kind,x,y=drop_queue.pop(0);stone=kind=='stonedrop';hp=75 if stone else 42

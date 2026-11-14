@@ -41,11 +41,14 @@ const siegeAudio=(()=>{
  function cannon(buffs=[]){if(!effects||!started||!ctx||ctx.state!=='running'||document.hidden)return;tone(0,.17,155,92,.22);tone(.025,.28,430,980,.115);tone(.13,.31,875,445,.13);tone(.19,.35,355,145,.12);tone(.28,.2,1040,1360,.05);tone(.40,.14,1420,1600,.036);const keys=new Set(buffs);
   if(keys.has('big'))tone(.03,.5,175,70,.19);if(keys.has('power')||keys.has('pierce'))tone(.06,.23,540,1160,.08);if(keys.has('shock'))tone(.18,.7,430,90,.13);if(keys.has('splitshot'))for(let i=0;i<3;i++)tone(.18+i*.12,.12,520+i*140,850+i*120,.075);if(keys.has('bounce'))for(let i=0;i<3;i++)tone(.19+i*.12,.17,310+i*130,660+i*170,.075);if(keys.has('through'))tone(.06,.42,620,1420,.08);if(keys.has('blackhole'))tone(.2,.62,400,105,.08);if(keys.has('gunteleport')||keys.has('coreteleport'))for(let i=0;i<4;i++)tone(.18+i*.08,.11,720+i*130,1100+i*170,.055);if(keys.has('wooddrop')||keys.has('stonedrop'))tone(.3,.24,270,140,.07)
  }
- function once(id,age,fn){if(seen.has(id))return;seen.add(id);if(seen.size>500)seen.delete(seen.values().next().value);if(age>=0&&age<.55&&effects&&started&&ctx?.state==='running'&&!document.hidden)fn()}
+ function once(id,age,fn){if(age<0||seen.has(id))return;seen.add(id);if(seen.size>500)seen.delete(seen.values().next().value);if(age>=0&&age<.55&&effects&&started&&ctx?.state==='running'&&!document.hidden)fn()}
  function shot(id,buffs,age){once('shot:'+id,age,()=>cannon(buffs))}
- function hit(id,age){once('hit:'+id,age,()=>{tone(0,.22,150,52,.22);tone(.03,.26,300,95,.09)})}
+ const lastEffect={};function spaced(k,interval,fn){const now=ctx.currentTime;if(now-(lastEffect[k]??-1000)<interval)return;lastEffect[k]=now;fn()}
+ function hit(id,age){once('hit:'+id,age,()=>spaced('hit',.065,()=>{tone(0,.22,150,52,.22);tone(.03,.26,300,95,.09)}))}
+ function bounce(id,age){once('bounce:'+id,age,()=>spaced('bounce',.045,()=>{tone(0,.12,380,780,.065);tone(.045,.13,680,420,.045)}))}
+ function pickup(id,age,kind){once('pickup:'+id,age,()=>spaced('pickup',.075,()=>{tone(0,.11,660,880,.075);tone(.09,.14,880,kind==='heal'?1320:1100,.065)}))}
  const musicSelect=document.getElementById('siegeMusic'),effectsToggle=document.getElementById('siegeEffects');musicSelect.value=mode;effectsToggle.checked=effects;
  musicSelect.addEventListener('change',()=>{mode=musicSelect.value;localStorage.setItem('siege_bgm',mode);started=ready();music()});effectsToggle.addEventListener('change',()=>{effects=effectsToggle.checked;localStorage.setItem('siege_sfx',effects?'on':'off');unlock()});
  for(const event of ['pointerdown','click','touchend'])document.addEventListener(event,()=>{if(document.body.classList.contains('in-battle'))unlock()},{passive:true});document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else if(started&&document.body.classList.contains('in-battle'))music()});window.addEventListener('pagehide',stop);
- return {shot,hit,stop:()=>{stop();started=false;seen.clear()}};
+ return {shot,hit,bounce,pickup,stop:()=>{stop();started=false;seen.clear()}};
 })();
