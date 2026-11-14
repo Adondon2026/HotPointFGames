@@ -119,7 +119,7 @@ def _siege_normalize_buffs(r):
             for k in _SIEGE_ITEMS:b.setdefault(k,0)
             # Retire legacy vision charges without losing collected resources.
             b['power']+=b.pop('vision',0)
-        for k in _SIEGE_ONE_SHOT:r['buffs'][i][k]=min(1,max(0,r['buffs'][i][k]))
+        for k in _SIEGE_ONE_SHOT:r['buffs'][i][k]=0 if r.get('bot') and i==1 else min(1,max(0,r['buffs'][i][k]))
     for it in (*r.get('items',[]),*r.get('respawns',[])):
         if it.get('kind')=='vision':it['kind']='power'
         if it.get('kind') in _SIEGE_SINGLE_ITEMS:it['amount']=1
@@ -237,9 +237,24 @@ def _siege_box_bounce(b,ox,oy,x,y,vx,vy,radius):
     if dot<0:vx-=1.76*dot*nx;vy-=1.76*dot*ny
     return cx+nx*.5,cy+ny*.5,vx,vy
 
+def _siege_robot(r,side):return bool(r.get('bot') and side==1)
+
+def _siege_launch_check(r,side,angle,selection=None,t=None,force=False):
+    # Protect the entire shell footprint against raised ground, even for forced fire.
+    chosen=_siege_selection(r,selection,side)
+    radius=6+6*(chosen.get('big',0) if r.get('buffMode','auto')=='stock' else int(r['buffs'][side].get('big',0)>0))
+    if radius<=6:return None
+    x,y=_siege_muzzle(side,r,angle,radius,t)
+    if y+radius>=min(_siege_floor(r,z) for z in (x-radius,x,x+radius)):
+        raise ValueError('巨型弹炮口接触地面，请提高角度或减少巨型弹层数')
+    blocked=next((b for b in r['bodies'] if b['hp']>0 and abs(x-b['x'])<b['w']/2+radius and abs(y-(b['baseY']+b['motionY']*math.sin(t*.8+b.get('phase',0)) if b.get('motionY') and t is not None else b['y']))<b['h']/2+radius),None)
+    if blocked is not None and not force:raise ValueError('巨型弹炮口被建筑挡住，可强制开炮（可能误伤己方）')
+    return blocked
+
 def _siege_selection(r,selection,side=None):
     if r.get('buffMode','auto')!='stock':return {}
     if selection is None:selection={}
+    if _siege_robot(r,r['turn'] if side is None else side) and isinstance(selection,dict):selection={k:n for k,n in selection.items() if k not in _SIEGE_ONE_SHOT}
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
     _siege_normalize_buffs(r);inv=r['buffs'][r['turn'] if side is None else side];out={}
     for k,n in selection.items():
@@ -262,10 +277,10 @@ def _siege_reflect(r,ox,oy,x,y,vy,radius):
             if rail['x1']<=cx<=rail['x2']:return cx,surface+.1
     return None
 
-def _siege_fire(r,angle,power,selection=None):
-    for _ in _siege_fire_steps(r,angle,power,selection):pass
+def _siege_fire(r,angle,power,selection=None,force=False):
+    for _ in _siege_fire_steps(r,angle,power,selection,force=force):pass
 
-def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None):
+def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=False):
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
     side=r['turn'] if side is None else side; direction=1 if side==0 else -1; motion_start=max(0,(live['clock'] if live is not None else time.time())-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get('windPair',0)*direction if live is not None else r.get('wind',0)
     a=math.radians(angle);speed=power*8.0;px,py=sx,sy;vx=direction*speed*math.cos(a);vy=-speed*math.sin(a)
@@ -275,11 +290,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None):
     stock=r.get('buffMode','auto')=='stock'
     armed=r.setdefault('armed',[{},{}]);armed_before=[dict(x) for x in armed]
     chosen=_siege_selection(r,selection,side)
-    launch_radius=6+6*(chosen.get('big',0) if stock else int(r['buffs'][side]['big']>0))
     _siege_motion(r,motion_start)
-    mx,my=_siege_muzzle(side,r,angle,launch_radius,motion_start)
-    if launch_radius>6 and any(b['hp']>0 and abs(mx-b['x'])<b['w']/2+launch_radius and abs(my-b['y'])<b['h']/2+launch_radius for b in bodies):
-        raise ValueError('巨型弹的炮口被建筑挡住，请提高角度或减少巨型弹层数')
+    blocked=_siege_launch_check(r,side,angle,chosen,motion_start,force)
     if stock:
         if live is not None and any(armed[side].get(k,0)+n>_SIEGE_STACK_MAX for k,n in chosen.items() if k in _SIEGE_DEFENSE):raise ValueError('已有防御待命，请等待对方开炮后再启用')
         attack_counts={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
@@ -289,7 +301,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None):
         else:armed[side]={k:n for k,n in chosen.items() if k in _SIEGE_DEFENSE}
         for k,n in chosen.items():r['buffs'][side][k]-=n
     else:
-        attack_counts={k:1 for k in (*_SIEGE_ATTACK,*_SIEGE_EXTRA_ATTACK) if r['buffs'][side][k]>0}
+        attack_counts={k:1 for k in (*_SIEGE_ATTACK,*_SIEGE_EXTRA_ATTACK) if r['buffs'][side][k]>0 and not (_siege_robot(r,side) and k in _SIEGE_ONE_SHOT)}
         defense_counts={k:1 for k in _SIEGE_DEFENSE if r['buffs'][1-side][k]>0}
         for k in attack_counts:r['buffs'][side][k]-=1
         for k in defense_counts:r['buffs'][1-side][k]-=1
@@ -381,6 +393,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None):
                                 hurt(z,(closing-95)*.10*min(1.7,other/(z['w']*z['h'])))
     def collect(x,y,radius,t):
         for item in list(r['items']):
+            if _siege_robot(r,side) and item['kind'] in _SIEGE_ONE_SHOT:continue
             ix,iy=_siege_item_pos(item,motion_start+t)
             if math.hypot(x-ix,y-iy)<=item['r']+radius:
                 pickups.append({**item,'x':ix,'y':iy,'at':round(t,3),'side':side});r['items'].remove(item)
@@ -417,6 +430,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None):
         _siege_motion(r,motion_start+t)
         if impact is None and t>=10:
             impact=[round(px,1),round(py,1)];hit_at=t;last_hit=t;teleport_target=(px,py)
+        if impact is None and blocked is not None and step==1:
+            # A deliberately forced shot detonates at the actual obstructed muzzle.
+            impact=[round(px,1),round(py,1)];hit_at=t;last_hit=t;teleport_target=(px,py)
+            blast(px,py,blocked);schedule_drops(px,py,t,True);frames.append(snap(t,[round(px,1),round(py,1)]))
         if impact is None:
             # The two child shells branch in the air, not at an invented impact point.
             if 'splitshot' in attacks and not split_done and (t>=.45 or (t>=.20 and vy>=0)):
@@ -553,10 +570,10 @@ def _siege_live_runtime(r,now=None):
 def _siege_live_can_fire(r,rt,side,now):
     return (r['phase']=='play' and min(_siege_core(r['bodies'],i) for i in (0,1))>0 and side not in rt['active'] and now>=rt['ready'][side] and (not r.get('ammo') or r['shots'][side]<r['ammo']))
 
-def _siege_live_start(r,rt,side,angle,power,selection=None,now=None):
+def _siege_live_start(r,rt,side,angle,power,selection=None,now=None,force=False):
     now=time.time() if now is None else now
     if not _siege_live_can_fire(r,rt,side,now):raise ValueError('上一发尚未结束、正在装填或弹药耗尽')
-    gen=_siege_fire_steps(r,angle,power,selection,side,rt)
+    gen=_siege_fire_steps(r,angle,power,selection,side,rt,force)
     sample=next(gen) # validates and reserves buffs before exposing shot
     r['shots'][side]+=1;r['rev']+=1
     rt['active'][side]={'gen':gen,'sample':sample};rt['ready'][side]=float('inf')
@@ -590,7 +607,7 @@ def _siege_live_public(r,rt,key):
 
 def _siege_sync_runtime(r,now=None):
     now=time.time() if now is None else now
-    return {'room':r,'round':1,'deadline':_siege_prep_deadline(r,now),'plans':[None,None],'locked':[False,False],'replay':None,'until':0.,'notice':['','']}
+    return {'room':r,'round':1,'deadline':_siege_prep_deadline(r,now),'plans':[None,None],'force':[False,False],'locked':[False,False],'replay':None,'until':0.,'notice':['','']}
 
 def _siege_prep_seconds(r):
     n=r.get('reloadSeconds',15);return n if n in (0,5,10,15) else 15
@@ -605,7 +622,9 @@ def _siege_sync_plan(r,rt,side,data,lock=False):
     a,p=data.get('angle'),data.get('power')
     if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):raise ValueError('角度或力度无效')
     chosen=_siege_selection(r,data.get('selection'),side)
-    rt['plans'][side]=(a,p,chosen)
+    force=data.get('force') is True
+    if lock:_siege_launch_check(r,side,a,chosen,max(0,time.time()-r.get('motionEpoch',time.time())),force)
+    rt['plans'][side]=(a,p,chosen);rt['force'][side]=force
     if lock:rt['locked'][side]=True
 
 def _siege_sync_compute(r,rt,now):
@@ -623,7 +642,7 @@ def _siege_sync_compute(r,rt,now):
             plans[side]=(a,p,sel)
     for side,(a,p,sel) in enumerate(plans):
         if w.get('ammo') and w['shots'][side]>=w['ammo']:continue
-        try:_siege_live_start(w,engine,side,a,p,sel,now)
+        try:_siege_live_start(w,engine,side,a,p,sel,now,rt['force'][side])
         except ValueError:
             # Moving terrain may obstruct a prepared giant shell at the deadline.
             if w.get('buffMode')=='stock':
@@ -663,7 +682,7 @@ def _siege_sync_tick(r,rt,now=None):
     now=time.time() if now is None else now
     if rt['replay']:
         if now<rt['until']:return False
-        rt.update(round=rt['round']+1,deadline=_siege_prep_deadline(r,now),plans=[None,None],locked=[False,False],replay=None,notice=['',''])
+        rt.update(round=rt['round']+1,deadline=_siege_prep_deadline(r,now),plans=[None,None],force=[False,False],locked=[False,False],replay=None,notice=['',''])
         if r['phase']=='play':r['windPair']=_siege_weather(r.get('windLevel','off'))
         return False
     if r['phase']!='play':return False
@@ -680,7 +699,7 @@ def _siege_sync_public(r,rt,key,last=-1):
     return v
 
 def _siege_bot_fire(r,a,p,live=None):
-    selection={k:min(1 if k in _SIEGE_ONE_SHOT else 2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE} if r.get('buffMode')=='stock' else None
+    selection={k:min(1 if k in _SIEGE_ONE_SHOT else 2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE and k not in _SIEGE_ONE_SHOT} if r.get('buffMode')=='stock' else None
     if live is not None and live.get('planOnly'):
         live['plan']=(a,p,selection or {});return
     if live is not None and selection is not None:
@@ -691,7 +710,7 @@ def _siege_bot_fire(r,a,p,live=None):
     def shoot(angle,selection):
         if live is not None:_siege_live_start(r,live,1,angle,p,selection)
         else:_siege_fire(r,angle,p,selection)
-    for angle in (a,45,25,5,75,90,115,145,175):
+    for angle in ((a,135,155,175,105,90,75,45,5) if a>90 else (a,45,25,5,75,90,115,145,175)):
         try:shoot(angle,selection);return
         except ValueError:continue
     # A fort can physically surround the gun; fire an ordinary round if blocked.
@@ -705,7 +724,7 @@ def _siege_bot(r,live=None):
     # For unusual layouts, choose a trajectory that clears our own fort and any platforms.
     if r.get('field') in _SIEGE_NEW_FIELDS:
         sx,sy=_siege_launcher(1,r);wind=-r.get('windPair',0) if live is not None else r.get('wind',0);now=max(0,time.time()-r.get('motionEpoch',time.time()));choices=[]
-        for a in range(25,86,5):
+        for a in range(5,176,5):
             for p in range(40,101,5):
                 rad=math.radians(a);v=p*8;score=-1
                 for j in range(1,121):
@@ -720,13 +739,23 @@ def _siege_bot(r,live=None):
             _siege_bot_fire(r,a,p,live);return
     # Invert the same ballistic equations, then add small aiming error.
     targets=[b for b in r['bodies'] if b['side']==0 and b['hp']>0]
-    target=random.choice(targets) if targets else None
-    a=random.uniform(30,65);x,y=_siege_muzzle(1,r,a);tx=target['x'] if target else 122;ty=target['y'] if target else 380
-    rad=math.radians(a);wind=-r.get('windPair',0) if live is not None else r.get('wind',0);dx=tx-x;dy=ty-y
-    # x = -v cos(a)t + .5 wind t², y = -v sin(a)t + .5 g t².
-    den=.5*(_SIEGE_GRAV-wind*math.tan(rad));t=math.sqrt(max(.01,(dy-dx*math.tan(rad))/den))
-    v=(.5*wind*t*t-dx)/(math.cos(rad)*t)
-    _siege_bot_fire(r,a,max(15,min(100,v/8+random.uniform(-2.5,2.5))),live)
+    core=next((b for b in targets if b['kind']=='core'),None)
+    target=core if core and core['x']>_siege_launcher(1,r)[0] else random.choice(targets) if targets else None
+    tx=target['x'] if target else 122;ty=target['y'] if target else 380
+    sx,sy=_siege_launcher(1,r);wind=-r.get('windPair',0) if live is not None else r.get('wind',0)
+    # Select the correct hemisphere using actual target position, not the seat index.
+    # Search reachable launch solutions using the true muzzle and ballistic equations.
+    candidates=[];right=tx>sx
+    for a in (range(95,176,5) if right else range(5,86,5)):
+        rad=math.radians(a);x,y=_siege_muzzle(1,r,a);dx=tx-x;dy=ty-y
+        den=.5*(_SIEGE_GRAV-wind*math.tan(rad))
+        if abs(den)<1e-6:continue
+        q=(dy-dx*math.tan(rad))/den
+        if q<=0:continue
+        t=math.sqrt(q);v=(.5*wind*t*t-dx)/(math.cos(rad)*t)
+        if 15<=v/8<=100:candidates.append((a,v/8))
+    if candidates:a,p=random.choice(candidates);_siege_bot_fire(r,a,max(15,min(100,p+random.uniform(-2.5,2.5))),live)
+    else:_siege_bot_fire(r,135 if right else 45,65,live)
 
 def _siege_public(r,key,last):
     _siege_normalize_buffs(r)
@@ -755,7 +784,7 @@ def siege_request(data):
         if r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']:return {'ok':False,'error':'当前不能发射，请等待回合'}
         a,p=data.get('angle'),data.get('power')
         if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
-        try:_siege_fire(r,a,p,data.get("selection"))
+        try:_siege_fire(r,a,p,data.get("selection"),data.get("force") is True)
         except ValueError as e:return {"ok":False,"error":str(e)}
     elif kind=='rematch':
         if r['phase']!='over' or now<r['until']:return {'ok':False,'error':'本局尚未结束'}

@@ -207,7 +207,7 @@ def _room_siege(data):
         if type(a) not in (int,float) or type(power) not in (int,float) or not (5<=a<=175 and 15<=power<=100):return {'ok':False,'error':'角度或力度无效'}
         try:
             if live:_siege_live_start(r,rt,seat,a,power,data.get('selection'),now)
-            else:_siege_fire(r,a,power,data.get('selection'))
+            else:_siege_fire(r,a,power,data.get('selection'),data.get('force') is True)
         except ValueError as e:return {'ok':False,'error':str(e)}
         _settle_match();save_state()
     elif kind=='rematch':

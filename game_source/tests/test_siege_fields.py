@@ -27,7 +27,7 @@ for name,field in g._SIEGE_FIELDS.items():
         got=False
         for side in (0,1):
             for a in range(8,174,3):
-                q=copy.deepcopy(r);q['turn']=side;q['wind']=0;q['items']=[dict(it)];q['motionEpoch']=g.time.time();p=aim(q,side,it['x'],it['y'],a)
+                q=copy.deepcopy(r);q['bot']=False;q['turn']=side;q['wind']=0;q['items']=[dict(it)];q['motionEpoch']=g.time.time();p=aim(q,side,it['x'],it['y'],a)
                 if p is None:continue
                 g._siege_fire(q,a,p)
                 if q['event']['pickups']:got=True;break

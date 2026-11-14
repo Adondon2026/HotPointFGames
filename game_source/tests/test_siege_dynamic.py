@@ -30,7 +30,7 @@ for seed in range(9):
             got=False
             for side in (0,1):
                 for angle in range(8,174,3):
-                    q=copy.deepcopy(r);q['turn']=side;q['wind']=wind;q['items']=[dict(it)];p=aim(q,side,it['x'],it['y'],angle)
+                    q=copy.deepcopy(r);q['bot']=False;q['turn']=side;q['wind']=wind;q['items']=[dict(it)];p=aim(q,side,it['x'],it['y'],angle)
                     if p is None:continue
                     g._siege_fire(q,angle,p)
                     if q['event']['pickups']:got=True;break
