@@ -17,8 +17,8 @@ android {
         applicationId "com.chuanmahjong.nearby"
         minSdk 24
         targetSdk 36
-        versionCode(zmzBuild ? 8 : 4)
-        versionName(zmzBuild ? "0.19.2-ZMZ" : "1.3")
+        versionCode(zmzBuild ? 10 : 4)
+        versionName(zmzBuild ? "0.20.0-ZMZ" : "1.3")
         manifestPlaceholders = [gameHallLabel: (zmzBuild ? "热点游戏厅 ZMZ" : "热点游戏厅")]
         buildConfigField "boolean", "ZMZ_BUILD", (zmzBuild ? "true" : "false")
 
@@ -51,7 +51,7 @@ android {
     if (zmzBuild) {
         applicationVariants.all { variant ->
             variant.outputs.all { output ->
-                output.outputFileName = "HotPointFGames-ZMZ-v0.19.2-${variant.buildType.name}.apk"
+                output.outputFileName = "HotPointFGames-ZMZ-v0.20.0-${variant.buildType.name}.apk"
             }
         }
     }

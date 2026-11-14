@@ -23,16 +23,18 @@ _SIEGE_NEW_FIELDS={
 }
 _SIEGE_MODES=('classic','dynamic','random',*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS)
 _SIEGE_STACK_MAX=5
-_SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport'),*('shield','armor','buffer'))
+_SIEGE_NEGATIVE=('heavy','vanish','wobble','fart')
+_SIEGE_NEW_ATTACK=('spiral','repeat','push','clone')
+_SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK),*('shield','armor','buffer'))
 
 
 # Each match has a randomized, mirrored field. Charges are consumed per type, never multiplied by count.
-_SIEGE_ITEMS={'big':{'label':'巨型弹','color':'#ecc06d'},'power':{'label':'强力弹','color':'#ee8469'},'shock':{'label':'冲击波','color':'#b2a2ed'},'shield':{'label':'护盾','color':'#7bd2e0'},'pierce':{'label':'破甲弹','color':'#f3a4d2'},'armor':{'label':'加固','color':'#a9d693'},'splitshot':{'label':'分裂弹','color':'#f9d19b'},'through':{'label':'穿透弹','color':'#f5a0a5'},'buffer':{'label':'缓冲层','color':'#a9c1ff'},'heal':{'label':'修复','color':'#77dc9e'},'bounce':{'label':'弹跳弹','color':'#83e0c5'},'wooddrop':{'label':'木块生成','color':'#d9a66a'},'stonedrop':{'label':'石块生成','color':'#c2cad8'},'blackhole':{'label':'黑洞弹','color':'#b69bea'},'gunteleport':{'label':'炮台瞬移','color':'#71c9f5'},'coreteleport':{'label':'核心瞬移','color':'#f5b2eb'}}
+_SIEGE_ITEMS={'big':{'label':'巨型弹','color':'#ecc06d'},'power':{'label':'强力弹','color':'#ee8469'},'shock':{'label':'冲击波','color':'#b2a2ed'},'shield':{'label':'护盾','color':'#7bd2e0'},'pierce':{'label':'破甲弹','color':'#f3a4d2'},'armor':{'label':'加固','color':'#a9d693'},'splitshot':{'label':'分裂弹','color':'#f9d19b'},'through':{'label':'穿透弹','color':'#f5a0a5'},'buffer':{'label':'缓冲层','color':'#a9c1ff'},'heal':{'label':'修复','color':'#77dc9e'},'bounce':{'label':'弹跳弹','color':'#83e0c5'},'wooddrop':{'label':'木块生成','color':'#d9a66a'},'stonedrop':{'label':'石块生成','color':'#c2cad8'},'blackhole':{'label':'黑洞弹','color':'#b69bea'},'gunteleport':{'label':'炮台瞬移','color':'#71c9f5'},'coreteleport':{'label':'核心瞬移','color':'#f5b2eb'},'spiral':{'label':'螺旋弹','color':'#ffabcf'},'repeat':{'label':'连续弹','color':'#fbe199'},'push':{'label':'推进弹','color':'#7ce1d6'},'clone':{'label':'克隆增益','color':'#a4baff'},'heavy':{'label':'重重子弹','color':'#c09d83'},'vanish':{'label':'湮灭子弹','color':'#a6acb7'},'wobble':{'label':'不稳定子弹','color':'#ea8fe3'},'fart':{'label':'屁屁子弹','color':'#9ae3a8'}}
 _SIEGE_ATTACK=('big','power','shock','pierce')
 _SIEGE_DEFENSE=('shield','armor','buffer')
-_SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport')
+_SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK)
 _SIEGE_ONE_SHOT=('gunteleport','coreteleport')
-_SIEGE_SINGLE_ITEMS=('heal',*_SIEGE_ONE_SHOT)
+_SIEGE_SINGLE_ITEMS=('heal',*_SIEGE_ONE_SHOT,*_SIEGE_NEGATIVE)
 _SIEGE_BARREL=35
 _SIEGE_MAX_RADIUS=36
 
@@ -55,7 +57,9 @@ def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None,allowed=None)
     if field:
         featured=[k for k in field['pool'] if k in allowed_set]
         random.shuffle(featured)
-        kinds=featured+[k for k in kinds if k not in featured]
+        # Mix the new pickups with old featured ones, keeping both discoverable.
+        others=[k for k in kinds if k not in featured];random.shuffle(others)
+        kinds=featured[:1]+others+featured[1:]
     # Each game samples a new formation, rather than perturbing the same grid.
     # Sample the actual ballistic envelope above the left fort, mirrored for fairness.
     if field:
@@ -207,7 +211,7 @@ def _siege_field(r):
         if field_key=='obstacle':
             r['bodies'].append({'id':len(r['bodies']),'side':-1,'x':480,'y':351,'w':52,'h':130,'kind':'stone','hp':95,'max':95,'vx':0.,'vy':0.})
     else:r.update(rise=0,gunShift=0,field=mode,fieldLabel='经典战场' if mode=='classic' else '动态战场',items=_siege_items(r['itemCount'],{'offset':offset,'rise':0,'pool':('power','big','heal')},allowed=_siege_allowed(r)))
-    r['motionEpoch']=time.time();r['respawns']=[];r['nextItemId']=1000
+    r['motionEpoch']=time.time();r['respawns']=[];r['nextItemId']=1000;r['negativePending']=[{},{}];r['clones']=[]
     r['wind']=r['windPair'] # world +x; reverse for right shooter for equal relative wind
 
 def _siege_new(name,identity,bot=False,item_count=_SIEGE_DEFAULT_ITEMS,mode='classic',wind_level='off',ammo=0,buff_mode='auto',allowed_buffs=None):
@@ -292,6 +296,30 @@ def _siege_reflect(r,ox,oy,x,y,vy,radius):
             if rail['x1']<=cx<=rail['x2']:return cx,surface+.1
     return None
 
+def _siege_v20_offset(t,spiral,negatives):
+    # Actual position = base parabolic trajectory + independent orbital/W-wave terms.
+    t=max(0,t);phase=(6+2.2*spiral)*t
+    dx=(10+3*spiral)*math.sin(phase) if spiral else 0.
+    dy=(10+3*spiral)*(math.cos(phase)-1) if spiral else 0.
+    if negatives.get('wobble'):dy+=19*(math.sin(10*t)-.48*math.sin(20*t))
+    return dx,dy
+
+def _siege_v20_fart(t):
+    return 180+640*max(0,math.sin(t*18))
+
+def _siege_v20_vanish(distance,negatives):
+    return max(.22,1-distance/1150) if negatives.get('vanish') else 1.
+
+def _siege_v20_radius(radius,distance,negatives):
+    return max(2.5,radius*_siege_v20_vanish(distance,negatives))
+
+def _siege_v20_push(body,vx,vy,layers):
+    speed=max(1,math.hypot(vx,vy));layers=min(5,layers)
+    body['pushVX']=vx/speed*(80+36*layers)
+    body['pushVY']=vy/speed*(80+36*layers)
+    body['pushTime']=max(body.get('pushTime',0),.3+.2*layers)
+    body['vx']+=body['pushVX']*.15;body['vy']+=body['pushVY']*.15
+
 def _siege_fire(r,angle,power,selection=None,force=False):
     for _ in _siege_fire_steps(r,angle,power,selection,force=force):pass
 
@@ -301,12 +329,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     a=math.radians(angle);speed=power*8.0;px,py=sx,sy;vx=direction*speed*math.cos(a);vy=-speed*math.sin(a)
     bodies=r['bodies'];bodies[:]=[b for b in bodies if not b.get('generated') or b['hp']>0]; dt=1/60;frames=[];impact=None;hit_at=None;settled=0;hit_id=None
     _siege_normalize_buffs(r)
+    r.setdefault('negativePending',[{},{}]);r.setdefault('clones',[])
     items_before=[dict(i) for i in r['items']]; buffs_before=[dict(b) for b in r['buffs']]
     stock=r.get('buffMode','auto')=='stock'
     armed=r.setdefault('armed',[{},{}]);armed_before=[dict(x) for x in armed]
     chosen=_siege_selection(r,selection,side)
     _siege_motion(r,motion_start)
     blocked=_siege_launch_check(r,side,angle,chosen,motion_start,force)
+    negatives=dict(r['negativePending'][side]);r['negativePending'][side].clear()
     if stock:
         if live is not None and any(armed[side].get(k,0)+n>_SIEGE_STACK_MAX for k,n in chosen.items() if k in _SIEGE_DEFENSE):raise ValueError('已有防御待命，请等待对方开炮后再启用')
         attack_counts={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
@@ -321,16 +351,29 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for k in attack_counts:r['buffs'][side][k]-=1
         for k in defense_counts:r['buffs'][1-side][k]-=1
     attacks=list(attack_counts);defenses=list(defense_counts)
-    pickups=[];passed=set();extra_blasts=[];fragments=[];fragment_hits=[];split_done=False;last_hit=None;bounces=[];ground_left=attack_counts.get('bounce',0);drop_queue=[];drop_events=[];holes=[];teleports=[];teleport_target=None
+    pickups=[];passed=set();extra_blasts=[];fragments=[];fragment_hits=[];split_done=False;last_hit=None;bounces=[];ground_left=attack_counts.get('bounce',0);drop_queue=[];drop_events=[];holes=[];teleports=[];teleport_target=None;puffs=[]
+    repeat_n=attack_counts.get('repeat',0);shell_scale=(1+.35*repeat_n)/(1+repeat_n)
+    spiral_n=attack_counts.get('spiral',0);flight_distance=0.
     if live is not None:live['dropQueues'][side]=drop_queue
     launchers_before=[list(r['launchers'][i]) if r.get('launchers') else list(_siege_launcher(i,r,motion_start)) for i in (0,1)];gun_motion_before=[dict(m) for m in r.get('gunMotion',[])]
     _siege_motion(r,motion_start)
     n=attack_counts.get('big',0);radius=6+6*n;blast_radius=52+36*n
     px,py=_siege_muzzle(side,r,angle,radius,motion_start)
+    draw_radius=radius
     # The actual shot angle is recorded for the remote cannon animation.
     fragment_radius=radius
     
-    damage_scale=1+.70*attack_counts.get('power',0);impulse_scale=1+2.2*attack_counts.get('shock',0)
+    damage_scale=(1+.70*attack_counts.get('power',0))*shell_scale;impulse_scale=1+2.2*attack_counts.get('shock',0)
+    # Delayed extra rounds retain angle/power; total damage grows while each shell weakens.
+    for j in range(repeat_n):
+        fragments.append(dict(id=100+j,x=px,y=py,vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),bornAt=.11*(j+1),scale=1.,kind='repeat',travel=0.))
+    # Existing clones fire for two subsequent turns; their shells cannot create clones.
+    for j,c in enumerate(list(r['clones'])):
+        if c['side']!=side:continue
+        cx=c['x']+direction*math.cos(a)*(35+radius);cy=c['y']-math.sin(a)*(35+radius)
+        fragments.append(dict(id=300+j,x=cx,y=cy,vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),bornAt=0.,scale=.5/shell_scale,kind='clone',travel=0.))
+        c['remaining']-=1
+    r['clones'][:]=[c for c in r['clones'] if c['remaining']>0]
     def hurt(b,damage):
         if b.get('platform'):return
         if b['side']==1-side:
@@ -340,11 +383,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if b.get('floatFort') and b['kind']!='core' and damage>=8:
             b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
 
-    def snap(t,p):return [round(t,3),p,[_siege_pos(b) for b in bodies],[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live']]]
+    def snap(t,p):return [round(t,3),(p+[round(draw_radius,2)] if p is not None else None),[_siege_pos(b) for b in bodies],[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)]]
     frames.append(snap(0,[round(px,1),round(py,1)]))
     shot_no=r['shots'][side]+1
     def sample(t,p):
-        return {'side':side,'shotNo':shot_no,'p':p,'radius':radius,'angle':angle,'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live']], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports}
+        return {'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':angle,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports}
     def blast(x,y,target,scale=1.,br=None):
         nonlocal hit_id
         if scale==1:hit_id=target['id'] if target else None
@@ -359,6 +402,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             damage=((1-dist/br)*18+direct)*damage_scale*scale
             if b['kind']=='core':damage*=.83
             hurt(b,damage)
+            if b['hp']>0 and not b.get('fixed') and attack_counts.get('push'):
+                _siege_v20_push(b,vx,vy,attack_counts['push'])
             if b['hp']>0 and not b.get('fixed'):
                 mag=(1-dist/br)*75*impulse_scale*scale
                 if b['side']==1-side and ((b['kind']=='core' and 'shield' in defenses) or (b['kind']!='core' and 'armor' in defenses)):mag*=.6
@@ -416,6 +461,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     core=next(b for b in bodies if b['side']==side and b['kind']=='core')
                     gain=min(18*item.get('amount',1),max(0,core['max']-core['hp'])) if core['hp']>0 else 0
                     core['hp']+=gain;pickups[-1]['healed']=gain
+                elif item['kind'] in _SIEGE_NEGATIVE:
+                    r['negativePending'][side][item['kind']]=1;pickups[-1]['gained']=1
                 elif item['kind'] in _SIEGE_ONE_SHOT:
                     pickups[-1]['gained']=1-r['buffs'][side][item['kind']];r['buffs'][side][item['kind']]=1
                 else:r['buffs'][side][item['kind']]+=item.get('amount',1)
@@ -433,6 +480,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if c and not c.get('generated'):hurt(c,(22 if b['kind']=='stone' else 12) if c['kind']=='core' else (8 if b['kind']=='stone' else 4))
         for b in bodies:
             if b['hp']<=0 or b.get('fixed'):continue
+            if b.get('pushTime',0)>0:
+                b['vx']+=b['pushVX']*dt;b['vy']+=b['pushVY']*dt;b['pushTime']=max(0,b['pushTime']-dt)
             b['vy']+=_SIEGE_GRAV*dt;b['x']+=b['vx']*dt;b['y']+=b['vy']*dt;b['vx']*=.994
         collide()
         active=max((abs(b['vx'])+abs(b['vy']) for b in bodies if b['hp']>0),default=0)
@@ -455,50 +504,66 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 split_done=True
                 for i,delta in enumerate([v for j in range(1,attack_counts['splitshot']+1) for v in (-100*j,100*j)]):
                     fragments.append({'id':i,'x':px,'y':py,'vx':vx+direction*delta,'vy':vy+delta*.35,'live':True,'groundLeft':attack_counts.get('bounce',0),'passed':set()})
-            oldx,oldy=px,py;px+=vx*dt;py+=vy*dt;vy+=_SIEGE_GRAV*dt;vx+=wind*dt
+            oldx,oldy=px,py;px+=vx*dt;py+=vy*dt
+            ox,oy=_siege_v20_offset(t,spiral_n,negatives);ex,ey=_siege_v20_offset(t-dt,spiral_n,negatives)
+            px+=ox-ex;py+=oy-ey;flight_distance+=math.hypot(px-oldx,py-oldy)
+            vy+=(_SIEGE_GRAV*(2.75 if negatives.get('heavy') else 1)-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;vx+=wind*dt
+            if negatives.get('fart') and step%9==0:puffs.append([round(px,1),round(py,1),round(t,3)])
+            rr=_siege_v20_radius(radius,flight_distance,negatives);draw_radius=rr;vanish_scale=_siege_v20_vanish(flight_distance,negatives)
             target=None
             # Sweep small segments to prevent tunneling through thin beams.
             for k in range(1,5):
                 x=oldx+(px-oldx)*k/4;y=oldy+(py-oldy)*k/4
-                contact=_siege_reflect(r,oldx,oldy,x,y,vy-_SIEGE_GRAV*dt,radius)
+                contact=_siege_reflect(r,oldx,oldy,x,y,vy-_SIEGE_GRAV*dt,rr)
                 if contact:
                     px,py=contact;vy=-vy*.88;vx*=.97;bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
-                collect(x,y,radius,t)
-                target=next((b for b in bodies if b['hp']>0 and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+radius and abs(y-b['y'])<=b['h']/2+radius),None)
+                collect(x,y,rr,t)
+                target=next((b for b in bodies if b['hp']>0 and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
                 if target and 'through' in attacks and len(passed)<attack_counts['through'] and target['kind']!='core' and not target.get('platform'):
                     hurt(target,24*damage_scale);passed.add(target['id']);target=None
                 if target and ground_left>0:
                     ground_left-=1;px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,radius);bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
-                if not target and 0<=x<=960 and y>=_siege_floor(r,x)-radius and vy>0 and ground_left>0:
-                    ground_left-=1;px=x;py=_siege_floor(r,x)-radius-.2;vy=-max(135,vy*.76);vx*=.86;bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
-                if target or y>=_siege_floor(r,x)-radius or x<0 or x>960:
-                    px,py=x,y;impact=[round(x,1),round(y,1)];hit_at=t;last_hit=t
-                    teleport_target=(x,y)
-                    if target or (0<=x<=960 and y>=_siege_floor(r,x)-radius):
-                        blast(x,y,target)
-                        schedule_drops(x,y,t,True)
-                    frames.append(snap(t,[round(x,1),round(y,1)]));break
+                if not target and rr<=x<=960-rr and y>=_siege_floor(r,x)-rr and vy>0 and ground_left>0:
+                    ground_left-=1;px=x;py=_siege_floor(r,x)-rr-.2;vy=-max(135,vy*.76);vx*=.86;bounces.append([round(px,1),round(py,1),round(t,3),-1]);frames.append(snap(t,[round(px,1),round(py,1)]));break
+                wall=x<=rr or x>=960-rr
+                if wall and ground_left>0:
+                    ground_left-=1;px=max(rr+.1,min(960-rr-.1,x));py=y;vx=(abs(vx) if x<=rr else -abs(vx))*.82
+                    bounces.append([round(px,1),round(py,1),round(t,3),-1]);break
+                if target or y>=_siege_floor(r,max(0,min(960,x)))-rr or wall:
+                    px,py=max(rr,min(960-rr,x)),y;impact=[round(px,1),round(y,1)];hit_at=t;last_hit=t
+                    teleport_target=(px,y)
+                    blast(px,y,target,vanish_scale);schedule_drops(px,y,t,True)
+                    frames.append(snap(t,[round(px,1),round(y,1)]));break
         for f in fragments:
-            if not f['live']:continue
+            if not f['live'] or t<f.get('bornAt',0):continue
             if t>=10:f['live']=False;continue
-            ox,oy=f['x'],f['y'];f['x']+=f['vx']*dt;f['y']+=f['vy']*dt;f['vy']+=_SIEGE_GRAV*dt;f['vx']+=wind*dt
+            ox,oy=f['x'],f['y'];f['x']+=f['vx']*dt;f['y']+=f['vy']*dt
+            a1,b1=_siege_v20_offset(t-f.get('bornAt',0),spiral_n,negatives);a0,b0=_siege_v20_offset(t-dt-f.get('bornAt',0),spiral_n,negatives)
+            f['x']+=a1-a0;f['y']+=b1-b0;f['travel']=f.get('travel',0)+math.hypot(f['x']-ox,f['y']-oy)
+            f['vy']+=(_SIEGE_GRAV*(2.75 if negatives.get('heavy') else 1)-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;f['vx']+=wind*dt
+            fr=_siege_v20_radius(fragment_radius,f['travel'],negatives)
             for k in range(1,5):
                 x=ox+(f['x']-ox)*k/4;y=oy+(f['y']-oy)*k/4
-                contact=_siege_reflect(r,ox,oy,x,y,f['vy']-_SIEGE_GRAV*dt,fragment_radius)
+                contact=_siege_reflect(r,ox,oy,x,y,f['vy']-_SIEGE_GRAV*dt,fr)
                 if contact:
                     f['x'],f['y']=contact;f['vy']=-f['vy']*.88;f['vx']*=.97;bounces.append([round(contact[0],1),round(contact[1],1),round(t,3),f['id']]);break
-                collect(x,y,fragment_radius,t)
-                target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fragment_radius and abs(y-b['y'])<=b['h']/2+fragment_radius),None)
+                collect(x,y,fr,t)
+                target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and 'through' in attacks and len(f['passed'])<attack_counts['through'] and target['kind']!='core' and not target.get('platform'):
                     hurt(target,24*damage_scale*.42);f['passed'].add(target['id']);target=None
                 if target and f['groundLeft']>0:
                     f['groundLeft']-=1;f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);break
-                if not target and 0<=x<=960 and y>=_siege_floor(r,x)-fragment_radius and f['vy']>0 and f['groundLeft']>0:
-                    f['groundLeft']-=1;f['x']=x;f['y']=_siege_floor(r,x)-fragment_radius-.2;f['vy']=-max(135,f['vy']*.76);f['vx']*=.86;bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);break
-                if target or y>=_siege_floor(r,x)-fragment_radius or x<0 or x>960:
+                if not target and fr<=x<=960-fr and y>=_siege_floor(r,x)-fr and f['vy']>0 and f['groundLeft']>0:
+                    f['groundLeft']-=1;f['x']=x;f['y']=_siege_floor(r,x)-fr-.2;f['vy']=-max(135,f['vy']*.76);f['vx']*=.86;bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);break
+                wall=x<=fr or x>=960-fr
+                if wall and f['groundLeft']>0:
+                    f['groundLeft']-=1;f['x']=max(fr+.1,min(960-fr-.1,x));f['y']=y;f['vx']=(abs(f['vx']) if x<=fr else -abs(f['vx']))*.82
+                    bounces.append([round(f['x'],1),round(y,1),round(t,3),f['id']]);break
+                if target or y>=_siege_floor(r,max(0,min(960,x)))-fr or wall:
                     f['live']=False;last_hit=t
-                    if target or (0<=x<=960 and y>=_siege_floor(r,x)-fragment_radius):
-                        blast(x,y,target,.42,blast_radius);schedule_drops(x,y,t);extra_blasts.append([round(x,1),round(y,1)]);fragment_hits.append([round(x,1),round(y,1),round(t,3)])
+                    dmg=f.get('scale',.42)*_siege_v20_vanish(f.get('travel',0),negatives)
+                    cx=max(fr,min(960-fr,x));blast(cx,y,target,dmg,blast_radius);schedule_drops(cx,y,t)
+                    extra_blasts.append([round(cx,1),round(y,1)]);fragment_hits.append([round(cx,1),round(y,1),round(t,3)])
                     break
         while drop_queue and t>=drop_queue[0][0]:
             _,kind,x,y=drop_queue.pop(0);stone=kind=='stonedrop';hp=75 if stone else 42
@@ -523,6 +588,13 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if live is None and step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
         if live is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
         if impact is not None and not drop_queue and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
+    # Clones persist for two NEXT owner shots and never recursively spawn clones.
+    if attack_counts.get('clone') and teleport_target:
+        for j in range(min(attack_counts['clone'],3)):
+            x=max(45,min(915,teleport_target[0]+(j-(min(attack_counts['clone'],3)-1)/2)*30))
+            r['clones'].append(dict(id=r.get('nextCloneId',0)+j,side=side,x=x,y=min(_siege_floor(r,x)-24,teleport_target[1]),remaining=2))
+        r['nextCloneId']=r.get('nextCloneId',0)+min(attack_counts['clone'],3)
+        r['clones'][:]=r['clones'][-6:]
     # Teleport to the actual impact column anywhere on the battlefield. The descent is
     # kinematic and collision-safe; gravity gives its timing, not impact damage.
     for kind in _SIEGE_ONE_SHOT:
@@ -569,7 +641,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['turn']=1-side
         if r['turn']==0:r['windPair']=_siege_weather(r.get('windLevel','off'))
         r['wind']=r.get('windPair',0)*(1 if r['turn']==0 else -1)
-    r['event']={'id':r['rev'],'side':side,'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':angle,'fragmentRadius':fragment_radius,'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(x) for x in r.get('launchers',[])],'gunMotion':r.get('gunMotion',[])}
+    r['event']={'id':r['rev'],'side':side,'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':angle,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(x) for x in r.get('launchers',[])],'gunMotion':r.get('gunMotion',[])}
     r['until']=time.time()+t+.35
 
 _SIEGE_LIVE_DT=1/60
@@ -775,7 +847,7 @@ def _siege_bot(r,live=None):
 def _siege_public(r,key,last):
     _siege_normalize_buffs(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
-    return {'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'stackMax':_SIEGE_STACK_MAX,'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
+    return {'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'stackMax':_SIEGE_STACK_MAX,'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
 
 def siege_request(data):
     key=str(data.get('key',''));kind=data.get('type');code=str(data.get('code','')).upper();now=time.time()
