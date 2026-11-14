@@ -89,20 +89,16 @@ try:
     assert act(r,t,'siege_settings',itemCount=19,mode='floating',wind='high',ammo=10,buffMode='stock',combatMode='live',reloadSeconds=3)['ok']
     assert act(r,t,'set_mode',mode='dice')['ok']
     assert act(r,t,'settings',diceStart=6,cardLives=5,drawRounds=3)['ok']
-    rr=create('A new',guestPref=guest);ss=state(rr)['settings'];assert ss['siegeCombatMode']=='live' and ss['siegeReload']==3 and ss['siegeMode']=='floating' and ss['diceStart']==6 and ss['cardLives']==5 and ss['drawRounds']==3,ss
+    rr=create('A new',guestPref=guest);ss=state(rr)['settings'];assert ss['siegeCombatMode']=='sync' and ss['siegeReload']==15 and ss['siegeMode']=='floating' and ss['diceStart']==6 and ss['cardLives']==5 and ss['drawRounds']==3,ss
     assert state(create('other',guestPref='b'*48))['settings']['siegeCombatMode']=='turn'
     account=api('/api/account',{'type':'register','name':'Tester','pin':'1234'})['accountToken'];ar=create('Tester',accountToken=account,guestPref='c'*48);at=ar['token']
     assert act(ar,at,'set_mode',mode='siege')['ok'];assert act(ar,at,'siege_settings',itemCount=2,mode='sky',wind='off',combatMode='live',reloadSeconds=0)['ok']
-    ar2=create('Tester',accountToken=account,guestPref='d'*48);assert state(ar2)['settings']['siegeMode']=='sky' and state(ar2)['settings']['siegeReload']==0
-    # second client joins; both fire while both shots are still airborne
+    ar2=create('Tester',accountToken=account,guestPref='d'*48);assert state(ar2)['settings']['siegeMode']=='sky' and state(ar2)['settings']['siegeReload']==15
+    # Legacy live-mode settings are migrated to the new synchronization mode.
     r=rr;t=r['token'];u=api(route(r,'join'),{'name':'B','seatKey':g.secrets.token_hex(12)})['token'];assert act(r,t,'set_mode',mode='siege')['ok']
     assert act(r,t,'siege_settings',itemCount=0,mode='classic',wind='off',ammo=0,buffMode='auto',combatMode='live',reloadSeconds=0)['ok'];assert act(r,t,'start')['ok']
-    first=siege(r,t,'state');assert first['combatMode']=='live' and first['canFire']
-    a=siege(r,t,'fire',angle=40,power=65,rev=0);assert a['ok'] and a['busy'] and a['shots']==[1,0]
-    b=siege(r,u,'fire',angle=50,power=70,rev=0);assert b['ok'] and b['busy'] and b['shots']==[1,1] and len(b['liveShots'])==2
-    a=siege(r,t,'state');assert len(a['liveShots'])==2 and not a['canFire']
+    first=siege(r,t,'state');assert first['combatMode']=='sync' and first['canFire']
     assert not siege(r,t,'fire',angle=40,power=65)['ok']
-    assert not siege(r,t,'return')['ok']
     # Shared runtime is excluded from persisted state, account preferences remain durable.
     g.flush_state();saved=json.loads(g.ROOMS_FILE.read_text());assert 'runtime' not in saved[r['code']]
     with g._db() as db:assert db.execute('SELECT count(*) FROM room_preferences').fetchone()[0]>=2

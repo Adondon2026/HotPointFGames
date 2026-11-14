@@ -583,8 +583,97 @@ def _siege_live_public(r,rt,key):
     v=_siege_public(r,key,r['rev']);now=time.time();seat=v['seat'];v.update(combatMode='live',event=None,busy=seat in rt['active'],liveShots=[e['sample'] for e in rt['active'].values()],reload=[0 if i in rt['active'] else max(0,round(rt['ready'][i]-now,2)) for i in (0,1)],canFire=_siege_live_can_fire(r,rt,seat,now),liveActive=bool(rt['active']),motionTime=max(0,rt['clock']-r['motionEpoch']),wind=r.get('windPair',0)*(1 if seat==0 else -1))
     return v
 
+def _siege_sync_runtime(r,now=None):
+    now=time.time() if now is None else now
+    return {'room':r,'round':1,'deadline':now+_siege_prep_seconds(r),'plans':[None,None],'locked':[False,False],'replay':None,'until':0.,'notice':['','']}
+
+def _siege_prep_seconds(r):
+    n=r.get('reloadSeconds',15);return n if n in (5,10,15) else 15
+
+def _siege_sync_plan(r,rt,side,data,lock=False):
+    if r['phase']!='play' or rt['replay'] or rt['locked'][side]:raise ValueError('当前不能调整炮击')
+    if data.get('round')!=rt['round']:raise ValueError('准备阶段已切换')
+    a,p=data.get('angle'),data.get('power')
+    if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):raise ValueError('角度或力度无效')
+    chosen=_siege_selection(r,data.get('selection'),side)
+    rt['plans'][side]=(a,p,chosen)
+    if lock:rt['locked'][side]=True
+
+def _siege_sync_compute(r,rt,now):
+    # Atomic round: validate/compute on a copy; the two generators share the same world.
+    import copy
+    w=copy.deepcopy(r);engine=_siege_live_runtime(w,now);w['reloadSeconds']=0
+    plans=[x or (42,65,{}) for x in rt['plans']];notices=['','']
+    # Both stock defenses are armed before either shot consumes the opposing defense.
+    if w.get('buffMode')=='stock':
+        for side in (0,1):
+            a,p,sel=plans[side];sel=dict(sel);armed=w.setdefault('armed',[{},{}])[side]
+            for k in _SIEGE_DEFENSE:
+                n=sel.pop(k,0)
+                if n:armed[k]=min(_SIEGE_STACK_MAX,armed.get(k,0)+n);w['buffs'][side][k]-=n
+            plans[side]=(a,p,sel)
+    for side,(a,p,sel) in enumerate(plans):
+        if w.get('ammo') and w['shots'][side]>=w['ammo']:continue
+        try:_siege_live_start(w,engine,side,a,p,sel,now)
+        except ValueError:
+            # Moving terrain may obstruct a prepared giant shell at the deadline.
+            if w.get('buffMode')=='stock':
+                sel=dict(sel);sel.pop('big',None);_siege_live_start(w,engine,side,a,p,sel,now)
+            else:
+                n=w['buffs'][side]['big'];w['buffs'][side]['big']=0
+                try:_siege_live_start(w,engine,side,a,p,None,now)
+                finally:w['buffs'][side]['big']+=n
+            notices[side]='巨型弹炮口受阻，本轮未消耗巨型弹'
+    frames=[];meta={};items={};step=0
+    def capture():
+        t=step*_SIEGE_LIVE_DT
+        for b in w['bodies']:meta[b['id']]={k:v for k,v in b.items() if k not in ('vx','vy','motionY','baseY','phase')}
+        for it in w['items']:items[it['id']]=dict(it)
+        frames.append([round(t,3),[_siege_pos(b) for b in w['bodies']],copy.deepcopy([e['sample'] for e in engine['active'].values()]),[list(_siege_launcher(i,w,max(0,now-w['motionEpoch'])+t)) for i in (0,1)],[it['id'] for it in w['items']]])
+    capture()
+    while engine['active']:
+        step+=1;engine['clock']=now+step*_SIEGE_LIVE_DT
+        # Alternate iteration order by tick to avoid systematically favoring one player.
+        for side in sorted(engine['active'],reverse=bool(step%2)):
+            entry=engine['active'][side]
+            try:entry['sample']=next(entry['gen'])
+            except StopIteration:
+                del engine['active'][side];engine['physicsFns'].pop(side,None);engine['dropQueues'].pop(side,None)
+        if engine['active']:engine['physicsFns'][next(iter(engine['active']))]()
+        if step%6==0 or not engine['active']:capture()
+    for b in w['bodies']:b['vx']=b['vy']=0.
+    cores=[_siege_core(w['bodies'],i) for i in (0,1)];ammo=w.get('ammo',0)
+    if min(cores)<=0 or (ammo and all(n>=ammo for n in w['shots'])):
+        w['phase']='over';w['winner']=None if abs(cores[0]-cores[1])<.01 else int(cores[1]>cores[0])
+    w['rev']+=1;w['reloadSeconds']=r.get('reloadSeconds',15);w['event']=None
+    duration=frames[-1][0];w['until']=time.time()+duration+.35
+    r.clear();r.update(w)
+    rt.update(replay={'id':r['rev'],'duration':duration,'frames':frames,'meta':list(meta.values()),'items':list(items.values()),'motionStart':max(0,now-w['motionEpoch'])},until=r['until'],notice=notices)
+
+def _siege_sync_tick(r,rt,now=None):
+    now=time.time() if now is None else now
+    if rt['replay']:
+        if now<rt['until']:return False
+        rt.update(round=rt['round']+1,deadline=now+_siege_prep_seconds(r),plans=[None,None],locked=[False,False],replay=None,notice=['',''])
+        if r['phase']=='play':r['windPair']=_siege_weather(r.get('windLevel','off'))
+        return False
+    if r['phase']!='play':return False
+    if r['bot'] and not rt['locked'][1]:
+        plan={'planOnly':True};_siege_bot(r,plan);rt['plans'][1]=plan['plan'];rt['locked'][1]=True
+    if all(rt['locked']) or now>=rt['deadline']:
+        _siege_sync_compute(r,rt,now);return True
+    return False
+
+def _siege_sync_public(r,rt,key,last=-1):
+    v=_siege_public(r,key,r['rev']);seat=v['seat'];replay=rt['replay'];busy=bool(replay)
+    v.update(combatMode='sync',event=None,busy=busy,round=rt['round'],ready=list(rt['locked']),remaining=max(0,round(rt['deadline']-time.time(),2)) if not busy else 0,canFire=r['phase']=='play' and not busy,liveShots=[],wind=r.get('windPair',0)*(1 if seat==0 else -1),syncNotice=rt['notice'][seat],myPlan=rt['plans'][seat],replayId=replay['id'] if replay else None)
+    if replay and last!=replay['id']:v['replay']=replay;v['replayElapsed']=max(0,replay['duration']+.35-(rt['until']-time.time()))
+    return v
+
 def _siege_bot_fire(r,a,p,live=None):
     selection={k:min(1 if k in _SIEGE_ONE_SHOT else 2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE} if r.get('buffMode')=='stock' else None
+    if live is not None and live.get('planOnly'):
+        live['plan']=(a,p,selection or {});return
     if live is not None and selection is not None:
         for k in _SIEGE_DEFENSE:
             if k in selection:

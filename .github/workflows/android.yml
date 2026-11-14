@@ -3,7 +3,7 @@ name: Android build
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'friend/**', 'feature/**']
     paths:
       - 'game_source/**'
       - 'app/**'
@@ -75,6 +75,7 @@ jobs:
           python game_source/tests/test_siege_v15.py
           python game_source/tests/test_siege_v16.py
           python game_source/tests/test_siege_v17.py
+          python game_source/tests/test_siege_v18.py
           python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
           python tools/sync_game_source.py
