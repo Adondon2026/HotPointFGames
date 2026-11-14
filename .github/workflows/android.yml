@@ -58,6 +58,7 @@ jobs:
           python tests/test_game_update_manifest.py
           python tests/test_zmz_channel.py
           node game_source/tests/test_siege_ui_regression.js
+          node game_source/tests/test_siege_state_controls.js
           python game_source/tests/smoke_test.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py
@@ -95,7 +96,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name == 'Zmz_dev' && 'HotPointFGames-ZMZ-v0.19.1-Android' || 'HotPointFGames-Android' }}
+          name: ${{ github.ref_name == 'Zmz_dev' && 'HotPointFGames-ZMZ-v0.19.2-Android' || 'HotPointFGames-Android' }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
       - name: Upload importable game files

@@ -21,6 +21,8 @@ class GameActivity : Activity() {
             setBackgroundColor(Color.rgb(255, 248, 241))
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            // Restore saved BGM on room entry without requiring a music-button cycle.
+            settings.mediaPlaybackRequiresUserGesture = false
             settings.allowFileAccess = false
             settings.allowContentAccess = false
             webChromeClient = WebChromeClient()

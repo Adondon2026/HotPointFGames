@@ -80,7 +80,11 @@ const siegeAudio=(()=>{
     if(!buffers[mode])buffers[mode]=build(mode);
     source=ctx.createBufferSource();source.buffer=buffers[mode];source.loop=true;source.connect(volume);source.start();
   }
-  function unlock(){if(!ready())return;started=true;if(!source)music()}
+  function unlock(){if(!ready())return;started=true;if(!source&&mode!=='off')music()}
+  // Restore the last selected track when a room is joined/loaded, not only
+  // after cycling the music button. A suspended browser context is retried
+  // on the first user gesture; Android WebView permits immediate playback.
+  function enterBattle(){if(mode!=='off')unlock()}
   function tone(start,duration,from,to,gain=.1,type='sine'){
     const o=ctx.createOscillator(),g=ctx.createGain(),now=ctx.currentTime+start;
     o.type=type;o.frequency.setValueAtTime(from,now);o.frequency.exponentialRampToValueAtTime(Math.max(30,to),now+duration);
@@ -122,12 +126,13 @@ const siegeAudio=(()=>{
   }
   function setMusic(){
     mode=tracks[(tracks.indexOf(mode)+1)%tracks.length];
-    localStorage.setItem('siege_bgm',mode);unlock();music();show();
+    localStorage.setItem('siege_bgm',mode);started=true;music();show();
   }
   function setEffects(){effects=!effects;localStorage.setItem('siege_sfx',effects?'on':'off');unlock();show()}
   document.getElementById('siegeMusicToggle')?.addEventListener('click',setMusic);
   document.getElementById('siegeEffectToggle')?.addEventListener('click',setEffects);
   document.addEventListener('pointerdown',()=>{if(document.body.classList.contains('in-battle'))unlock()},{passive:true});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&document.body.classList.contains('in-battle'))enterBattle()});
   show();
-  return {unlock,onState,stop:()=>{if(source){source.stop();source.disconnect();source=null}},cannon};
+  return {unlock,enterBattle,onState,stop:()=>{if(source){source.stop();source.disconnect();source=null}},cannon};
 })();

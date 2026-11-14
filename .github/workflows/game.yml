@@ -38,6 +38,7 @@ jobs:
           python tests/test_game_update_manifest.py
           python tests/test_zmz_channel.py
           node game_source/tests/test_siege_ui_regression.js
+          node game_source/tests/test_siege_state_controls.js
           python game_source/tests/smoke_test.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py
@@ -67,7 +68,7 @@ jobs:
         run: |
           TAG="game-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
           if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then
-            TAG="zmz-game-v0.19.1-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
+            TAG="zmz-game-v0.19.2-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
           fi
           python tools/game_update_manifest.py game_source/dist/game_hall_lan_v6_2.py game_source/dist/game-update.json --version "$TAG"
       - name: Upload importable game files
@@ -98,12 +99,12 @@ jobs:
           set -euo pipefail
           TAG="game-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
           if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then
-            TAG="zmz-game-v0.19.1-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
+            TAG="zmz-game-v0.19.2-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
           fi
           if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
-              --title "ZMZ v0.19.1 · game build ${GITHUB_RUN_NUMBER}" \
-              --notes "ZMZ v0.19.1 development-channel game update. Branch: Zmz_dev. Source: $GITHUB_SHA. Only the ZMZ APK accepts this channel." \
+              --title "ZMZ v0.19.2 · game build ${GITHUB_RUN_NUMBER}" \
+              --notes "ZMZ v0.19.2 development-channel game update. Branch: Zmz_dev. Source: $GITHUB_SHA. Only the ZMZ APK accepts this channel." \
               publish/game_hall_lan_v6_2.py publish/game-update.json
             # Keep the global GitHub latest-release pointer on main.
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
