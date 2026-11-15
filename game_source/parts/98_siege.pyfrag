@@ -21,7 +21,14 @@ _SIEGE_NEW_FIELDS={
     'floatingcenter': {'label':'浮空夹击','offset':205,'layout':'wall','rise':0,'gunX':100,'gunY':285,'pool':('bounce','big','wooddrop')},
     'movingwall': {'label':'移动屏障','offset':0,'layout':'wall','rise':0,'gunX':235,'pool':('through','shock','power')},
 }
-_SIEGE_MODES=('classic','dynamic','random',*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS)
+# Pools describe combat distance, not a different world resolution. Keep the
+# exact map modes and the old all-map random option for saved-room compatibility.
+_SIEGE_MAP_POOLS={
+    'pool_small': ('close','floating','fragments'),
+    'pool_medium': ('standard','peaks','obstacle','movingwall'),
+    'pool_large': ('far','overtop','sky','floatingcenter'),
+}
+_SIEGE_MODES=('classic','dynamic','random',*_SIEGE_MAP_POOLS,*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS)
 _SIEGE_STACK_MAX=5
 _SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport'),*('shield','armor','buffer'))
 
@@ -174,7 +181,8 @@ def _siege_field(r):
     layout=random.choice(('tower','wall','split')) if dynamic else 'tower'
     r.update(offset=offset,layout=layout,bodies=_siege_fort(offset,layout),items=_siege_items(r['itemCount'],allowed=_siege_allowed(r)),buffs=_siege_buffs(),windPair=_siege_weather(r.get('windLevel','off')))
     mode=r.get('mode','classic')
-    field_key=random.choice(tuple((*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS))) if mode=='random' else mode
+    pool=_SIEGE_MAP_POOLS.get(mode)
+    field_key=random.choice(pool) if pool else random.choice(tuple((*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS))) if mode=='random' else mode
     field=(_SIEGE_FIELDS|_SIEGE_NEW_FIELDS).get(field_key)
     r.pop('launchers',None);r['armed']=[{},{}];r['reflectors']=[];r['gunMotion']=[];r['nextBodyId']=100
     if field:
