@@ -460,7 +460,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     engineering=config['build']=='safe' and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop'))
     suppressed=('power','shock','pierce','push','blackhole','clone','gunteleport','coreteleport','bounceblast','ignite','firetrail','firearc','mine') if engineering else ()
     if live is None:suppressed=(*suppressed,'shotshield')
-    if engineering:chosen={k:v for k,v in chosen.items() if k not in suppressed}
+    if suppressed:chosen={k:v for k,v in chosen.items() if k not in suppressed}
     _siege_motion(r,motion_start)
     blocked=_siege_launch_check(r,side,actual_angle,chosen,motion_start,force)
     r['negativePending'][side].clear()
@@ -517,7 +517,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if b.get('floatFort') and b['kind']!='core' and damage>=8:
             b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
 
-    def snap(t,p):return [round(t,3),p,[_siege_pos(b) for b in bodies],[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)],round(draw_radius,2)]
+    def snap(t,p):return [round(t,3),p,[_siege_pos(b) for b in bodies],[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)],round(draw_radius,2),[b['id'] for b in bodies if b.get('burnRounds',0)>0 and b['hp']>0]]
     frames.append(snap(0,[round(px,1),round(py,1)]))
     shot_no=r['shots'][side]+1
     def sample(t,p):
@@ -625,7 +625,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 f['orbit']=2*math.pi*j/max(1,count);f['x']=max(radius,min(960-radius,x+math.cos(f['orbit'])*(radius+22)));f['y']=y+math.sin(f['orbit'])*(radius+22)
             fragments.append(f)
             next_child+=1;born+=1
-        if born:behavior_events.append(['spawn',round(t,3),round(x,1),round(y,1),born,pattern])
+        if born:behavior_events.append(['spawn',round(t,3),round(x,1),round(y,1),born,'secondary' if terminal else pattern])
         return born
     def split_now(event,x,y,svx,svy,parent=None):
         nonlocal split_done
@@ -663,6 +663,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             r['mines'].append(m);mine_events.append(['place',round(t,3),dict(m)])
     def trigger_mines(x,y,rr):
         nonlocal last_hit
+        if engineering:return
         current=sum(r['shots'])+(0 if live is not None else 1)
         for m in list(r['mines']):
             if current>m['expiresAfter']:
@@ -801,8 +802,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         _siege_motion(r,motion_start+t)
         if live is not None and shield_left and impact is None and main_stop is None:
             sh=live['shotShields'].setdefault(side,dict(left=shield_left));sh.update(x=px,y=py,radius=radius+24+6*attack_counts['shotshield'])
+        elif live is not None:live['shotShields'].pop(side,None)
         if impact is None and t>=flight_limit:
-            if fuse or config['splitMode']=='expire' or copy_mode=='expire' or engineering:finish_main(px,py,explode=bool(fuse))
+            if fuse or config['splitMode']=='expire' or copy_mode=='expire' or mine_left or engineering:finish_main(px,py,explode=bool(fuse))
             else:impact=[round(px,1),round(py,1)];hit_at=t;last_hit=t;teleport_target=(px,py)
             if engineering:schedule_drops(px,py,t,True)
         if impact is None and blocked is not None and step==1:
@@ -1023,7 +1025,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             for j in range(1,121):
                 t+=dt;integrate()
                 if j%4==0:frames.append(snap(t,None))
-                if settled>=18:break
+                if j>=18 and settled>=18:break
         for b in bodies:b['vx']=b['vy']=0.
     frames.append(snap(t,None))
     if live is None:r['shots'][side]+=1;r['rev']+=1
@@ -1141,8 +1143,9 @@ def _siege_sync_compute(r,rt,now):
         t=step*_SIEGE_LIVE_DT
         for b in w['bodies']:meta[b['id']]={k:v for k,v in b.items() if k not in ('vx','vy','motionY','baseY','phase')}
         for it in w['items']:items[it['id']]=dict(it)
-        frames.append([round(t,3),[_siege_pos(b) for b in w['bodies']],copy.deepcopy([e['sample'] for e in engine['active'].values()]),[list(_siege_launcher(i,w,max(0,now-w['motionEpoch'])+t)) for i in (0,1)],[it['id'] for it in w['items']],[dict(m) for m in w.get('mines',[])]])
+        frames.append([round(t,3),[_siege_pos(b) for b in w['bodies']],copy.deepcopy([e['sample'] for e in engine['active'].values()]),[list(_siege_launcher(i,w,max(0,now-w['motionEpoch'])+t)) for i in (0,1)],[it['id'] for it in w['items']],[dict(m) for m in w.get('mines',[])],[b['id'] for b in w['bodies'] if b.get('burnRounds',0)>0 and b['hp']>0]])
     capture()
+    settle_fn=next(iter(engine['physicsFns'].values()),None)
     while engine['active']:
         step+=1;engine['clock']=now+step*_SIEGE_LIVE_DT
         # Alternate iteration order by tick to avoid systematically favoring one player.
@@ -1153,20 +1156,11 @@ def _siege_sync_compute(r,rt,now):
                 del engine['active'][side];engine['physicsFns'].pop(side,None);engine['dropQueues'].pop(side,None);engine.get('shotShields',{}).pop(side,None)
         if engine['active']:engine['physicsFns'][next(iter(engine['active']))]()
         if step%6==0 or not engine['active']:capture()
-    if _siege_burn_round(w):
-        # The last active generator's integrator is no longer registered. Settle
-        # burned supports using the same rectangular collision geometry.
+    if _siege_burn_round(w) and settle_fn:
+        # Reuse the same rigid-body integrator after the final shot, so burning
+        # supports collapse identically in turn and simultaneous modes.
         for j in range(120):
-            step+=1
-            for b in w['bodies']:
-                if b['hp']<=0 or b.get('fixed'):continue
-                old_bottom=b['y']+b['h']/2; b['vy']+=_SIEGE_GRAV*_SIEGE_LIVE_DT
-                nxt=old_bottom+b['vy']*_SIEGE_LIVE_DT
-                surfaces=[_siege_floor(w,b['x'])]
-                surfaces.extend(c['y']-c['h']/2 for c in w['bodies'] if c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and old_bottom<=c['y']-c['h']/2+1)
-                surface=min(surfaces)
-                b['y']=min(nxt,surface)-b['h']/2
-                if nxt>=surface:b['vy']=0.
+            step+=1;settle_fn()
             if j%6==0:capture()
         capture()
     for b in w['bodies']:b['vx']=b['vy']=0.
