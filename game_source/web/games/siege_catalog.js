@@ -232,3 +232,11 @@ const siegeCatalog={
 const siegeIcon=(k,size=22)=>{const i=siegeCatalog[k];return i?'<svg class="siege-item-icon" aria-hidden="true" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" style="color:'+i.color+';vertical-align:middle;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+i.path+'"/></svg>':''};
 
 const siegeActiveKeys=Object.keys(siegeCatalog).filter(k=>!['larpa','downpour','fuse'].includes(k));
+
+const siegeV24Keys=['splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push','heavy','vanish','wobble','fart'];
+const siegeV24Skills=['shield','armor','heal','coreteleport','gunteleport'];
+const siegeV24Negatives=['heavy','vanish','wobble','fart'];
+const siegeV24Cap=k=>['splitshot','repeat','shield'].includes(k)?3:['homing','heal','coreteleport','gunteleport'].includes(k)?1:5;
+const siegeRarity=k=>['homing','heal','coreteleport','gunteleport'].includes(k)?'precious':['repeat','blackhole','shield'].includes(k)?'rare':['splitshot','through','bounceblast','pierce','armor'].includes(k)?'uncommon':'common';
+const siegeV24Names={splitshot:'分裂弹',repeat:'连发',bounce:'弹跳效果',through:'穿透效果',homing:'制导效果',shield:'核心护盾',armor:'防御加固',heal:'核心修复',wooddrop:'木块生成',stonedrop:'石块生成',coreteleport:'核心瞬移',gunteleport:'炮台瞬移',blackhole:'黑洞效果',bounceblast:'爆炸效果',pierce:'破甲效果',big:'增大效果',push:'推进效果',heavy:'重重效果',vanish:'湮灭效果',wobble:'不稳定效果',fart:'屁屁效果'};
+const siegeV24Group=k=>siegeV24Skills.includes(k)?'技能':siegeV24Negatives.includes(k)?'负面':k==='splitshot'?'弹药':k==='repeat'?'机制':'效果';

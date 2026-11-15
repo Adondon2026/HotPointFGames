@@ -102,7 +102,7 @@ for page in (g.SIEGE_PAGE,g.HTML_PAGE):
 assert "siegeBuffList.length" in g.HTML_PAGE
 assert "n+'/16'" not in g.HTML_PAGE
 assert 'return {unlock,enterBattle:' in g.SIEGE_PAGE
-assert 'siegeActiveKeys.map' in g.SIEGE_PAGE
+assert 'siegeV24Keys.map' in g.SIEGE_PAGE
 key='b'*48
 created=g.siege_request({'type':'create','key':key,'bot':True,'allowedBuffs':list(g._SIEGE_ITEMS)})
 assert created['ok'] and created['bot']
@@ -347,3 +347,73 @@ assert any(b['kind']=='wood' and b['h']>=70 for b in r['bodies'])
 r=g._siege_new('A','a',True,0,'overtop');assert r['reflectors']
 assert 'manualActions' in g.SIEGE_PAGE and 'siegeMapSize' in g.HTML_PAGE and 'trialSize' in g.SIEGE_PAGE
 print('Siege v0.23: live maneuvers, shared bullet time, charges, delayed reflection split, falling fire and themed maps PASS')
+
+# v0.24 compact rules: 21 items, fixed limits, independent skills, physical
+# collision effects and seeded theme worlds. Historical tests above use v0.23.
+def v24(theme='classic',allowed=None):
+    r=new()
+    if allowed is not None:r['allowedBuffs']=allowed
+    g._siege_v24_setup(r,theme)
+    r['items']=[];r['respawns']=[];r['until']=0
+    return r
+assert len(g._SIEGE_V24_KEYS)==21 and g._SIEGE_V24_CAPS['splitshot']==3 and g._SIEGE_V24_CAPS['repeat']==3
+assert g._SIEGE_V24_CAPS['heal']==g._SIEGE_V24_CAPS['homing']==1
+assert g._SIEGE_V24_CAPS['shield']==3 and g._SIEGE_V24_CAPS['bounce']==5
+r=v24();r['buffs'][0].update(splitshot=3,repeat=3,bounceblast=1)
+g._siege_fire(r,75,55,{'splitshot':3,'repeat':3,'bounceblast':1},config=g._siege_public_config({'triggers':{'splitshot':'end','bounceblast':'launch'}}))
+e=r['event'];splits=[x for x in e['behaviorEvents'] if x[0]=='split']
+assert len(splits)==4 and all(x[4]==8 and abs(x[5]-.125)<1e-8 and x[6]=='launch' for x in splits),splits
+assert len({f[0] for fr in e['frames'] for f in fr[3] if f[0]>=20000})==32
+assert not e['bounces'] and e['payloadEvents']['bounceblast']>0
+# Giant effect changes only collision radius.
+r=v24();r['buffs'][0]['big']=3;g._siege_fire(r,75,55,{'big':3},config=g._siege_public_config({}))
+assert r['event']['radius']==24 and r['event']['blastRadius']==52
+# Full inventory leaves the pickup at its position, including independent skills.
+for k in ('shield','homing','splitshot','heal'):
+    r=v24();r['buffs'][0][k]=g._SIEGE_V24_CAPS[k];x,y=g._siege_muzzle(0,r,75)
+    r['items']=[dict(id=999,kind=k,x=x,y=y,r=20,amount=1,zone='center',slot=999)]
+    g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
+    assert any(i['id']==999 for i in r['items']) and not any(i['id']==999 for i in r['event']['pickups'])
+# Partial acceptance leaves remaining layers in place.
+r=v24();r['buffs'][0]['bounce']=4;x,y=g._siege_muzzle(0,r,75)
+r['items']=[dict(id=999,kind='bounce',x=x,y=y,r=20,amount=3,zone='center',slot=999)]
+g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
+assert r['buffs'][0]['bounce']==5 and r['items'][0]['amount']==2
+# Skills are not shell modifiers, repair has one charge, and protection
+# remains armed until the opposing shot.
+r=v24();r['buffs'][0].update(shield=3,heal=1)
+core=next(b for b in r['bodies'] if b['side']==0 and b['kind']=='core');core['hp']=50
+g._siege_v24_skill(r,0,'heal',None,time.time());assert core['hp']==68 and r['buffs'][0]['heal']==0
+g._siege_v24_skill(r,0,'shield',None,time.time());assert r['armed'][0]['shield']==1 and r['buffs'][0]['shield']==2
+g._siege_fire(r,75,40,{},config=g._siege_public_config({}));assert r['armed'][0]['shield']==1
+# Point guidance changes actual velocity for the split group, once only.
+r=v24();r['buffs'][0].update(homing=1,splitshot=3);now=time.time()
+g._siege_manual_start(r,0,70,55,{'homing':1,'splitshot':3},False,g._siege_public_config({}),now)
+rt=g._SIEGE_MANUAL_ROUNDS[id(r)];g._siege_manual_tick(r,now+.2);before=rt['active'][0]['sample']
+assert len(before['fragments'])==8 and before['controls']['homing']==1
+g._siege_command(rt,0,'homing',before['shotNo'],now+.2,[700,340]);g._siege_manual_tick(r,now+.3)
+after=rt['active'][0]['sample'];assert after['controls']['homing']==0 and sum(e[0]=='maneuver' and e[4]=='homing' for e in after['behaviorEvents'])==8
+try:g._siege_command(rt,0,'homing',before['shotNo'],now+.3,[700,340]);assert False
+except ValueError:pass
+for j in range(2,100):
+    if g._siege_manual_tick(r,now+j*.25):break
+assert id(r) not in g._SIEGE_MANUAL_ROUNDS
+# Physical barrels propagate, not merely visual particles.
+r=v24('art')
+for i,x in enumerate((350,405,460)):
+    r['bodies'].append(dict(id=90+i,side=-1,x=x,y=365,w=20,h=24,kind='barrel',hp=18,max=18,vx=0.,vy=0.))
+g._siege_fire(r,5,65,{},config=g._siege_public_config({}))
+assert all(b['hp']==0 for b in r['bodies'] if b['kind']=='barrel')
+assert len([e for e in r['event']['behaviorEvents'] if e[0]=='bounceBlast'])>=3
+# Theme selection and persistent protected resource weights.
+for theme in ('classic','art'):
+    r=v24(theme);r.update(mode='random',itemCount=13);g._siege_field(r)
+    assert len(r['items'])==13 and set(i['kind'] for i in r['items'])<=set(g._siege_allowed(r))
+    assert any(i['zone']=='center' for i in r['items'])
+    if theme=='art':assert any(b['kind']=='barrel' for b in r['bodies']) and 'heal' not in g._siege_allowed(r)
+    it=next(i for i in r['items'] if i['zone']=='center');r['items'].remove(it)
+    r['respawns']=[{**it,'readyAt':0}];r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
+    g._siege_refill(r);refill=next(i for i in r['items'] if i['slot']==it['slot'])
+    assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y'])
+assert 'siegeRarityModal' in g.HTML_PAGE and 'ammo-tile' in g.SIEGE_PAGE and 'skillDock' in g.SIEGE_PAGE
+print('Siege v0.24: 32 conserved projectiles, giant radius, capped pickups, skill charges, point guidance, barrel chains, theme and persistent rarity PASS')
