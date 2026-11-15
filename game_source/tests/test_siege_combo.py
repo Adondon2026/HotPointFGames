@@ -113,3 +113,44 @@ r['until']=time.time()-1
 second=g.siege_request({'type':'state','key':key,'code':code,'last':first['rev']})
 assert second['ok'] and second['shots']==[1,1] and second['event']['side']==1
 print('Siege catalog and bot handoff PASS')
+
+# Free-fire trial: full inventory including negative and immediate-use items,
+# no bot turn, no scoring or terminal state, preview leaves the room unchanged.
+import copy
+key='c'*48
+v=g.siege_request({'type':'create','key':key,'trial':True})
+assert v['ok'] and v['trial'] and v['ammo']==0 and v['buffMode']=='stock'
+assert set(v['buffs'][0])==set(g._SIEGE_ITEMS) and all(v['buffs'][0].values())
+code=v['code'];r=g._SIEGE_ROOMS[code]
+r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
+r['launchers']=[[235,368],[725,368]]
+# Put the dummy directly in a simple horizontal trajectory.
+target=next(b for b in r['bodies'] if b['side']==1)
+target.update(x=440,y=368,vx=0.,vy=0.,fixed=True)
+cfg={'simple':True}
+before=copy.deepcopy(r)
+preview=g.siege_request({'type':'trialPreview','key':key,'code':code,'angle':5,'power':90,'selection':{'power':5},'config':cfg})
+assert preview['ok'] and preview['paths'] and preview['damage']>0,preview
+assert r['bodies']==before['bodies'] and r['buffs']==before['buffs'] and r['rev']==before['rev'] and r['shots']==[0,0]
+for i in range(3):
+    v=g.siege_request({'type':'fire','key':key,'code':code,'rev':r['rev'],'angle':5,'power':90,'selection':{'power':5},'config':cfg})
+    assert v['ok'] and v['cores'][1]==100 and v['turn']==0 and v['phase']=='play' and v['shots']==[i+1,0]
+    assert v['trialDamage']>0 and v['buffs'][0]['power']==5
+    r['until']=0
+v=g.siege_request({'type':'trialReset','key':key,'code':code,'mode':'sky'})
+assert v['ok'] and v['field']=='sky' and v['shots']==[0,0] and len(v['bodies'])>2
+# Level-dependent motion: actual velocity is updated at the apex, not a user-entered time.
+cfg=g._siege_config({'simple':True})
+for level in range(1,6):
+    assert g._siege_motion_delta(200,-20,0,0,.5,1/60,{'dive':level},cfg,0,[],False)==(200,-20,False)
+    x,y,dived=g._siege_motion_delta(200,1,0,0,.5,1/60,{'dive':level},cfg,0,[],False)
+    assert x==0 and y==300+60*(level-1) and dived
+    vx=200
+    for j in range(1,301):
+        vx,_,_=g._siege_motion_delta(vx,0,0,0,j/60,1/60,{'pingpong':level},cfg,0,[],False)
+    assert vx==200*(-1)**level
+    assert abs(g._siege_gravity({'antigrav':level},{})-460*max(-.5,1-.3*level))<1e-8
+# Every inventory type has a named outcome description.
+assert '俯冲开始时间（秒）' not in g.SIEGE_PAGE and '高级组合 · 母弹与子弹' not in g.SIEGE_PAGE
+assert 'trialPreview' in g.SIEGE_PAGE and 'liteSiegeTrial' in g.HTML_PAGE
+print('Siege trial and automatic modifier stacks PASS')
