@@ -377,8 +377,9 @@ def _siege_config(config=None):
 
 def _siege_compile_spec(counts,config):
     """Compile immutable per-shot behavior; children do not recursively copy event generators."""
-    root={k:v for k,v in counts.items() if config['scopes'].get(k,'both')!='child'}
-    child={k:v for k,v in counts.items() if config['scopes'].get(k,'both')!='mother' and k not in ('repeat','splitshot','larpa','downpour','bounceblast','clone')}
+    scopes=config['scopes'] if any(counts.get(k) for k in ('splitshot','larpa','downpour')) else {}
+    root={k:v for k,v in counts.items() if scopes.get(k,'both')!='child'}
+    child={k:v for k,v in counts.items() if scopes.get(k,'both')!='mother' and k not in ('repeat','splitshot','larpa','downpour','bounceblast','clone')}
     # Source shells keep the original geometry; child scope changes effects and motion.
     rules=[]
     if counts.get('splitshot'):rules.append(dict(event=config['splitMode'],effect='split',count=2*counts['splitshot'],after=config['parentEnd']))
@@ -521,7 +522,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     def spawn_clone(x,y,shell_kind):
         nonlocal clone_left
         if not clone_left or shell_kind in ('clone','larpa'):return
-        count=clone_left;clone_left=0;start=r.get('nextCloneId',0)
+        count=min(clone_left,max(0,20-sum(c['side']==side for c in r['clones'])));r['buffs'][side]['clone']+=clone_left-count;clone_left=0;start=r.get('nextCloneId',0)
         for j in range(count):
             xx=max(45.,min(915.,x+(j-(count-1)/2)*24))
             yy=min(_siege_floor(r,xx)-24.,y)
@@ -628,6 +629,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1)])
         if larpa_left:
             n=spawn_children(x,y,svx,svy,min(2,larpa_left),'fan',parent);larpa_left-=n
+        if (split_now('bounce',x,y,svx,svy,parent) or split_now('hit',x,y,svx,svy,parent)) and config['parentEnd']!='continue':
+            if parent is None:finish_main(x,y,explode=config['parentEnd']=='explode')
+            else:finish_fragment(parent,x,y,explode=config['parentEnd']=='explode')
     def finish_main(x,y,target=None,explode=True):
         nonlocal impact,hit_at,last_hit,teleport_target,px,py
         if impact is not None:return
@@ -737,7 +741,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         t=step*dt
         _siege_motion(r,motion_start+t)
         if impact is None and t>=flight_limit:
-            if fuse:finish_main(px,py)
+            if fuse or config['splitMode']=='expire' or engineering:finish_main(px,py,explode=bool(fuse))
             else:impact=[round(px,1),round(py,1)];hit_at=t;last_hit=t;teleport_target=(px,py)
             if engineering:schedule_drops(px,py,t,True)
         if impact is None and blocked is not None and step==1:
@@ -747,8 +751,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if impact is None and main_stop is not None:
             px,py=attached_pos(main_stop,px,py)
             deadline=main_stop[3]+fuse_time if fuse_mode=='delay' else fuse_time
-            if t>=deadline:finish_main(px,py)
-        if impact is None and main_stop is None and config['splitMode']=='timer' and t>=config['splitTime']:
+            if t>=deadline:finish_main(px,py,next((b for b in bodies if b['id']==main_stop[0] and b['hp']>0),None))
+        if impact is None and config['splitMode']=='timer' and t>=config['splitTime']:
             if split_now('timer',px,py,vx,vy) and config['parentEnd']!='continue':finish_main(px,py,explode=config['parentEnd']=='explode')
         if impact is None and main_stop is None and fuse and fuse_mode!='delay' and t>=fuse_time:finish_main(px,py)
         if impact is None and main_stop is None:
@@ -791,7 +795,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);break
                 if target or y>=_siege_floor(r,max(0,min(960,x)))-rr or wall:
                     px,py=max(rr,min(960-rr,x)),y
-                    split_now('hit',px,py,vx,vy)
+                    if split_now('hit',px,py,vx,vy) and config['parentEnd']!='continue':
+                        finish_main(px,py,target,config['parentEnd']=='explode');break
                     if fuse and fuse_mode in ('strict','delay'):
                         main_stop=attach(px,py,target);vx=vy=0.;last_hit=t
                     else:finish_main(px,py,target)
@@ -808,11 +813,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             deadline=f.get('fuseAt',f.get('bornAt',0)+fuse_time if f.get('kind')=='repeat' else fuse_time)
             if f.get('stop'):
                 f['x'],f['y']=attached_pos(f['stop'],f['x'],f['y'])
-                if t>=(f['stop'][3]+delay_here if fuse_mode=='delay' else deadline):finish_fragment(f,f['x'],f['y'])
+                if t>=(f['stop'][3]+delay_here if fuse_mode=='delay' else deadline):finish_fragment(f,f['x'],f['y'],next((b for b in bodies if b['id']==f['stop'][0] and b['hp']>0),None))
                 continue
             if fuse_here and fuse_mode!='delay' and deadline is not None and t>=deadline:finish_fragment(f,f['x'],f['y']);continue
             if t>=flight_limit:
-                if fuse_here:finish_fragment(f,f['x'],f['y'])
+                if fuse_here or (f.get('kind')=='repeat' and config['splitMode']=='expire'):finish_fragment(f,f['x'],f['y'],explode=fuse_here)
                 else:f['live']=False
                 continue
             if f.get('kind')=='repeat' and config['splitMode']=='timer' and t-f['bornAt']>=config['splitTime']:
@@ -827,7 +832,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 x=ox+(f['x']-ox)*k/4;y=oy+(f['y']-oy)*k/4
                 contact=_siege_reflect(r,ox,oy,x,y,f['vy']-_SIEGE_GRAV*dt,fr)
                 if contact:
-                    f['x'],f['y']=contact;f['vy']=-f['vy']*.88;f['vx']*=.97;bounces.append([round(contact[0],1),round(contact[1],1),round(t,3),f['id']]);break
+                    f['x'],f['y']=contact;f['vy']=-f['vy']*.88;f['vx']*=.97;bounces.append([round(contact[0],1),round(contact[1],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 collect(x,y,fr,t)
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
@@ -836,16 +841,17 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     f['passed'].add(target['id']);target=None
                 if target and f.get('kind')=='repeat' and split_now('hit',x,y,f['vx'],f['vy'],f) and config['parentEnd']!='continue':finish_fragment(f,x,y,target,config['parentEnd']=='explode');break
                 if target and f['groundLeft']>0:
-                    f['groundLeft']-=1;f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);break
+                    f['groundLeft']-=1;f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 if not target and fr<=x<=960-fr and y>=_siege_floor(r,x)-fr and f['vy']>0 and f['groundLeft']>0:
-                    f['groundLeft']-=1;f['x']=x;f['y']=_siege_floor(r,x)-fr-.2;f['vy']=-max(135,f['vy']*.76);f['vx']*=.86;bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);break
+                    f['groundLeft']-=1;f['x']=x;f['y']=_siege_floor(r,x)-fr-.2;f['vy']=-max(135,f['vy']*.76);f['vx']*=.86;bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 wall=x<=fr or x>=960-fr
                 if wall and f['groundLeft']>0:
                     f['groundLeft']-=1;f['x']=max(fr+.1,min(960-fr-.1,x));f['y']=y;f['vx']=(abs(f['vx']) if x<=fr else -abs(f['vx']))*.82
-                    bounces.append([round(f['x'],1),round(y,1),round(t,3),f['id']]);break
+                    bounces.append([round(f['x'],1),round(y,1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 if target or y>=_siege_floor(r,max(0,min(960,x)))-fr or wall:
                     cx=max(fr,min(960-fr,x))
-                    if f.get('kind')=='repeat':split_now('hit',cx,y,f['vx'],f['vy'],f)
+                    if f.get('kind')=='repeat' and split_now('hit',cx,y,f['vx'],f['vy'],f) and config['parentEnd']!='continue':
+                        finish_fragment(f,cx,y,target,config['parentEnd']=='explode');break
                     if fuse_here and fuse_mode in ('strict','delay'):
                         f['x'],f['y']=cx,y;f['stop']=attach(cx,y,target);f['vx']=f['vy']=0.;last_hit=t
                     else:finish_fragment(f,cx,y,target)
@@ -857,18 +863,21 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             drop_events.append([ident,round(x,1),round(y,1),round(t,3)]);last_hit=t;settled=0
         field_holes=[h for hs in live.get('fieldSources',{}).values() for h in hs] if live is not None else holes
         if field_holes:
-            for hx,hy,ht,level in field_holes:
-                if not ht<=t<ht+2:continue
-                def pull(x,y):
+            def pull(x,y):
+                ax=ay=0.
+                for hx,hy,ht,level in field_holes:
+                    if not ht<=t<ht+2:continue
                     dx=hx-x;dy=hy-y;d=math.hypot(dx,dy);reach=120+22*level
-                    if d<14 or d>reach:return 0.,0.
+                    if d<14 or d>reach:continue
                     a=min(220,(75+40*level)*(1-d/reach))
-                    return dx/d*a*dt,dy/d*a*dt
-                if impact is None and main_stop is None:
-                    ax,ay=pull(px,py);vx+=ax;vy+=ay
-                for f in fragments:
-                    if f['live'] and not f.get('stop') and t>=f.get('bornAt',0):
-                        ax,ay=pull(f['x'],f['y']);f['vx']+=ax;f['vy']+=ay
+                    ax+=dx/d*a;ay+=dy/d*a
+                cap=max(1,math.hypot(ax,ay)/320)
+                return ax*dt/cap,ay*dt/cap
+            if impact is None and main_stop is None:
+                ax,ay=pull(px,py);vx+=ax;vy+=ay
+            for f in fragments:
+                if f['live'] and not f.get('stop') and t>=f.get('bornAt',0):
+                    ax,ay=pull(f['x'],f['y']);f['vx']+=ax;f['vy']+=ay
         if last_hit is not None:
             # A finite, softened pull. Nothing is deleted by the black hole.
             for hx,hy,ht,level in holes:
