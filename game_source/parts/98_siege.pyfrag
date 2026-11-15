@@ -53,7 +53,7 @@ _SIEGE_MAX_RADIUS=36
 _SIEGE_HARD_CAPS={k:(1 if k in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE,'fuse') else 20 if k=='bounce' else 10 if k=='through' else 5) for k in _SIEGE_ITEMS}
 _SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_NEGATIVE)
 _SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield') else 1 if k in ('homing','heal','coreteleport','gunteleport') else 5 for k in _SIEGE_V24_KEYS}
-_SIEGE_V24_SKILLS=('shield','heal','coreteleport','gunteleport')
+_SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop',*_SIEGE_TNT_KEYS)
 _SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport') else 'rare' if k in ('repeat','blackhole','shield') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_WEIGHTS={'common':8,'uncommon':4,'rare':2,'precious':1}
 _SIEGE_V24_ART={'splitshot':16,'repeat':24,'bounce':16,'bounceblast':22,'through':5,'big':5,'homing':1,'blackhole':2,'push':3,'pierce':3,'shield':2,'armor':2,'tntdrop':4,'tntwait':3}
@@ -420,8 +420,8 @@ def _siege_selection(r,selection,side=None):
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
     _siege_normalize_buffs(r);inv=r['buffs'][r['turn'] if side is None else side];out={}
     for k,n in selection.items():
-        if k not in _SIEGE_SELECTABLE or (k in _SIEGE_TNT_KEYS and not _siege_v24(r)) or (_siege_v24(r) and (k not in _SIEGE_V24_KEYS or k in _SIEGE_V24_SKILLS)) or type(n) is not int or not 0<=n<=min(_siege_cap(r,k),inv[k]):raise ValueError('增益数量超出库存或单次上限')
-        if _siege_v24(r) and k=='armor' and n+r.get('armed',[{},{}])[r['turn'] if side is None else side].get(k,0)>_siege_cap(r,k):raise ValueError('已有加固待命，请减少本炮选择数量')
+        if (k not in _SIEGE_SELECTABLE and not (_siege_v24(r) and k=='heal')) or (k in _SIEGE_TNT_KEYS and not _siege_v24(r)) or (_siege_v24(r) and k not in _SIEGE_V24_KEYS) or type(n) is not int or not 0<=n<=min(_siege_cap(r,k),inv[k]):raise ValueError('增益数量超出库存或单次上限')
+        if _siege_v24(r) and k in ('shield','armor') and n+r.get('armed',[{},{}])[r['turn'] if side is None else side].get(k,0)>_siege_cap(r,k):raise ValueError('已有防御待命，请减少本炮选择数量')
         if n:out[k]=n
     return out
 
@@ -710,14 +710,14 @@ def _siege_trial_steps(r,angle,power,selection,force=False,config=None,control=N
         if n:selected[k]=n
     config=_siege_config(config)
     # Validate before modifying any state. Negatives and heal are trial-only direct choices.
-    chosen={k:n for k,n in selected.items() if k in _SIEGE_SELECTABLE}
+    chosen={k:n for k,n in selected.items() if k in _SIEGE_SELECTABLE or (_siege_v24(r) and k=='heal')}
     _siege_launch_check(r,0,angle,chosen,force=force)
     r['negativePending'][0]={k:1 for k in _SIEGE_NEGATIVE if selected.get(k)}
-    if selected.get('heal'):
+    if selected.get('heal') and not _siege_v24(r):
         core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==0);core['hp']=min(core['max'],core['hp']+18)
     # Target defense enables real damage-reduction comparisons without enemy fire.
     if not _siege_v24(r):r['armed'][1]={k:selected[k] for k in _SIEGE_DEFENSE if k in selected}
-    elif selected.get('armor'):r['armed'][1]['armor']=selected['armor'] # test target's armor without an opponent shot
+    elif _siege_v24(r):r['armed'][1]={k:selected[k] for k in ('shield','armor') if selected.get(k)} # test target defense
     chosen={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
     yield from _siege_fire_steps(r,angle,power,chosen,force=force,config=config,control=control)
     _siege_trial_stock(r)
@@ -764,7 +764,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     if unified:
         # Safe engineering still permits non-damaging deployment of mines/clones.
         suppressed=tuple(k for k in suppressed if k not in ('mine','clone'))+_SIEGE_RETIRED
-    if v24:chosen={k:v for k,v in chosen.items() if k in _SIEGE_V24_KEYS and k not in _SIEGE_V24_SKILLS}
+    if v24:chosen={k:v for k,v in chosen.items() if k in _SIEGE_V24_KEYS}
+    if v24:suppressed=tuple(k for k in suppressed if k not in _SIEGE_ONE_SHOT)
     if suppressed:chosen={k:v for k,v in chosen.items() if k not in suppressed}
     _siege_motion(r,motion_start)
     blocked=_siege_launch_check(r,side,actual_angle,chosen,motion_start,force)
@@ -778,7 +779,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if live is not None:
             armed[side]={**armed[side],**{k:armed[side].get(k,0)+n for k,n in chosen.items() if k in _SIEGE_DEFENSE}}
         elif v24:
-            if chosen.get('armor'):armed[side]['armor']=armed[side].get('armor',0)+chosen['armor']
+            for k in ('shield','armor'):
+                if chosen.get(k):armed[side][k]=armed[side].get(k,0)+chosen[k]
         else:armed[side]={k:n for k,n in chosen.items() if k in _SIEGE_DEFENSE}
         for k,n in chosen.items():r['buffs'][side][k]-=n
     else:
@@ -786,6 +788,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         defense_counts={k:1 for k in _SIEGE_DEFENSE if r['buffs'][1-side][k]>0}
         for k in attack_counts:r['buffs'][side][k]-=1
         for k in defense_counts:r['buffs'][1-side][k]-=1
+    if v24 and attack_counts.get('heal'):
+        core=next(b for b in bodies if b['kind']=='core' and b['side']==side)
+        if 0<core['hp']<core['max']:
+            core['hp']=min(core['max'],core['hp']+18)
+        else:r['buffs'][side]['heal']+=attack_counts['heal'] # no wasted charge at full health
     spec=_siege_compile_spec(attack_counts,config);root_counts=spec['root'];child_counts=spec['child']
     manual=bool(config.get('manual') and not _siege_robot(r,side))
     manual_keys=() if v24 else _SIEGE_MANUAL_KEYS
@@ -1249,8 +1256,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             frames.append(snap(t,None))
         else:parent['live']=False;last_hit=t
         return True
+    own_landings=[]
     def landing_payloads(x,y,parent=None):
         if not v24:return
+        if (side==0 and 35<=x<=435) or (side==1 and 525<=x<=925):own_landings.append((x,y))
         counts=root_counts if parent is None or parent.get('kind')=='repeat' else child_counts
         for k in ('wooddrop','stonedrop'):
             if counts.get(k):generate_payload(k,counts[k],x,y)
@@ -1689,12 +1698,45 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if v24 and k in _SIEGE_TNT_KEYS:used=min(n,generated_counts[k])
                 r['buffs'][side][k]+=n-used
             elif k not in triggered:r['buffs'][side][k]+=n
-    # Teleport to the actual impact column anywhere on the battlefield. The descent is
+    # v24 teleports use the first valid own-side terminal landing, never a separate click.
+    # Legacy teleport to the actual impact column anywhere on the battlefield. The descent is
     # kinematic and collision-safe; gravity gives its timing, not impact damage.
     for kind in _SIEGE_ONE_SHOT:
         if not attack_counts.get(kind):continue
         core=next(b for b in bodies if b['side']==side and b['kind']=='core')
         old=_siege_launcher(side,r,motion_start+t) if kind=='gunteleport' else (core['x'],core['y'])
+        if v24:
+            destination=None
+            if core['hp']>0:
+                lo,hi=(35,435) if side==0 else (525,925)
+                for lx,ly in own_landings:
+                    # Use the nearest legal empty ground within 60 world units of the landing.
+                    for x in sorted(range(lo,hi+1,5),key=lambda x:abs(x-lx)):
+                        if abs(x-lx)>60:break
+                        w,h=(50,96) if kind=='gunteleport' else (core['w'],core['h'])
+                        y=_siege_floor(r,x)-h/2
+                        if abs(x-old[0])<5:continue
+                        if any(b['hp']>0 and (kind=='gunteleport' or b is not core) and abs(b['x']-x)<(b['w']+w)/2 and abs(b['y']-y)<(b['h']+h)/2 for b in bodies):continue
+                        if any(abs(x-_siege_launcher(i,r,motion_start+t)[0])<w/2+25 for i in (0,1) if i!=side or kind=='coreteleport'):continue
+                        destination=(x,y);break
+                    if destination is not None:break
+            if destination is None:
+                r['buffs'][side][kind]=min(1,r['buffs'][side][kind]+1);continue
+            x,y=destination
+            if kind=='gunteleport':
+                r.setdefault('launchers',[list(_siege_launcher(i,r,motion_start+t)) for i in (0,1)])
+                r['launchers'][side]=[x,y]
+                if r.get('gunMotion'):r['gunMotion'][side]={'amplitude':0,'phase':0}
+                r.setdefault('gunGravity',[False,False])[side]=True
+                r.setdefault('gunFallV',[0.,0.])[side]=0.
+            else:
+                core.update(x=x,y=y,vx=0.,vy=0.)
+                for key in ('fixed','motionY','floatFort','teleportFall'):core.pop(key,None)
+            teleports.append([kind,side,*old,x,y,round(t,3),y,round(t,3)])
+            behavior_events.append(['teleport',round(t,3),round(x,1),round(y,1),kind])
+            frames.append(snap(t,None))
+            if live is not None:yield sample(t,None)
+            continue
         if teleport_target is None or core['hp']<=0:
             r['buffs'][side][kind]=1;continue
         desired=max(45,min(915,teleport_target[0]));w,h=(52,96) if kind=='gunteleport' else (core['w'],core['h'])
@@ -1778,31 +1820,8 @@ def _siege_command(rt,side,k,shot,now,target=None):
     sample['controls'][k]=c['left'][k]
 
 def _siege_v24_skill(r,side,k,target,now):
-    if not _siege_v24(r) or k not in _SIEGE_V24_SKILLS or r['phase']!='play' or now<r['until'] or id(r) in _SIEGE_MANUAL_ROUNDS:raise ValueError('当前不能使用技能')
-    inv=r['buffs'][side]
-    if not inv.get(k):raise ValueError('技能库存不足')
-    core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==side)
-    if k=='shield':
-        armed=r.setdefault('armed',[{},{}])[side]
-        if armed.get(k,0)>=_SIEGE_V24_CAPS[k]:raise ValueError('技能已满')
-        armed[k]=armed.get(k,0)+1
-    elif k=='heal':
-        if core['hp']>=core['max']:raise ValueError('核心已满血')
-        core['hp']=min(core['max'],core['hp']+18)
-    else:
-        if not isinstance(target,list) or len(target)!=2 or any(type(x) not in (int,float) or not math.isfinite(x) for x in target):raise ValueError('请选择落点')
-        x=target[0];lo,hi=(35,435) if side==0 else (525,925)
-        if not lo<=x<=hi:raise ValueError('只能移动到己方区域')
-        if k=='coreteleport':
-            y=_siege_floor(r,x)-core['h']/2
-            if any(b is not core and b['hp']>0 and abs(b['x']-x)<(b['w']+core['w'])/2 and abs(b['y']-y)<(b['h']+core['h'])/2 for b in r['bodies']):raise ValueError('落点有建筑')
-            core.update(x=x,y=y,vx=0.,vy=0.)
-        else:
-            y=_siege_floor(r,x)-48
-            if any(b['hp']>0 and abs(b['x']-x)<b['w']/2+25 and abs(b['y']-y)<b['h']/2+25 for b in r['bodies']):raise ValueError('落点有建筑')
-            r['launchers']=[list(_siege_launcher(i,r,0)) for i in (0,1)];r['launchers'][side]=[x,y];r['gunMotion']=[]
-    inv[k]-=1;r['rev']+=1;r['event']=None
-    if r.get('trial'):_siege_trial_stock(r)
+    # No immediate-consumption action in v24; all choices travel in shot selection.
+    raise ValueError('请在增益面板选择数量，开炮时生效')
 
 def _siege_manual_start(r,side,a,p,selection,force,config,now):
     if id(r) in _SIEGE_MANUAL_ROUNDS:raise ValueError('上一炮尚未结束')
@@ -2001,7 +2020,7 @@ def _siege_sync_public(r,rt,key,last=-1):
     return v
 
 def _siege_bot_fire(r,a,p,live=None):
-    selection={k:min(_siege_cap(r,k),2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE and k not in _SIEGE_ONE_SHOT and (not _siege_v24(r) or k not in _SIEGE_V24_SKILLS)} if r.get('buffMode')=='stock' else None
+    selection={k:min(_siege_cap(r,k),2,n) for k,n in r['buffs'][1].items() if n>0 and (k in _SIEGE_SELECTABLE or (_siege_v24(r) and k=='heal')) and k not in _SIEGE_ONE_SHOT} if r.get('buffMode')=='stock' else None
     if live is not None and live.get('planOnly'):
         live['plan']=(a,p,selection or {});return
     if live is not None and selection is not None:

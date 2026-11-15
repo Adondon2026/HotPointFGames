@@ -379,13 +379,32 @@ r=v24();r['buffs'][0]['bounce']=4;x,y=g._siege_muzzle(0,r,75)
 r['items']=[dict(id=999,kind='bounce',x=x,y=y,r=20,amount=3,zone='center',slot=999)]
 g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
 assert r['buffs'][0]['bounce']==5 and r['items'][0]['amount']==2
-# Skills are not shell modifiers, repair has one charge, and protection
-# remains armed until the opposing shot.
-r=v24();r['buffs'][0].update(shield=3,heal=1)
+# Every positive skill uses the same draft/commit path; no immediate use.
+r=v24();r['buffs'][0].update(shield=3,heal=1,coreteleport=1,gunteleport=1)
 core=next(b for b in r['bodies'] if b['side']==0 and b['kind']=='core');core['hp']=50
-g._siege_v24_skill(r,0,'heal',None,time.time());assert core['hp']==68 and r['buffs'][0]['heal']==0
-g._siege_v24_skill(r,0,'shield',None,time.time());assert r['armed'][0]['shield']==1 and r['buffs'][0]['shield']==2
-g._siege_fire(r,75,40,{},config=g._siege_public_config({}));assert r['armed'][0]['shield']==1
+for k in ('shield','armor','heal','coreteleport','gunteleport'):
+    r['buffs'][0][k]=max(1,r['buffs'][0][k])
+    assert g._siege_selection(r,{k:1},0)=={k:1}
+    assert g._siege_selection(r,{k:0},0)=={}
+    try:g._siege_v24_skill(r,0,k,None,time.time());assert False
+    except ValueError:pass
+assert core['hp']==50 and r['buffs'][0]['heal']==1 and not r['armed'][0]
+g._siege_fire(r,75,40,{'shield':2,'heal':1},config=g._siege_public_config({}))
+assert core['hp']==68 and r['buffs'][0]['heal']==0 and r['buffs'][0]['shield']==1 and r['armed'][0]['shield']==2
+r=v24();r['buffs'][0]['heal']=1
+g._siege_fire(r,75,40,{'heal':1},config=g._siege_public_config({}))
+assert r['buffs'][0]['heal']==1
+# No legal own-side terminal landing: refund the teleport, not an enemy-side teleport.
+r=v24();r['buffs'][0]['coreteleport']=1
+g._siege_fire(r,45,70,{'coreteleport':1},config=g._siege_public_config({}))
+assert not r['event']['teleports'] and r['buffs'][0]['coreteleport']==1
+# Own-side rear shot moves the selected body, respecting empty ground.
+for k in ('coreteleport','gunteleport'):
+    r=v24();r['buffs'][0][k]=1
+    g._siege_fire(r,110,25,{k:1},config=g._siege_public_config({}))
+    assert r['event']['teleports'] and r['event']['teleports'][0][0]==k and r['buffs'][0][k]==0,(k,r['event']['impact'],r['event']['teleports'])
+    assert 35<=r['event']['teleports'][0][4]<=435
+print('Siege v0.24 all skills: quantity selection, deferred heal/shield and legal teleport/refund PASS')
 # Armor is a reversible draft, never an immediate-use skill.
 r=v24();r['buffs'][0]['armor']=5
 assert g._siege_selection(r,{'armor':5},0)=={'armor':5}
@@ -460,7 +479,7 @@ for theme in ('classic','art'):
     r['respawns']=[{**it,'readyAt':0}];r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
     g._siege_refill(r);refill=next(i for i in r['items'] if i['slot']==it['slot'])
     assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y'])
-assert 'siegeRarityModal' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'skillDock' in g.SIEGE_PAGE
+assert 'siegeRarityModal' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'skillDock' not in g.SIEGE_PAGE
 print('Siege v0.24: 32 conserved projectiles, giant radius, capped pickups, skill charges, point guidance, barrel chains, theme and persistent rarity PASS')
 
 # Negative effects are independent of rarity configuration and protected slots.
