@@ -221,7 +221,7 @@ def _siege_field(r):
         if field_key=='obstacle':
             r['bodies'].append({'id':len(r['bodies']),'side':-1,'x':480,'y':351,'w':52,'h':130,'kind':'stone','hp':95,'max':95,'vx':0.,'vy':0.})
     else:r.update(rise=0,gunShift=0,field=mode,fieldLabel='经典战场' if mode=='classic' else '动态战场',items=_siege_items(r['itemCount'],{'offset':offset,'rise':0,'pool':('power','big','heal')},allowed=_siege_allowed(r)))
-    r['motionEpoch']=time.time();r['respawns']=[];r['nextItemId']=1000;r['negativePending']=[{},{}];r['clones']=[]
+    r['motionEpoch']=time.time();r['respawns']=[];r['nextItemId']=1000;r['negativePending']=[{},{}];r['clones']=[];r['gunGravity']=[False,False];r['gunFallV']=[0.,0.]
     r['wind']=r['windPair'] # world +x; reverse for right shooter for equal relative wind
 
 def _siege_new(name,identity,bot=False,item_count=_SIEGE_DEFAULT_ITEMS,mode='classic',wind_level='off',ammo=0,buff_mode='auto',allowed_buffs=None,stack_caps=None,fort_strength='normal'):
@@ -307,11 +307,10 @@ def _siege_reflect(r,ox,oy,x,y,vy,radius):
     return None
 
 def _siege_v20_offset(t,spiral,negatives):
-    # Actual position = base parabolic trajectory + independent orbital/W-wave terms.
+    # Spiral alone orbits the parabolic path. Unstable shots now have ONE launch angle error.
     t=max(0,t);phase=(6+2.2*spiral)*t
     dx=(10+3*spiral)*math.sin(phase) if spiral else 0.
     dy=(10+3*spiral)*(math.cos(phase)-1) if spiral else 0.
-    if negatives.get('wobble'):dy+=19*(math.sin(10*t)-.48*math.sin(20*t))
     return dx,dy
 
 def _siege_v20_fart(t):
@@ -324,11 +323,39 @@ def _siege_v20_radius(radius,distance,negatives):
     return max(2.5,radius*_siege_v20_vanish(distance,negatives))
 
 def _siege_v20_push(body,vx,vy,layers):
-    speed=max(1,math.hypot(vx,vy));layers=min(5,layers)
-    body['pushVX']=vx/speed*(80+36*layers)
-    body['pushVY']=vy/speed*(80+36*layers)
-    body['pushTime']=max(body.get('pushTime',0),.3+.2*layers)
-    body['vx']+=body['pushVX']*.15;body['vy']+=body['pushVY']*.15
+    """Maintain the hit shell's direction and velocity for TWO seconds per layer."""
+    if body.get('platform') or body.get('kind')=='core' or layers<=0:return
+    speed=max(220.,min(610.,math.hypot(vx,vy)*.9))
+    mag=max(1.,math.hypot(vx,vy))
+    body['pushVX']=vx/mag*speed
+    body['pushVY']=vy/mag*speed
+    # Preserve remaining forced-flight time when another projectile hits this block.
+    body['pushTime']=body.get('pushTime',0.)+2.0*layers
+    body['vx']=body['pushVX'];body['vy']=body['pushVY']
+    # A fixed floating fort piece must be released before it can fly.
+    for key in ('fixed','motionY','floatFort','baseY'):body.pop(key,None)
+
+def _siege_support_surface(r,x,width,feet,ignore=None):
+    """Nearest living solid surface underneath the object's feet (not above it)."""
+    surface=_siege_floor(r,x)
+    for b in r['bodies']:
+        if b is ignore or b['hp']<=0 or b.get('falling'):continue
+        if abs(x-b['x'])<(width+b['w'])/2 and b['y']-b['h']/2>=feet-2.:
+            surface=min(surface,b['y']-b['h']/2)
+    return surface
+
+def _siege_gun_gravity(r,dt):
+    """After cannon teleport, its support may be destroyed on later shots."""
+    for side in range(2):
+        if not r.get('launchers') or not r.get('gunGravity',[False,False])[side]:continue
+        if r.get('gunMotion') and r['gunMotion'][side].get('amplitude'):continue
+        x,y=r['launchers'][side]
+        floor=_siege_support_surface(r,x,52,y+48)-48
+        if y<floor-.1:
+            r['gunFallV'][side]=min(720.,r['gunFallV'][side]+_SIEGE_GRAV*dt)
+            r['launchers'][side][1]=min(floor,y+r['gunFallV'][side]*dt)
+        else:r['gunFallV'][side]=0.
+
 
 def _siege_fire(r,angle,power,selection=None,force=False):
     for _ in _siege_fire_steps(r,angle,power,selection,force=force):pass
@@ -336,17 +363,25 @@ def _siege_fire(r,angle,power,selection=None,force=False):
 def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=False):
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
     side=r['turn'] if side is None else side; direction=1 if side==0 else -1; motion_start=max(0,(live['clock'] if live is not None else time.time())-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get('windPair',0)*direction if live is not None else r.get('wind',0)
-    a=math.radians(angle);speed=power*8.0;px,py=sx,sy;vx=direction*speed*math.cos(a);vy=-speed*math.sin(a)
+    r.setdefault('negativePending',[{},{}]);r.setdefault('clones',[])
+    negatives=dict(r['negativePending'][side])
+    angle_offset=0.
+    if negatives.get('wobble'):
+        magnitude=random.uniform(14.,24.);sign=random.choice((-1,1))
+        if not 5.<=angle+sign*magnitude<=175.:sign=-sign
+        angle_offset=sign*magnitude
+    actual_angle=max(5.,min(175.,angle+angle_offset))
+    angle_offset=actual_angle-angle
+    a=math.radians(actual_angle);speed=power*8.0;px,py=sx,sy;vx=direction*speed*math.cos(a);vy=-speed*math.sin(a)
     bodies=r['bodies'];bodies[:]=[b for b in bodies if not b.get('generated') or b['hp']>0]; dt=1/60;frames=[];impact=None;hit_at=None;settled=0;hit_id=None
     _siege_normalize_buffs(r)
-    r.setdefault('negativePending',[{},{}]);r.setdefault('clones',[])
     items_before=[dict(i) for i in r['items']]; buffs_before=[dict(b) for b in r['buffs']]
     stock=r.get('buffMode','auto')=='stock'
     armed=r.setdefault('armed',[{},{}]);armed_before=[dict(x) for x in armed]
     chosen=_siege_selection(r,selection,side)
     _siege_motion(r,motion_start)
-    blocked=_siege_launch_check(r,side,angle,chosen,motion_start,force)
-    negatives=dict(r['negativePending'][side]);r['negativePending'][side].clear()
+    blocked=_siege_launch_check(r,side,actual_angle,chosen,motion_start,force)
+    r['negativePending'][side].clear()
     if stock:
         if live is not None and any(armed[side].get(k,0)+n>_siege_cap(r,k) for k,n in chosen.items() if k in _SIEGE_DEFENSE):raise ValueError('已有防御待命，请等待对方开炮后再启用')
         attack_counts={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
@@ -368,15 +403,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     launchers_before=[list(r['launchers'][i]) if r.get('launchers') else list(_siege_launcher(i,r,motion_start)) for i in (0,1)];gun_motion_before=[dict(m) for m in r.get('gunMotion',[])]
     _siege_motion(r,motion_start)
     n=attack_counts.get('big',0);radius=6+6*n;blast_radius=52+36*n
-    px,py=_siege_muzzle(side,r,angle,radius,motion_start)
+    px,py=_siege_muzzle(side,r,actual_angle,radius,motion_start)
     draw_radius=radius
     # The actual shot angle is recorded for the remote cannon animation.
     fragment_radius=radius
     
-    damage_scale=(1+.70*attack_counts.get('power',0))*shell_scale;impulse_scale=1+2.2*attack_counts.get('shock',0)
+    # Push is an almost non-damaging manipulation shell: roughly 14% direct damage.
+    damage_scale=(1+.70*attack_counts.get('power',0))*shell_scale*(.14 if attack_counts.get('push') else 1.);impulse_scale=1+2.2*attack_counts.get('shock',0)
     # Delayed extra rounds retain angle/power; total damage grows while each shell weakens.
     for j in range(repeat_n):
-        fragments.append(dict(id=100+j,x=px,y=py,vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),bornAt=.11*(j+1),scale=1.,kind='repeat',travel=0.))
+        fragments.append(dict(id=100+j,x=px,y=py,vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),bornAt=.11*(j+1),scale=1.,kind='repeat',travel=0.,splitDone=False))
     # Existing clones fire for two subsequent turns; their shells cannot create clones.
     for j,c in enumerate(list(r['clones'])):
         if c['side']!=side:continue
@@ -398,10 +434,23 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     frames.append(snap(0,[round(px,1),round(py,1)]))
     shot_no=r['shots'][side]+1
     def sample(t,p):
-        return {'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':angle,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports}
-    def blast(x,y,target,scale=1.,br=None):
+        return {'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports}
+    def spawn_clone(x,y,shell_kind):
+        # Every real shell (main/repeat/split) receives the selected clone buff.
+        # Echoes fired by existing clones never recurse.
+        if not attack_counts.get('clone') or shell_kind=='clone':return
+        count=attack_counts['clone'];start=r.get('nextCloneId',0)
+        for j in range(count):
+            xx=max(45.,min(915.,x+(j-(count-1)/2)*24))
+            yy=min(_siege_floor(r,xx)-24.,y)
+            r['clones'].append(dict(id=start+j,side=side,x=xx,y=yy,remaining=2))
+        r['nextCloneId']=start+count
+        # Cap historic simultaneous clones for networking/browser performance.
+        r['clones'][:]=r['clones'][-96:]
+    def blast(x,y,target,scale=1.,br=None,impact_v=None,shell_kind='main'):
         nonlocal hit_id
-        if scale==1:hit_id=target['id'] if target else None
+        if shell_kind=='main':hit_id=target['id'] if target else None
+        spawn_clone(x,y,shell_kind)
         br=br or blast_radius
         if attack_counts.get('blackhole'):holes.append([round(x,1),round(y,1),round(t,3),attack_counts['blackhole']])
         for b in bodies:
@@ -413,8 +462,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             damage=((1-dist/br)*18+direct)*damage_scale*scale
             if b['kind']=='core':damage*=.83
             hurt(b,damage)
-            if b['hp']>0 and not b.get('fixed') and attack_counts.get('push'):
-                _siege_v20_push(b,vx,vy,attack_counts['push'])
+            if b is target and b['hp']>0 and attack_counts.get('push'):
+                _siege_v20_push(b,*(impact_v or (vx,vy)),attack_counts['push'])
             if b['hp']>0 and not b.get('fixed'):
                 mag=(1-dist/br)*75*impulse_scale*scale
                 if b['side']==1-side and ((b['kind']=='core' and 'shield' in defenses) or (b['kind']!='core' and 'armor' in defenses)):mag*=.6
@@ -492,9 +541,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for b in bodies:
             if b['hp']<=0 or b.get('fixed'):continue
             if b.get('pushTime',0)>0:
-                b['vx']+=b['pushVX']*dt;b['vy']+=b['pushVY']*dt;b['pushTime']=max(0,b['pushTime']-dt)
-            b['vy']+=_SIEGE_GRAV*dt;b['x']+=b['vx']*dt;b['y']+=b['vy']*dt;b['vx']*=.994
+                # Fixed-speed, fixed-direction cruise, not a continuously growing force.
+                b['vx']=b['pushVX'];b['vy']=b['pushVY']
+                b['x']+=b['vx']*dt;b['y']+=b['vy']*dt
+                b['pushTime']=max(0.,b['pushTime']-dt)
+            else:
+                b['vy']+=_SIEGE_GRAV*dt;b['x']+=b['vx']*dt;b['y']+=b['vy']*dt;b['vx']*=.994
         collide()
+        _siege_gun_gravity(r,dt)
         active=max((abs(b['vx'])+abs(b['vy']) for b in bodies if b['hp']>0),default=0)
         settled=settled+1 if active<14 else 0
     if live is not None:
@@ -502,7 +556,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         t=0.;yield sample(0,[round(px,1),round(py,1)])
     # Honor the upstream 20-bounce cap: high stack counts need longer than 10s flight.
     flight_limit=10+max(0,attack_counts.get('bounce',0)-5)*.8
-    for step in range(1,int((flight_limit+8)*60)+1):
+    for step in range(1,int((flight_limit+14)*60)+1):
         t=step*dt
         _siege_motion(r,motion_start+t)
         if impact is None and t>=flight_limit:
@@ -516,11 +570,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if 'splitshot' in attacks and not split_done and (t>=.45 or (t>=.20 and vy>=0)):
                 split_done=True
                 for i,delta in enumerate([v for j in range(1,attack_counts['splitshot']+1) for v in (-100*j,100*j)]):
-                    fragments.append({'id':i,'x':px,'y':py,'vx':vx+direction*delta,'vy':vy+delta*.35,'live':True,'groundLeft':attack_counts.get('bounce',0),'passed':set()})
+                    fragments.append(dict(id=i,x=px,y=py,vx=vx+direction*delta,vy=vy+delta*.35,live=True,groundLeft=attack_counts.get('bounce',0),passed=set(),bornAt=t,scale=.42,kind='split',travel=0.,splitDone=True))
             oldx,oldy=px,py;px+=vx*dt;py+=vy*dt
             ox,oy=_siege_v20_offset(t,spiral_n,negatives);ex,ey=_siege_v20_offset(t-dt,spiral_n,negatives)
             px+=ox-ex;py+=oy-ey;flight_distance+=math.hypot(px-oldx,py-oldy)
-            vy+=(_SIEGE_GRAV*(2.75 if negatives.get('heavy') else 1)-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;vx+=wind*dt
+            vy+=(_SIEGE_GRAV*(6.5 if negatives.get('heavy') else 1)-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;vx+=wind*dt
             if negatives.get('fart') and step%9==0:puffs.append([round(px,1),round(py,1),round(t,3)])
             rr=_siege_v20_radius(radius,flight_distance,negatives);draw_radius=rr;vanish_scale=_siege_v20_vanish(flight_distance,negatives)
             target=None
@@ -547,13 +601,18 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     teleport_target=(px,y)
                     blast(px,y,target,vanish_scale);schedule_drops(px,y,t,True)
                     frames.append(snap(t,[round(px,1),round(y,1)]));break
-        for f in fragments:
+        # Snapshot the active list because repeat projectiles can each split once.
+        for f in list(fragments):
             if not f['live'] or t<f.get('bornAt',0):continue
+            if f.get('kind')=='repeat' and not f.get('splitDone') and 'splitshot' in attacks and (t-f['bornAt']>=.45 or (t-f['bornAt']>=.20 and f['vy']>=0)):
+                f['splitDone']=True
+                for i,delta in enumerate(v for j in range(1,attack_counts['splitshot']+1) for v in (-100*j,100*j)):
+                    fragments.append(dict(id=1000+f['id']*20+i,x=f['x'],y=f['y'],vx=f['vx']+direction*delta,vy=f['vy']+delta*.35,live=True,groundLeft=attack_counts.get('bounce',0),passed=set(),bornAt=t,scale=.42,kind='split',travel=0.,splitDone=True))
             if t>=flight_limit:f['live']=False;continue
             ox,oy=f['x'],f['y'];f['x']+=f['vx']*dt;f['y']+=f['vy']*dt
             a1,b1=_siege_v20_offset(t-f.get('bornAt',0),spiral_n,negatives);a0,b0=_siege_v20_offset(t-dt-f.get('bornAt',0),spiral_n,negatives)
             f['x']+=a1-a0;f['y']+=b1-b0;f['travel']=f.get('travel',0)+math.hypot(f['x']-ox,f['y']-oy)
-            f['vy']+=(_SIEGE_GRAV*(2.75 if negatives.get('heavy') else 1)-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;f['vx']+=wind*dt
+            f['vy']+=(_SIEGE_GRAV*(6.5 if negatives.get('heavy') else 1)-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;f['vx']+=wind*dt
             fr=_siege_v20_radius(fragment_radius,f['travel'],negatives)
             for k in range(1,5):
                 x=ox+(f['x']-ox)*k/4;y=oy+(f['y']-oy)*k/4
@@ -563,7 +622,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 collect(x,y,fr,t)
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and 'through' in attacks and len(f['passed'])<attack_counts['through'] and target['kind']!='core' and not target.get('platform'):
-                    hurt(target,24*damage_scale*.42);f['passed'].add(target['id']);target=None
+                    hurt(target,24*damage_scale*f.get('scale',.42));f['passed'].add(target['id']);target=None
                 if target and f['groundLeft']>0:
                     f['groundLeft']-=1;f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);break
                 if not target and fr<=x<=960-fr and y>=_siege_floor(r,x)-fr and f['vy']>0 and f['groundLeft']>0:
@@ -575,7 +634,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if target or y>=_siege_floor(r,max(0,min(960,x)))-fr or wall:
                     f['live']=False;last_hit=t
                     dmg=f.get('scale',.42)*_siege_v20_vanish(f.get('travel',0),negatives)
-                    cx=max(fr,min(960-fr,x));blast(cx,y,target,dmg,blast_radius);schedule_drops(cx,y,t)
+                    cx=max(fr,min(960-fr,x));blast(cx,y,target,dmg,blast_radius,(f['vx'],f['vy']),f.get('kind','split'));schedule_drops(cx,y,t)
                     extra_blasts.append([round(cx,1),round(y,1)]);fragment_hits.append([round(cx,1),round(y,1),round(t,3)])
                     break
         while drop_queue and t>=drop_queue[0][0]:
@@ -600,14 +659,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if live is None and last_hit is not None:integrate()
         if live is None and step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
         if live is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
-        if impact is not None and not drop_queue and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
-    # Clones persist for two NEXT owner shots and never recursively spawn clones.
-    if attack_counts.get('clone') and teleport_target:
-        for j in range(min(attack_counts['clone'],3)):
-            x=max(45,min(915,teleport_target[0]+(j-(min(attack_counts['clone'],3)-1)/2)*30))
-            r['clones'].append(dict(id=r.get('nextCloneId',0)+j,side=side,x=x,y=min(_siege_floor(r,x)-24,teleport_target[1]),remaining=2))
-        r['nextCloneId']=r.get('nextCloneId',0)+min(attack_counts['clone'],3)
-        r['clones'][:]=r['clones'][-6:]
+        if impact is not None and not drop_queue and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
     # Teleport to the actual impact column anywhere on the battlefield. The descent is
     # kinematic and collision-safe; gravity gives its timing, not impact damage.
     for kind in _SIEGE_ONE_SHOT:
@@ -626,6 +678,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             r.setdefault('launchers',[list(_siege_launcher(i,r,motion_start+t)) for i in (0,1)])
             if r.get('gunMotion'):r['gunMotion'][side]={'amplitude':0,'phase':0}
             r['launchers'][side]=[x,y]
+            r.setdefault('gunGravity',[False,False])[side]=True
+            r.setdefault('gunFallV',[0.,0.])[side]=0.
         else:
             core.update(x=x,y=y,vx=0.,vy=0.,fixed=True,teleportFall=True);core.pop('motionY',None);core.pop('floatFort',None)
         record=[kind,side,*old,x,y,round(begin,3),start_y,round(begin,3)];teleports.append(record)
@@ -654,7 +708,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['turn']=1-side
         if r['turn']==0:r['windPair']=_siege_weather(r.get('windLevel','off'))
         r['wind']=r.get('windPair',0)*(1 if r['turn']==0 else -1)
-    r['event']={'id':r['rev'],'side':side,'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':angle,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(x) for x in r.get('launchers',[])],'gunMotion':r.get('gunMotion',[])}
+    r['event']={'id':r['rev'],'side':side,'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':actual_angle,'requestedAngle':angle,'angleOffset':angle_offset,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(x) for x in r.get('launchers',[])],'gunMotion':r.get('gunMotion',[])}
     r['until']=time.time()+t+.35
 
 _SIEGE_LIVE_DT=1/60
