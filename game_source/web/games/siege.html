@@ -134,7 +134,7 @@ const defaultShotConfig=()=>({simple:true,unified:true,manual:true,delayedSplit:
 // Camera is a presentation-only world-to-screen transform; server physics remains 960×480.
 const WORLD_W=960, MAP_TOP=-100, MAP_BOTTOM=480;let VIEW_W=460,VIEW_H=359,ZOOM=1,HOME_Y=140,BASE_W=460,ASPECT=460/359;
 function cameraWidth(w){VIEW_W=w;VIEW_H=w/ASPECT;ZOOM=canvas.width/w;HOME_Y=416-VIEW_H*.83}
-function resizeField(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;const center={x:camera.x+VIEW_W/2,y:camera.y+VIEW_H/2},old=VIEW_W;const dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ASPECT=canvas.width/canvas.height;BASE_W=clamp(ASPECT*345,360,700);cameraWidth(playing||syncReplay?Math.max(BASE_W,old):BASE_W);if(playing||syncReplay){cameraSnap({x:center.x-VIEW_W/2,y:center.y-VIEW_H/2});if(playing.handoff)playing.handoff={from:{...camera,w:VIEW_W},to:home(room.turn)}}else if(room&&!overview)browse(center.x-VIEW_W/2,center.y-VIEW_H/2);else cameraSnap(home(room?.seat||0))}
+function resizeField(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;const center={x:camera.x+VIEW_W/2,y:camera.y+VIEW_H/2},old=VIEW_W;const dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ASPECT=canvas.width/canvas.height;BASE_W=clamp(ASPECT*345,360,700);cameraWidth(playing||syncReplay?Math.max(BASE_W,old):BASE_W);if(playing||syncReplay){cameraSnap({x:center.x-VIEW_W/2,y:center.y-VIEW_H/2});if(playing?.handoff)playing.handoff={from:{...camera,w:VIEW_W},to:home(room.turn)}}else if(room&&!overview)browse(center.x-VIEW_W/2,center.y-VIEW_H/2);else cameraSnap(home(room?.seat||0))}
 window.addEventListener('resize',resizeField);
 if(typeof ResizeObserver!=='undefined'){const fieldObserver=new ResizeObserver(()=>resizeField());fieldObserver.observe($('stage'))}
 const camera={x:0,y:HOME_Y}, HANDOFF=.42;let cameraTime=0;
@@ -168,7 +168,7 @@ function cameraShotPoints(shots){const pts=[];for(const s of shots){const r=Math
 function cameraWorldPoints(current,previous,meta,seconds,clock){
  const old=new Map((previous||[]).map(p=>[p[0],p])),byId=new Map(meta.map(b=>[b.id,b])),pts=[];
  for(const p of current||[]){const [id,x,y,hp]=p,b=byId.get(id),a=old.get(id);if(!b||b.platform||b.motionY)continue;
- const moved=a&&Math.hypot(x-a[1],y-a[2])>Math.max(.65,seconds*12),damaged=a&&a[3]>hp;
+ const moved=a&&!b.fixed&&Math.hypot(x-a[1],y-a[2])>Math.max(.65,seconds*12),damaged=a&&a[3]>hp;
  const lit=hp>0&&['tnt','tnt_wait'].includes(b.kind)&&Number.isFinite(b.tntFuseStart)&&clock>=b.tntFuseStart&&clock<(b.tntTriggerAt??b.tntDeadline??b.tntFuseStart+1)+.15;
  if((hp>0&&(moved||!a||lit))||damaged)pts.push([x,y,Math.hypot(b.w||24,b.h||24)/2]);
  }return pts
@@ -209,7 +209,7 @@ function apply(d){const old=room;room=d;motionReceipt=performance.now();
   if(fresh||d.shots[d.seat]!==old.shots[d.seat]){selection={};shotConfig=defaultShotConfig();stockOpen=false;stockKey='';drag=null;pan=null}
   for(const k of Object.keys(selection)){selection[k]=Math.min(selection[k],d.buffs[d.seat]?.[k]||0);if(!selection[k])delete selection[k]}
   rev=d.rev;if(!trialPage)localStorage.setItem('gh_siege_room',d.code);$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}
-  if(fresh){resizeField();cameraSnap(home(d.seat))}else if(old.busy&&!d.busy){cameraSnap(home(d.seat));notice=''}
+  if(fresh){resizeField();cameraSnap(home(d.seat))}else if((old.busy&&!d.busy)||(old.liveShots?.length&&!d.liveShots?.length)){cameraSnap(home(d.seat));notice=''}
   update();return;
  }
  livePrevious=null;if(!old||old.rev!==d.rev||old.turn!==d.turn){closePanels();if(!d.trial||!old||old.code!==d.code){selection={};shotConfig=defaultShotConfig();stockCat=d.trial?'弹道':'全部'}trialGhost=null;pan=null;stockOpen=false;stockKey="";}if(!d.trial&&!trialPage)localStorage.setItem('gh_siege_room',d.code);if(d.event&&d.event.id!==rev){overview=null;lastEvent=d.event;playing={event:d.event,start:performance.now(),handoff:null};animFrame=null;cameraSnap(home(d.event.side));drag=null}else if(old&&d.rev!==rev){playing=null;lastEvent=null;animFrame=null}if(!old||old.code!==d.code||(!playing&&d.rev!==rev))cameraSnap(home(playing?playing.event.side:d.seat));if(d.mode!=='classic'&&d.shots.every(n=>n===0)&&d.phase==='play'&&(!old||d.rev!==rev||old.phase==='wait'))overview={start:performance.now(),side:d.turn};rev=d.rev;$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}if(!old||old.code!==d.code){resizeField();cameraSnap(home(playing?playing.event.side:d.seat))}update()}
@@ -484,7 +484,7 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(
   for(let j=0;j<2;j++){const hp=bodies.find(x=>x.side===j&&x.kind==='core')?.hp||0;$('hp'+j).style.width=clamp(hp,0,100)+'%';$('n'+j).textContent=(room.seat===j?'你':room.players[j]||'对手')+' · '+Math.round(hp);$('s'+j).textContent=(room.ammo===0?'∞':Math.max(0,(room.ammo??6)-room.shots[j]))+' 发';}
  }
  if(liveMode()&&!playing){const shots=liveDraw(now),pts=cameraShotPoints(shots);
-  if(syncReplay){const data=syncReplay.data,frames=data.frames,t=replayTime;let j=Math.min(frames.length-1,Math.floor(t*10));while(j>0&&frames[j][0]>t)j--;while(j+1<frames.length&&frames[j+1][0]<=t)j++;const a=frames[Math.max(0,j-1)],b=frames[Math.min(frames.length-1,j+1)];pts.push(...cameraWorldPoints(b[1],a[1],room.bodies,Math.max(.01,b[0]-a[0]),data.motionStart+t));}
+  if(syncReplay){const data=syncReplay.data,frames=data.frames,t=replayTime;let j=Math.min(frames.length-1,Math.floor(t*10));while(j>0&&frames[j][0]>t)j--;while(j+1<frames.length&&frames[j+1][0]<=t)j++;const a=frames[Math.max(0,j-1)],b=frames[Math.min(frames.length-1,j+1)];pts.push(...cameraWorldPoints(room.bodies.map(b=>[b.id,b.x,b.y,b.hp]),a[1],room.bodies,Math.max(.01,t-a[0]),data.motionStart+t),...cameraWorldPoints(b[1],a[1],room.bodies,Math.max(.01,b[0]-a[0]),data.motionStart+t));}
   else if(shots.length&&livePrevious){const a=livePrevious.bodies.map(b=>[b.id,b.x,b.y,b.hp]),b=room.bodies.map(b=>[b.id,b.x,b.y,b.hp]);pts.push(...cameraWorldPoints(b,a,room.bodies,.1,room.motionTime||0));}
   for(const s of shots){pts.push(...cameraBlastPoints(s.behaviorEvents,s.age));if(!s.p&&!s.fragments.length&&s.impact&&s.hitAt!=null&&s.age-s.hitAt<.65)pts.push([...s.impact,s.blastRadius||52])}
   cameraGroup(pts,dt)
@@ -495,7 +495,7 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(
  if(!playing.handoff&&elapsed<ev.duration+.12){
   const pts=cameraShotPoints([{p:f[1],fragments:f[3],radius:f[4]}]);
   const prev=frames[Math.max(0,i-1)],next=frames[Math.min(frames.length-1,i+1)];
-  pts.push(...cameraWorldPoints(next[2],prev[2],room.bodies,Math.max(.01,next[0]-prev[0]),(ev.motionStart||0)+elapsed));
+  pts.push(...cameraWorldPoints(f[2],prev[2],room.bodies,Math.max(.01,elapsed-prev[0]),(ev.motionStart||0)+elapsed),...cameraWorldPoints(next[2],prev[2],room.bodies,Math.max(.01,next[0]-prev[0]),(ev.motionStart||0)+elapsed));
   pts.push(...cameraBlastPoints(ev.behaviorEvents,elapsed));
   for(const [x,y,t] of ev.fragmentHits||[])if(elapsed>=t&&elapsed-t<.55)pts.push([x,y,ev.blastRadius||52]);
   if(ev.impact&&ev.hitAt!=null&&elapsed>=ev.hitAt&&elapsed-ev.hitAt<.65)pts.push([...ev.impact,ev.blastRadius||52]);
