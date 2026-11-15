@@ -468,6 +468,7 @@ def _siege_trial_fire(r,angle,power,selection,force=False,config=None):
     for _ in _siege_fire_steps(r,angle,power,chosen,force=force,config=config):pass
     _siege_trial_stock(r)
     r['armed']=[{},{}]
+    r['negativePending'][0]={}
 
 def _siege_fire(r,angle,power,selection=None,force=False,config=None):
     if r.get('trial'):return _siege_trial_fire(r,angle,power,selection or {},force,config)
@@ -516,6 +517,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for k in attack_counts:r['buffs'][side][k]-=1
         for k in defense_counts:r['buffs'][1-side][k]-=1
     spec=_siege_compile_spec(attack_counts,config);root_counts=spec['root'];child_counts=spec['child']
+    # A collision-triggered modifier also supplies the collision opportunity.
+    # Extra bounce charges belong to source shells, never to their descendants.
+    if config.get('simple'):
+        root_counts['bounce']=root_counts.get('bounce',0)+(attack_counts.get('larpa',0) if config['copyMode']=='bounce' else 0)+attack_counts.get('bounceblast',0)
     attacks=list(attack_counts);defenses=list(defense_counts)
     pickups=[];passed=set();extra_blasts=[];fragments=[];fragment_hits=[];split_done=False;last_hit=None;bounces=[];ground_left=root_counts.get('bounce',0);drop_queue=[];drop_events=[];holes=[];teleports=[];teleport_target=None;puffs=[]
     fuse=bool(root_counts.get('fuse'));fuse_mode=config['fuseMode'];fuse_time=config['fuseTime'];main_stop=None;main_dived=False
@@ -581,7 +586,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for b in bodies:
             if b['hp']>0 and b['kind']=='wood' and math.hypot(max(0,abs(x-b['x'])-b['w']/2),max(0,abs(y-b['y'])-b['h']/2))<=reach:
                 if not b.get('burnRounds'):behavior_events.append(['ignite',round(t,3),b['id']])
-                b['burnRounds']=max(2,b.get('burnRounds',0));b['burnDamage']=max(5+2*(level-1),b.get('burnDamage',0) if b.get('burnRounds') else 0);b.pop('burnSpent',None)
+                old_damage=b.get('burnDamage',0) if b.get('burnRounds') else 0
+                b['burnRounds']=max(2,b.get('burnRounds',0));b['burnDamage']=max(5+2*(level-1),old_damage);b.pop('burnSpent',None)
     def blast(x,y,target,scale=1.,br=None,impact_v=None,shell_kind='main',extras=True):
         nonlocal hit_id
         counts=child_counts if shell_kind in ('split','larpa','terminal') else root_counts
@@ -669,6 +675,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             next_child+=1;born+=1
         if born:behavior_events.append(['spawn',round(t,3),round(x,1),round(y,1),born,'secondary' if terminal else pattern])
         return born
+    arc_buddies_pending=attack_counts.get('firearc',0) if config.get('simple') and not any(attack_counts.get(k) for k in ('splitshot','repeat','larpa','downpour')) else 0
     def split_now(event,x,y,svx,svy,parent=None):
         nonlocal split_done
         rule=next((rule for rule in spec['events'] if rule['effect']=='split' and rule['event']==event),None)
@@ -838,7 +845,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         live['physicsFns'][side]=integrate
         t=0.;yield sample(0,[round(px,1),round(py,1)])
     # Honor the upstream 20-bounce cap: high stack counts need longer than 10s flight.
-    flight_limit=10+max(0,attack_counts.get('bounce',0)-5)*.8
+    flight_limit=10+max(0,root_counts.get('bounce',0)-5)*.8
     for step in range(1,int((flight_limit+14)*60)+1):
         t=step*dt
         _siege_motion(r,motion_start+t)
@@ -861,6 +868,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if split_now('timer',px,py,vx,vy) and config['parentEnd']!='continue':finish_main(px,py,explode=config['parentEnd']=='explode')
         if impact is None and main_stop is None and fuse and fuse_mode!='delay' and t>=fuse_time:finish_main(px,py)
         if impact is None and main_stop is None:
+            if arc_buddies_pending and t>=.15:
+                arc_buddies_pending-=spawn_children(px,py,vx,vy,arc_buddies_pending,'orbit')
             if larpa_left and copy_mode=='orbit' and t>=.15:
                 larpa_left-=spawn_children(px,py,vx,vy,larpa_left,'orbit')
             if larpa_left and copy_mode in ('trail','chaos') and t>=next_copy:
