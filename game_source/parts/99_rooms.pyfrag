@@ -271,6 +271,15 @@ def _room_route(self,post=False):
                 return self.reply(siege_request(data))
         except (ValueError,TypeError,KeyError,AttributeError):
             return self.reply({'ok':False,'error':'请求无效'},400)
+    if not post and path=='/api/rooms':
+        with LOCK:return self.reply({'rooms':_room_list()})
+    if post and path=='/api/rooms':
+        try:
+            if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()
+            data=self.read_json()
+            if not isinstance(data,dict):raise ValueError()
+            with LOCK:return self.reply(_room_create(data))
+        except (ValueError,TypeError):return self.reply({'ok':False,'error':'请求无效'},400)
     if match:
         code=match[1].upper();sub=match[2] or '/'
         with LOCK:
