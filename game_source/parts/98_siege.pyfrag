@@ -37,9 +37,10 @@ _SIEGE_COMPOUND_RECIPES={
     'ricochet':('bounce','bounceblast'),
     'burst':('through','bounceblast'),
     'seek':('homing','pierce'),
+    'siegebreak':('through','pierce','bounceblast'),
 }
 def _siege_compound_recipe(value=None):
-    return value if value in _SIEGE_COMPOUND_RECIPES else random.choice(tuple(_SIEGE_COMPOUND_RECIPES))
+    return value if value in _SIEGE_COMPOUND_RECIPES else random.choices(tuple(_SIEGE_COMPOUND_RECIPES),weights=(24,24,24,23,5))[0]
 
 # Simulation is authoritative and fully computed before publishing the replay.
 # Presentation time is independent of the lengthy rigid-body settling tail.
@@ -1858,7 +1859,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['wind']=r.get('windPair',0)*(1 if r['turn']==0 else -1)
     r['event']={'id':r['rev'],'side':side,'emberEvents':ember_events,'generatedCounts':generated_counts if unified else {},'payloadEvents':event_counts if unified else {},'trialDamage':round(trial_damage,1),'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':actual_angle,'requestedAngle':angle,'angleOffset':angle_offset,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'engineering':engineering,'behaviorEvents':behavior_events,'fireArcs':arc_events,'minesBefore':mines_before,'mineEvents':mine_events,'holePaths':hole_paths,'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(x) for x in r.get('launchers',[])],'gunMotion':r.get('gunMotion',[])}
     if v24 and control is None:
-        r['event'].update(_siege_replay_timing(frames,t,hit_at),compoundRecipe=compound_recipe)
+        r['event'].update(_siege_replay_timing(frames,t,hit_at),compoundRecipe=compound_recipe,compoundEffects=list(_SIEGE_COMPOUND_RECIPES.get(compound_recipe,())))
         r['until']=time.time()+_SIEGE_REPLAY_PREROLL+r['event']['playbackDuration']+.10
     else:r['until']=time.time()+(.35 if control is not None else t+.35)
 

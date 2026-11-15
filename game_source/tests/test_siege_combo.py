@@ -387,7 +387,7 @@ g._siege_fire(r,90,40,{'compound':1},config=g._siege_public_config({}))
 assert r['buffs'][0]['compound']==0 and r['event']['payloadEvents']['bounceblast']>0
 # Curated recipes are committed at pickup, stable in public inventory, and
 # consumed only at fire; each constituent adds one layer without spending stock.
-assert set(g._SIEGE_COMPOUND_RECIPES)=={'breach','ricochet','burst','seek'}
+assert set(g._SIEGE_COMPOUND_RECIPES)=={'breach','ricochet','burst','seek','siegebreak'}
 for recipe,effects in g._SIEGE_COMPOUND_RECIPES.items():
     r=v24();x,y=g._siege_muzzle(0,r,75)
     r['items']=[dict(id=999,kind='compound',recipe=recipe,x=x,y=y,r=20,amount=1,zone='center')]
@@ -395,13 +395,20 @@ for recipe,effects in g._SIEGE_COMPOUND_RECIPES.items():
     assert r['compoundRecipes'][0]==recipe and g._siege_public(r,'a',-1)['compoundRecipes'][0]==recipe
     r['turn']=0;r['until']=0
     g._siege_fire(r,75,40,{'compound':1},config=g._siege_public_config({}))
-    assert r['event']['compoundRecipe']==recipe and r['buffs'][0]['compound']==0 and r['compoundRecipes'][0] is None
+    assert r['event']['compoundRecipe']==recipe and tuple(r['event']['compoundEffects'])==effects and r['buffs'][0]['compound']==0 and r['compoundRecipes'][0] is None
     assert all(r['buffs'][0][k]==0 for k in effects)
 # Presentation timing does not depend on the final simulated debris frame.
 frames=[[0,[1,1],[],[],6,[]],[.1,None,[],[],6,[]],[6,None,[],[],6,[]]]
 timing=g._siege_replay_timing(frames,6,.1)
 assert timing==dict(shellEnd=.1,handoffAt=1.,playbackDuration=1.48),timing
 assert g._siege_replay_timing(frames,60,.1)==timing
+# The real public room lock follows playbackDuration, not physics duration.
+r=v24();g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
+e=r['event'];assert e['handoffAt']>=1 and e['playbackDuration']==round(e['handoffAt']+.48,3)
+assert abs((r['until']-time.time())-(.38+e['playbackDuration']+.10))<.2
+r=v24();now=time.time();rt=g._siege_sync_runtime(r,now);g._siege_sync_compute(r,rt,now)
+e=rt['replay'];assert e['handoffAt']>=1 and abs((r['until']-time.time())-(.38+e['playbackDuration']+.10))<.2
+assert rt['replay']['shellEnd']<=rt['replay']['duration']
 print('Siege replay tempo: 0.1s shell, 1s viewing minimum, 1.48s display independent of debris PASS')
 # Salvage with no eligible material returns the charge.
 r=v24();r['buffs'][0]['salvage']=1
