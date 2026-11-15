@@ -269,3 +269,17 @@ for mode in ('serial','volley'):
     assert len(splits)==3 and all(v[4]==5 and abs(v[5]-.2)<1e-8 for v in splits),splits
 assert len(g._SIEGE_ACTIVE_ITEMS)==36 and not set(g._SIEGE_RETIRED)&set(g._siege_allowed({'allowedBuffs':None}))
 print('Siege unified: event dispatch, single-generation split, conserved power, full-power repeat, inherited penetration and capped/refunded payloads PASS')
+
+# In synchronous combat, each child inherits a fresh projectile shield.
+r=new();r['bot']=False;r['combatMode']='sync';r['buffs'][0].update(splitshot=5,shotshield=1)
+rt=g._siege_sync_runtime(r,time.time());rt['plans']=[(90,25,{'splitshot':5,'shotshield':1}),(90,25,{})]
+rt['configs']=[g._siege_config({'unified':True,'triggers':{'splitshot':'launch'}}),g._siege_config({'unified':True})]
+g._siege_sync_compute(r,rt,time.time())
+shots=[shot for frame in rt['replay']['frames'] for shot in frame[2] if shot['side']==0]
+assert any(len(shot.get('shields',[]))==5 and all(sh['left']==2 for sh in shot['shields']) for shot in shots)
+# The event blast radius and damage grow with layers, and each real bounce triggers once.
+r,e=unified({'bounce':3,'bounceblast':5},{'bounceblast':'bounce'})
+blasts=[v for v in e['behaviorEvents'] if v[0]=='bounceBlast']
+assert len(blasts)==3 and all(v[4]==83 for v in blasts) and e['payloadEvents']['bounceblast']==3,blasts
+assert 'drawPayloadBlasts' in g.SIEGE_PAGE and 'splitPattern' in g.SIEGE_PAGE and '二次分裂 · 开' not in g.SIEGE_PAGE
+print('Siege unified shield inheritance and per-event explosion radius PASS')
