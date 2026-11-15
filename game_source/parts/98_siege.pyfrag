@@ -464,7 +464,7 @@ def _siege_burn_round(r):
 
 def _siege_trial_stock(r):
     # Trial inventory is refilled after each shot; ordinary rooms never enter here.
-    r['buffs'][0]={k:max(1,_SIEGE_HARD_CAPS[k]) for k in _SIEGE_ITEMS}
+    r['buffs'][0]={k:max(1,_SIEGE_HARD_CAPS[k]) if k in _SIEGE_ACTIVE_ITEMS else 0 for k in _SIEGE_ITEMS}
     r['buffs'][1]={k:0 for k in _SIEGE_ITEMS}
 
 def _siege_trial_reset(r,mode=None):
@@ -648,6 +648,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             hurt(b,damage)
             if b is target and b['hp']>0 and counts.get('push'):
                 _siege_v20_push(b,*(impact_v or (vx,vy)),counts['push'])
+                if unified and scale<1 and b.get('pushTime',0)>0:
+                    b['pushVX']*=scale;b['pushVY']*=scale
             if b['hp']>0 and not b.get('fixed'):
                 mag=(1-dist/br)*75*ins*scale
                 if b['side']==1-side and ((b['kind']=='core' and 'shield' in defenses) or (b['kind']!='core' and 'armor' in defenses)):mag*=.6
@@ -708,7 +710,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 ang=2*math.pi*j/max(1,count) if pattern=='radial' else copy_rng.uniform(-math.pi,math.pi)
                 ux,uy=math.cos(ang)*260,math.sin(ang)*260
             else:ux,uy=svx,svy
-            f=dict(id=next_child,x=x,y=y,vx=ux,vy=uy,live=True,groundLeft=child_counts.get('bounce',0),passed=set(),bornAt=t+dt,scale=(parent.get('scale',1.) if parent else 1.)/count if unified_split else .25 if terminal else .42 if pattern=='fan' else .28,kind='split' if unified_split else 'terminal' if terminal else 'larpa',travel=0.,splitDone=True,fuseAt=(t+dt+fuse_time if child_counts.get('fuse') and fuse_mode!='delay' else None) if unified_split else child_deadline(t+dt,parent))
+            if unified_split:
+                x0=max(radius+.2,min(960-radius-.2,x));y0=min(_siege_floor(r,x0)-radius-.2,y)
+            else:x0,y0=x,y
+            f=dict(id=next_child,x=x0,y=y0,vx=ux,vy=uy,live=True,groundLeft=child_counts.get('bounce',0),passed=set(),bornAt=t+dt,scale=(parent.get('scale',1.) if parent else 1.)/count if unified_split else .25 if terminal else .42 if pattern=='fan' else .28,kind='split' if unified_split else 'terminal' if terminal else 'larpa',travel=0.,splitDone=True,fuseAt=(t+dt+fuse_time if child_counts.get('fuse') and fuse_mode!='delay' else None) if unified_split else child_deadline(t+dt,parent))
             if pattern=='orbit':
                 f['orbit']=2*math.pi*j/max(1,count);f['x']=max(radius,min(960-radius,x+math.cos(f['orbit'])*(radius+22)));f['y']=y+math.sin(f['orbit'])*(radius+22)
             fragments.append(f)
@@ -860,7 +865,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if x<=radius+1:svx=abs(svx)
                 elif x>=960-radius-1:svx=-abs(svx)
                 elif y>=_siege_floor(r,x)-radius-1:svy=-max(180,abs(svy)*.8)
-            elif not counts.get('through'):svx,svy=-svx,-svy
+            elif not counts.get('through'):
+                x,y,svx,svy=_siege_box_bounce(target,x-svx*dt,y-svy*dt,x,y,svx,svy,radius)
+            elif math.hypot(svx,svy)<1:svx=direction*220.
         if spawn_children(x,y,svx,svy,n,config['splitPattern'],parent,unified_split=True)!=n:return False
         triggered.add('splitshot')
         behavior_events.append(['split',round(t,3),round(x,1),round(y,1),n,scale/n,event])
@@ -1327,7 +1334,7 @@ def _siege_sync_plan(r,rt,side,data,lock=False):
     chosen=_siege_selection(r,data.get('selection'),side)
     force=data.get('force') is True
     if lock:_siege_launch_check(r,side,a,chosen,max(0,time.time()-r.get('motionEpoch',time.time())),force)
-    cfg=_siege_config(data.get('config'))
+    cfg=_siege_config(data.get('config') or {'unified':True})
     rt['plans'][side]=(a,p,chosen);rt['force'][side]=force;rt.setdefault('configs',[None,None])[side]=cfg
     if lock:rt['locked'][side]=True
 
@@ -1504,7 +1511,7 @@ def siege_request(data):
         if r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']:return {'ok':False,'error':'当前不能发射，请等待回合'}
         a,p=data.get('angle'),data.get('power')
         if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
-        try:_siege_fire(r,a,p,data.get("selection"),data.get("force") is True,data.get('config'))
+        try:_siege_fire(r,a,p,data.get("selection"),data.get("force") is True,data.get('config') or {'unified':True})
         except ValueError as e:return {"ok":False,"error":str(e)}
     elif kind=='trialPreview' and r.get('trial') and seat==0:
         if now<r['until']:return {'ok':False,'error':'请等待本炮结束'}
@@ -1513,7 +1520,7 @@ def siege_request(data):
         import copy
         shadow=copy.deepcopy(r);rng=random.getstate()
         try:
-            _siege_trial_fire(shadow,a,p,data.get('selection') or {},False,data.get('config'))
+            _siege_trial_fire(shadow,a,p,data.get('selection') or {},False,data.get('config') or {'unified':True})
             ev=shadow['event'];paths={-1:[]}
             for f in ev['frames']:
                 if f[1]:paths[-1].append(f[1])
