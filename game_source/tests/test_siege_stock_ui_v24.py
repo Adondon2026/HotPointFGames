@@ -59,11 +59,11 @@ try:
         expect(rows).to_have_count(len(keys))
         # Wide and tall distributions must remain visible in the same frame.
         result=page.evaluate("""()=>{const pts=[[8,360,6],[952,-220,12],[480,20,8],...Array.from({length:29},(_,i)=>[25+i*31,100-i*5,8])];cameraGroup(pts,.016);
-            const visible=pts.every(([x,y,r])=>x-r>=camera.x-1e-6&&x+r<=camera.x+VIEW_W+1e-6&&y-r>=camera.y-1e-6&&y+r<=camera.y+VIEW_H+1e-6);
+            const visible=pts.every(([x,y,r])=>Math.max(0,x-r)>=camera.x-1e-6&&Math.min(960,x+r)<=camera.x+VIEW_W+1e-6&&y-r>=camera.y-1e-6&&y+r<=camera.y+VIEW_H+1e-6);
             const wide=VIEW_W;for(let i=0;i<180;i++)cameraGroup([[440,100,8]],1/60);
             const near=VIEW_W;cameraHandoff({from:{...camera,w:VIEW_W},to:home(0)},1);
             return {visible,wide,near,home:VIEW_W,base:BASE_W}}""")
-        assert result['visible'] and result['wide']>960 and result['near']<result['wide'] and result['home']==result['base'],result
+        assert result['visible'] and result['wide']<=960 and result['wide']>=950 and result['near']<result['wide'] and result['home']==result['base'],result
         assert page.evaluate("""()=>cameraShotPoints([{p:[10,20],radius:6,fragments:[[1,300,100]]},{p:[900,10],fragments:[[2,810,90]]}]).length""")==4
         assert page.evaluate("""()=>cameraWorldPoints([[1,800,300,90],[2,100,300,18]],[[1,780,300,100],[2,100,300,18]],[{id:1,kind:'core',w:44,h:44},{id:2,kind:'tnt',w:24,h:24,tntFuseStart:1}],.1,1.5).length""")==2
         # Replay the real generated 32-shell trajectory with the same camera helpers
@@ -78,8 +78,24 @@ try:
         r2['buffs'][0].update(sel)
         g._siege_fire(r2,75,55,sel,config=g._siege_public_config({}))
         event=r2['event']
-        result=page.evaluate("""ev=>{let count=0,max=0;for(const f of ev.frames){const pts=cameraShotPoints([{p:f[1],fragments:f[3],radius:f[4]}]);if(!pts.length)continue;count++;max=Math.max(max,pts.length);cameraGroup(pts,1/60);if(!pts.every(([x,y,r])=>x-r>=camera.x-1e-6&&x+r<=camera.x+VIEW_W+1e-6&&y-r>=camera.y-1e-6&&y+r<=camera.y+VIEW_H+1e-6))return {ok:false,count,max};}cameraSnap(home(0));return {ok:true,count,max}}""",event)
+        result=page.evaluate("""ev=>{
+            const plan=cameraPlan(ev,[]),frames=ev.frames;let count=0,max=0,maxZoomRate=0,maxPan=0;
+            for(let i=0;i<frames.length;i++){
+                const f=frames[i],next=frames[Math.min(i+1,frames.length-1)],pts=cameraShotPoints([{p:f[1],fragments:f[3],radius:f[4]}]);
+                if(!pts.length)continue;count++;max=Math.max(max,pts.length);
+                const a=cameraPlanAt(plan,f[0]),b=cameraPlanAt(plan,next[0]),dt=Math.max(.001,next[0]-f[0]);
+                maxZoomRate=Math.max(maxZoomRate,Math.abs(b.w-a.w)/dt);maxPan=Math.max(maxPan,Math.abs(b.x-a.x)/dt);
+                for(const q of [0,.25,.5,.75,1]){
+                    const t=f[0]+(next[0]-f[0])*q,c=cameraPlanAt(plan,t),h=c.w/ASPECT;
+                    if(c.x<-.001||c.x+c.w>960.001||c.y+h>480.001)return {ok:false,reason:'boundary',c};
+                    const points=pts.map(([x,y,r],j)=>{const id=j-(f[1]?1:0);const z=id<0?next[1]:next[3].find(z=>z[0]===f[3][id][0])?.slice(1);return [z?x+(z[0]-x)*q:x,z?y+(z[1]-y)*q:y,r]});
+                    if(!points.every(([x,y,r])=>Math.max(0,x-r)>=c.x-.05&&Math.min(960,x+r)<=c.x+c.w+.05&&y-r>=c.y-.05&&Math.min(480,y+r)<=c.y+h+.05))return {ok:false,reason:'visibility',i,q,c,points};
+                }
+            }
+            return {ok:true,count,max,maxZoomRate,maxPan}
+        }""",event)
         assert result['ok'] and result['count']>5 and result['max']>=8,result
+        assert result['maxZoomRate']<850,result
         assert not errors,errors
         print('Siege camera actual replay coverage:',result)
         print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')
