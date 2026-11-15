@@ -730,10 +730,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         else:parent['splitDone']=True
         spawn_children(x,y,svx,svy,rule['count'],'fan',parent)
         return True
-    def bounce_effect(x,y,svx,svy,parent=None):
+    def bounce_effect(x,y,svx,svy,parent=None,target=None):
         nonlocal larpa_left,bounce_blast_left,last_hit
         if unified:
-            dispatch_event('bounce',x,y,svx,svy,parent);return
+            dispatch_event('bounce',x,y,svx,svy,parent,target);return
         # Only source shells trigger replication; a copied shell cannot recurse.
         if parent is not None:
             parent.pop('orbit',None)
@@ -847,12 +847,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 generate_payload(k,counts[k],x,y,target)
             elif k=='bounceblast':
                 # Explicit blast payload is extra attack, scaled by shell's allocated strength.
-                n=counts[k];br=min(blast_radius,38+9*n)
+                event_counts[k]+=1;n=counts[k];br=38+9*n+12*counts.get('big',0)
                 blast(x,y,None,scale*(.45+.12*n),br,shell_kind=kind,extras=False)
-                fragment_hits.append([round(x,1),round(y,1),round(t,3)])
                 behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1),br]);last_hit=t;triggered.add(k)
             elif k=='ignite':
-                ignite_at(x,y,55+12*counts[k],counts[k]);triggered.add(k)
+                event_counts[k]+=1;ignite_at(x,y,55+12*counts[k],counts[k]);triggered.add(k)
         n=counts.get('splitshot',0)
         if not n or _siege_event_for(config,'splitshot')!=event or (split_done if parent is None else parent.get('splitDone',False)):return False
         if len(fragments)+n>120:return False
@@ -869,7 +868,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 x,y,svx,svy=_siege_box_bounce(target,x-svx*dt,y-svy*dt,x,y,svx,svy,radius)
             elif math.hypot(svx,svy)<1:svx=direction*220.
         if spawn_children(x,y,svx,svy,n,config['splitPattern'],parent,unified_split=True)!=n:return False
-        triggered.add('splitshot')
+        triggered.add('splitshot');event_counts['splitshot']+=1
         behavior_events.append(['split',round(t,3),round(x,1),round(y,1),n,scale/n,event])
         if parent is None:
             px,py=x,y;impact=[round(x,1),round(y,1)];hit_at=t;last_hit=t;teleport_target=(x,y)
@@ -1053,12 +1052,12 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
                 if target and root_counts.get('through') and len(passed)<root_counts['through'] and target['kind']!='core' and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_scale)
-                    passed.add(target['id']);target=None
-                    if unified and dispatch_event('through',x,y,vx,vy):break
+                    passed.add(target['id']);penetrated=target;target=None
+                    if unified and dispatch_event('through',x,y,vx,vy,target=penetrated):break
                 if target and split_now('hit',x,y,vx,vy) and config['parentEnd']!='continue':
                     finish_main(x,y,target,config['parentEnd']=='explode');break
                 if target and ground_left>0:
-                    ground_left-=1;px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,radius);bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);frames.append(snap(t,[round(px,1),round(py,1)]));break
+                    ground_left-=1;px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,radius);bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy,target=target);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 if not target and rr<=x<=960-rr and y>=_siege_floor(r,x)-rr and vy>0 and ground_left>0:
                     ground_left-=1;px=x;py=_siege_floor(r,x)-rr-.2;vy=-max(135,vy*.76);vx*=.86;bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 wall=x<=rr or x>=960-rr
@@ -1127,11 +1126,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and counts.get('through') and len(f['passed'])<counts['through'] and target['kind']!='core' and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42))
-                    f['passed'].add(target['id']);target=None
-                    if unified and dispatch_event('through',x,y,f['vx'],f['vy'],f):break
+                    f['passed'].add(target['id']);penetrated=target;target=None
+                    if unified and dispatch_event('through',x,y,f['vx'],f['vy'],f,penetrated):break
                 if target and f.get('kind')=='repeat' and split_now('hit',x,y,f['vx'],f['vy'],f) and config['parentEnd']!='continue':finish_fragment(f,x,y,target,config['parentEnd']=='explode');break
                 if target and f['groundLeft']>0:
-                    f['groundLeft']-=1;f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
+                    f['groundLeft']-=1;f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f,target);break
                 if not target and fr<=x<=960-fr and y>=_siege_floor(r,x)-fr and f['vy']>0 and f['groundLeft']>0:
                     f['groundLeft']-=1;f['x']=x;f['y']=_siege_floor(r,x)-fr-.2;f['vy']=-max(135,f['vy']*.76);f['vx']*=.86;bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 wall=x<=fr or x>=960-fr
