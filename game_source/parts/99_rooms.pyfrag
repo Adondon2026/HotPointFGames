@@ -245,9 +245,9 @@ def _room_route(self,post=False):
     parsed=urlparse(self.path);path=parsed.path;match=re.fullmatch(r'/r/([A-Fa-f0-9]{6})(/.*)?',path)
     # The private practice arena has its own URL and never enters public room scope.
     # Keep the old trial link working without reopening the legacy standalone lobby.
-    if not post and (path=='/trial/siege' or (path=='/siege' and parsed.query.split('&').count('trial=1')==1)):
+    if not post and (path=='/trial/siege' or (path=='/siege' and parse_qs(parsed.query).get('trial')==['1'])):
         return self.reply(SIEGE_PAGE,200,'text/html; charset=utf-8')
-    if post and path=='/trial/api/siege':
+    if post and path in ('/trial/api/siege','/api/siege-trial'):
         try:
             if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()
             data=self.read_json()
@@ -274,26 +274,6 @@ def _room_route(self,post=False):
         except (ValueError,TypeError,KeyError,AttributeError):
             return self.reply({'ok':False,'error':'请求无效'},400)
     if not post and path=='/':return self.reply(HUB_PAGE,200,'text/html; charset=utf-8')
-    # The free-fire arena is isolated from public rooms and match scoring.
-    # Do not reopen the legacy standalone multiplayer endpoints.
-    if not post and path=='/siege' and parse_qs(parsed.query).get('trial')==['1']:
-        return self.reply(SIEGE_PAGE,200,'text/html; charset=utf-8')
-    if post and path=='/api/siege-trial':
-        try:
-            if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()
-            data=self.read_json()
-            if not isinstance(data,dict):raise ValueError()
-            kind=data.get('type')
-            with LOCK:
-                if kind=='create':
-                    data={**data,'trial':True}
-                elif kind in ('state','fire','trialPreview','trialReset'):
-                    arena=_SIEGE_ROOMS.get(str(data.get('code','')).upper())
-                    if not arena or not arena.get('trial'):return self.reply({'ok':False,'error':'试验场已关闭，请重新进入'},404)
-                else:return self.reply({'ok':False,'error':'试验场不支持此操作'},400)
-                return self.reply(siege_request(data))
-        except (ValueError,TypeError,KeyError,AttributeError):
-            return self.reply({'ok':False,'error':'请求无效'},400)
     if not post and path=='/api/rooms':
         with LOCK:return self.reply({'rooms':_room_list()})
     if post and path=='/api/rooms':
