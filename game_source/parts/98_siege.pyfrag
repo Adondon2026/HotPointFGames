@@ -369,6 +369,25 @@ _SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','mine','blackh
 _SIEGE_RETIRED=('larpa','downpour')
 _SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in _SIEGE_RETIRED)
 _SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'mine':12,'clone':12,'blackhole':12}
+def _siege_migrate_catalog(r):
+    # Only public sessions migrate; legacy direct engine regressions remain reproducible.
+    _siege_normalize_buffs(r)
+    for b in r['buffs']:
+        for k in _SIEGE_RETIRED:
+            b['splitshot']+=b.get(k,0);b[k]=0
+    for it in (*r.get('items',[]),*r.get('respawns',[])):
+        if it.get('kind') in _SIEGE_RETIRED:it['kind']='splitshot'
+    r['allowedBuffs']=list(_siege_allowed(r))
+
+def _siege_public_config(config=None):
+    if config is None:config={}
+    if not isinstance(config,dict):raise ValueError('炮弹配置无效')
+    out=dict(config);out['unified']=True
+    if 'triggers' not in out and 'splitMode' in out:
+        old={'air':'apex','hit':'end','timer':'apex','bounce':'bounce','expire':'end'}.get(out['splitMode'])
+        if old:out['triggers']={'splitshot':old}
+    return _siege_config(out)
+
 def _siege_event_for(config,k):
     return config['triggers'].get(k,'apex' if k=='splitshot' else 'bounce' if k=='bounceblast' else 'end')
 
@@ -1353,7 +1372,7 @@ def _siege_sync_plan(r,rt,side,data,lock=False):
     chosen=_siege_selection(r,data.get('selection'),side)
     force=data.get('force') is True
     if lock:_siege_launch_check(r,side,a,chosen,max(0,time.time()-r.get('motionEpoch',time.time())),force)
-    cfg=_siege_config(data.get('config') or {'unified':True})
+    cfg=_siege_public_config(data.get('config'))
     rt['plans'][side]=(a,p,chosen);rt['force'][side]=force;rt.setdefault('configs',[None,None])[side]=cfg
     if lock:rt['locked'][side]=True
 
@@ -1496,7 +1515,7 @@ def _siege_bot(r,live=None):
     else:_siege_bot_fire(r,135 if right else 45,65,live)
 
 def _siege_public(r,key,last):
-    _siege_normalize_buffs(r)
+    _siege_migrate_catalog(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
     return {'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
 
@@ -1525,12 +1544,12 @@ def siege_request(data):
         if r['phase']!='wait' or len(r['players'])>=2:return {'ok':False,'error':'房间已满'}
         r['players'].append({'name':str(data.get('name','玩家')).strip()[:12] or '玩家','key':key});r['phase']='play';seat=1
     if seat is None:return {'ok':False,'error':'不在这个房间'}
-    r['touched']=now
+    r['touched']=now;_siege_migrate_catalog(r)
     if kind=='fire':
         if r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']:return {'ok':False,'error':'当前不能发射，请等待回合'}
         a,p=data.get('angle'),data.get('power')
         if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
-        try:_siege_fire(r,a,p,data.get("selection"),data.get("force") is True,data.get('config') or {'unified':True})
+        try:_siege_fire(r,a,p,data.get("selection"),data.get("force") is True,_siege_public_config(data.get('config')))
         except ValueError as e:return {"ok":False,"error":str(e)}
     elif kind=='trialPreview' and r.get('trial') and seat==0:
         if now<r['until']:return {'ok':False,'error':'请等待本炮结束'}
@@ -1539,7 +1558,7 @@ def siege_request(data):
         import copy
         shadow=copy.deepcopy(r);rng=random.getstate()
         try:
-            _siege_trial_fire(shadow,a,p,data.get('selection') or {},False,data.get('config') or {'unified':True})
+            _siege_trial_fire(shadow,a,p,data.get('selection') or {},False,_siege_public_config(data.get('config')))
             ev=shadow['event'];paths={-1:[]}
             for f in ev['frames']:
                 if f[1]:paths[-1].append(f[1])
