@@ -356,7 +356,7 @@ def v24(theme='classic',allowed=None):
     g._siege_v24_setup(r,theme)
     r['items']=[];r['respawns']=[];r['until']=0
     return r
-assert len(g._SIEGE_V24_KEYS)==23 and g._SIEGE_V24_CAPS['splitshot']==3 and g._SIEGE_V24_CAPS['repeat']==3
+assert len(g._SIEGE_V24_KEYS)==26 and g._SIEGE_V24_CAPS['splitshot']==3 and g._SIEGE_V24_CAPS['repeat']==3
 assert g._SIEGE_V24_CAPS['heal']==g._SIEGE_V24_CAPS['homing']==1
 assert g._SIEGE_V24_CAPS['shield']==3 and g._SIEGE_V24_CAPS['bounce']==5
 r=v24();r['buffs'][0].update(splitshot=3,repeat=3,bounceblast=1)
@@ -377,6 +377,27 @@ for k in g._SIEGE_V24_KEYS:
     assert r['buffs'][0][k]==1 and any(i['id']==999 for i in r['event']['pickups']),k
     assert g._siege_public(r,'a',-1)['buffs'][0][k]==1,k
 print('Siege v0.24 positive pickup inventory and public state PASS')
+# Elite items appear only at protected resource slots and obey the whitelist.
+r=v24('classic',list(g._SIEGE_ELITE_KEYS))
+assert g._siege_v24_draw(r,'air') is None
+assert all(g._siege_v24_draw(r,'center') in g._SIEGE_ELITE_KEYS for _ in range(20))
+# Compound adds one penetration and one explosion without consuming their stocks.
+r=v24();r['buffs'][0]['compound']=1
+g._siege_fire(r,90,40,{'compound':1},config=g._siege_public_config({}))
+assert r['buffs'][0]['compound']==0 and r['event']['payloadEvents']['bounceblast']>0
+# Salvage with no eligible material returns the charge.
+r=v24();r['buffs'][0]['salvage']=1
+g._siege_fire(r,90,40,{'salvage':1},config=g._siege_public_config({}))
+assert r['buffs'][0]['salvage']==1
+# Actual terminal effects: test an isolated material near the vertical shell.
+for k in ('demolish','salvage'):
+    r=v24();r['buffs'][0][k]=1
+    b=dict(id=99,side=1 if k=='demolish' else 0,x=235,y=350,w=36,h=38,kind='wood',hp=42,max=42,vx=0.,vy=0.,generated=True)
+    r['bodies'].append(b)
+    g._siege_fire(r,90,40,{k:1},config=g._siege_public_config({}))
+    assert b['hp']==0 and r['buffs'][0][k]==0,(k,b,r['event']['impact'])
+    if k=='salvage':assert r['buffs'][0]['wooddrop']==1 and r['event']['cores']==[100,100]
+print('Siege elite resources: protected pool, compound, demolition, salvage and refund PASS')
 # Full inventory leaves the pickup at its position, including independent skills.
 for k in ('shield','homing','splitshot','heal'):
     r=v24();r['buffs'][0][k]=g._SIEGE_V24_CAPS[k];x,y=g._siege_muzzle(0,r,75)
