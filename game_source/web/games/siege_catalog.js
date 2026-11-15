@@ -15,7 +15,7 @@ const siegeCatalog={
   "splitshot": {
     "group": "弹道",
     "color": "#80d2e5",
-    "label": "分裂弹",
+    "label": "分裂效果",
     "path": "M12 21V12L5 5 M12 12L19 5 M5 10V5H10 M14 5H19V10"
   },
   "spiral": {
@@ -49,15 +49,15 @@ const siegeCatalog={
     "path": "M3 16C7 1 9 23 13 9S19 20 21 5"
   },
   "dive": {
-    "group": "弹道",
+    "group": "飞行操纵",
     "color": "#80d2e5",
-    "label": "俯冲弹",
+    "label": "俯冲操纵",
     "path": "M3 4Q17 4 17 20 M12 15L17 20 22 15"
   },
   "antigrav": {
-    "group": "弹道",
+    "group": "飞行操纵",
     "color": "#80d2e5",
-    "label": "反重力",
+    "label": "反重力操纵",
     "path": "M5 17V7 M2 10L5 7 8 10 M12 20V3 M9 6L12 3 15 6 M19 17V7 M16 10L19 7 22 10"
   },
   "homing": {
@@ -67,9 +67,9 @@ const siegeCatalog={
     "path": "M12 3V8 M12 16V21 M3 12H8 M16 12H21 M12 8A4 4 0 1 0 12 16A4 4 0 1 0 12 8"
   },
   "pingpong": {
-    "group": "弹道",
+    "group": "飞行操纵",
     "color": "#80d2e5",
-    "label": "折返弹",
+    "label": "折返操纵",
     "path": "M4 6H20L4 18H20 M16 14L20 18 16 22"
   },
   "big": {
@@ -105,13 +105,13 @@ const siegeCatalog={
   "bounceblast": {
     "group": "火力",
     "color": "#edaf67",
-    "label": "爆破弹",
+    "label": "爆破效果",
     "path": "M3 18L10 7 17 18 M10 2V5 M5 4L7 6 M15 4L13 6 M19 8H22 M17 11L20 14"
   },
   "blackhole": {
     "group": "特效",
     "color": "#cfafea",
-    "label": "黑洞弹",
+    "label": "黑洞效果",
     "path": "M12 5A7 7 0 1 0 12 19A7 7 0 1 0 12 5 M3 15Q1 7 12 5 M21 9Q23 17 12 19 M12 10A2 2 0 1 0 12 14A2 2 0 1 0 12 10"
   },
   "fuse": {
@@ -123,7 +123,7 @@ const siegeCatalog={
   "ignite": {
     "group": "特效",
     "color": "#cfafea",
-    "label": "点火弹",
+    "label": "点火效果",
     "path": "M12 2C15 8 21 10 19 16C17 23 5 22 5 15C5 10 10 8 12 2Z M12 12L9 17 12 20 15 17Z"
   },
   "firetrail": {
@@ -147,7 +147,7 @@ const siegeCatalog={
   "mine": {
     "group": "特效",
     "color": "#cfafea",
-    "label": "待爆地雷",
+    "label": "地雷效果",
     "path": "M4 17H20L17 10H7Z M8 10V7H16V10 M12 2V5 M3 5L6 7 M21 5L18 7"
   },
   "shield": {
