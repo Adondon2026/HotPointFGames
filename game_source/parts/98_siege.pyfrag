@@ -825,7 +825,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             b['hp']=max(1,b['hp']-damage)
         else:b['hp']=max(0,b['hp']-damage)
         if v24 and b['kind']=='barrel' and b['hp']<=0 and not b.get('detonated'):
-            b['detonated']=True;barrel_queue.append((t+.08,b['x'],b['y']))
+            b['detonated']=True;b['barrelDeadline']=world_now()+.08
         if b.get('floatFort') and b['kind']!='core' and damage>=8:
             b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
 
@@ -938,6 +938,12 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for b in due:physical_blast(b['x'],b['y'],92,32,12,360)
     def tick_barrels():
         nonlocal last_hit,settled
+        if v24:
+            now=world_now()
+            due=[b for b in bodies if b.get('barrelDeadline',float('inf'))<=now+1e-8]
+            for b in due:
+                b.pop('barrelDeadline',None);physical_blast(b['x'],b['y'],92,65,32,420)
+            return
         while barrel_queue and barrel_queue[0][0]<=t+1e-8:
             _,x,y=barrel_queue.pop(0);br=92
             if v24:
@@ -1028,10 +1034,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         else:parent['splitDone']=True
         spawn_children(x,y,svx,svy,rule['count'],'fan',parent)
         return True
-    def bounce_effect(x,y,svx,svy,parent=None,target=None):
+    def bounce_effect(x,y,svx,svy,parent=None,target=None,incident=None):
         nonlocal larpa_left,bounce_blast_left,last_hit
         if unified:
-            dispatch_event('bounce',x,y,svx,svy,parent,target);return
+            evx,evy=incident if v24 and incident is not None else (svx,svy)
+            dispatch_event('bounce',x,y,evx,evy,parent,target);return
         # Only source shells trigger replication; a copied shell cannot recurse.
         if parent is not None:
             parent.pop('orbit',None)
@@ -1250,7 +1257,13 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if b['y']>floor:
                     if b['vy']>115:hurt(b,(b['vy']-115)*.08)
                     b['y']=floor;b['vy']=0;b['vx']*=.82
-                b['x']=max(b['w']/2,min(960-b['w']/2,b['x']))
+                edge=max(b['w']/2,min(960-b['w']/2,b['x']))
+                if v24 and edge!=b['x']:
+                    outward=(b['x']<edge and b['vx']<0) or (b['x']>edge and b['vx']>0)
+                    if outward:
+                        hurt(b,_siege_wall_damage(abs(b['vx'])) if b['kind']=='core' else max(0.,abs(b['vx'])-115)*.08)
+                        b['vx']*=-.12
+                b['x']=edge
             for i,b in enumerate(live):
                 if b['hp']<=0:continue
                 for c in live[i+1:]:
@@ -1271,10 +1284,13 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     if closing>0:
                         # Heavier stone/large blocks carry more momentum.
                         mb=b['w']*b['h']*(1.8 if b['kind']=='stone' else 1);mc=c['w']*c['h']*(1.8 if c['kind']=='stone' else 1)
+                        if v24:mb=_siege_body_mass(b)*1368;mc=_siege_body_mass(c)*1368
                         impulse=closing/(1/mb+1/mc);b[v]-=sign*impulse/mb;c[v]+=sign*impulse/mc
                         if closing>95:
                             for z,other in ((b,mc),(c,mb)):
-                                hurt(z,(closing-95)*.10*min(1.7,other/(z['w']*z['h'])))
+                                if v24 and z['kind']=='core':
+                                    hurt(z,_siege_wall_damage(closing)*min(1.,other/(_siege_body_mass(z)*1368)))
+                                else:hurt(z,(closing-95)*.10*min(1.7,other/(z['w']*z['h'])))
     def collect(x,y,radius,t):
         trigger_mines(x,y,radius)
         for item in list(r['items']):
@@ -1305,6 +1321,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         nonlocal last_hit,settled
         for b in bodies:
             if not b.get('falling') or b['hp']<=0:continue
+            if v24:
+                feet=b['y']+b['h']/2
+                if feet>=_siege_floor(r,b['x'])-.8 or any(c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and abs(c['y']-c['h']/2-feet)<1.5 for c in bodies):b['falling']=False
+                continue
             bottom=b['y']+b['h']/2;next_bottom=bottom+(b['vy']+_SIEGE_GRAV*dt)*dt
             contacts=[c for c in bodies if c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and bottom<=c['y']-c['h']/2+1 and next_bottom>=c['y']-c['h']/2]
             c=min(contacts,key=lambda c:c['y']-c['h']/2) if contacts else None
@@ -1312,6 +1332,42 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if c or next_bottom>=floor:
                 b['y']=(c['y']-c['h']/2 if c else floor)-b['h']/2;b['vy']=0.;b['falling']=False;last_hit=t
                 if c and not c.get('generated'):hurt(c,(22 if b['kind']=='stone' else 12) if c['kind']=='core' else (8 if b['kind']=='stone' else 4))
+        if v24:
+            # Sum continuous forces and preserve already applied explosion impulses.
+            fields=[h for hs in live.get('fieldSources',{}).values() for h in hs] if live is not None else holes
+            local_time=t if live is None else world_now()-motion_start
+            for b in bodies:
+                if b['hp']<=0 or b.get('platform'):continue
+                ax=ay=0.
+                for hx,hy,ht,level,*share in fields:
+                    if not ht<=local_time<ht+2:continue
+                    dx,dy=hx-b['x'],hy-b['y'];dist=math.hypot(dx,dy);reach=120+22*level
+                    if dist>reach or dist<1:continue
+                    if b.get('fixed'):
+                        if b['kind']=='core' or not b.get('floatFort'):continue
+                        b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
+                    accel=(130+105*level)*(1-dist/reach)*(share[0] if share else 1.)/_siege_body_mass(b)
+                    ax+=dx/max(14.,dist)*accel;ay+=dy/max(14.,dist)*accel
+                if b.get('fixed'):continue
+                force=math.hypot(ax,ay)
+                if force>540:ax*=540/force;ay*=540/force
+                if b.get('pushTime',0)>0:
+                    ax+=b.get('pushAX',0.)/_siege_body_mass(b);ay+=b.get('pushAY',0.)/_siege_body_mass(b)
+                    b['pushTime']=max(0.,b['pushTime']-dt)
+                b['vx']+=ax*dt;b['vy']+=(ay+_SIEGE_GRAV)*dt
+                speed=math.hypot(b['vx'],b['vy'])
+                if speed>650:b['vx']*=650/speed;b['vy']*=650/speed
+            # Small adaptive substeps keep fast bodies from tunnelling through thin blocks.
+            substeps=max(1,math.ceil(max((math.hypot(b['vx'],b['vy']) for b in bodies if b['hp']>0 and not b.get('fixed')),default=0.)*dt/6.))
+            for _ in range(substeps):
+                for b in bodies:
+                    if b['hp']<=0 or b.get('fixed'):continue
+                    b['x']+=b['vx']*dt/substeps;b['y']+=b['vy']*dt/substeps;b['vx']*=.994**(1/substeps)
+                collide()
+            tick_tnt();tick_barrels();_siege_gun_gravity(r,dt)
+            active=max((abs(b['vx'])+abs(b['vy']) for b in bodies if b['hp']>0),default=0)
+            settled=settled+1 if active<14 else 0
+            return
         for b in bodies:
             if b['hp']<=0 or b.get('fixed'):continue
             if b.get('pushTime',0)>0:
@@ -1406,13 +1462,13 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
                 if target and root_counts.get('through') and len(passed)<root_counts['through'] and target['kind']!='core' and not target.get('platform'):
-                    if not engineering:hurt(target,24*damage_scale)
+                    if not engineering:hurt(target,24*damage_scale*(1+1.5*root_counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     passed.add(target['id']);penetrated=target;target=None
                     if unified and dispatch_event('through',x,y,vx,vy,target=penetrated):break
                 if target and split_now('hit',x,y,vx,vy) and config['parentEnd']!='continue':
                     finish_main(x,y,target,config['parentEnd']=='explode');break
                 if target and ground_left>0:
-                    ground_left-=1;px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,radius);bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy,target=target);frames.append(snap(t,[round(px,1),round(py,1)]));break
+                    ground_left-=1;incident=(vx,vy);px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,radius);bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy,target=target,incident=incident);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 if not target and rr<=x<=960-rr and y>=_siege_floor(r,x)-rr and vy>0 and ground_left>0:
                     ground_left-=1;px=x;py=_siege_floor(r,x)-rr-.2;vy=-max(135,vy*.76);vx*=.86;bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 wall=x<=rr or x>=960-rr
@@ -1484,12 +1540,12 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and counts.get('through') and len(f['passed'])<counts['through'] and target['kind']!='core' and not target.get('platform'):
-                    if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42))
+                    if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42)*(1+1.5*counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     f['passed'].add(target['id']);penetrated=target;target=None
                     if unified and dispatch_event('through',x,y,f['vx'],f['vy'],f,penetrated):break
                 if target and f.get('kind')=='repeat' and split_now('hit',x,y,f['vx'],f['vy'],f) and config['parentEnd']!='continue':finish_fragment(f,x,y,target,config['parentEnd']=='explode');break
                 if target and f['groundLeft']>0:
-                    f['groundLeft']-=1;f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f,target);break
+                    f['groundLeft']-=1;incident=(f['vx'],f['vy']);f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f,target,incident);break
                 if not target and fr<=x<=960-fr and y>=_siege_floor(r,x)-fr and f['vy']>0 and f['groundLeft']>0:
                     f['groundLeft']-=1;f['x']=x;f['y']=_siege_floor(r,x)-fr-.2;f['vy']=-max(135,f['vy']*.76);f['vx']*=.86;bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 wall=x<=fr or x>=960-fr
@@ -1549,7 +1605,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             for f in fragments:
                 if f['live'] and not f.get('stop') and t>=f.get('bornAt',0):
                     ax,ay=pull(f['x'],f['y']);f['vx']+=ax;f['vy']+=ay
-        if last_hit is not None:
+        if last_hit is not None and not v24:
             # A finite, softened pull. Nothing is deleted by the black hole.
             for hx,hy,ht,level,*share in holes:
                 if not ht<=t<ht+2:continue
@@ -1568,7 +1624,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if live is None and last_hit is not None:integrate()
         if live is None and step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
         if live is not None or control is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
-        if impact is not None and not drop_queue and not embers and not barrel_queue and not (v24 and tnt_pending()) and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
+        if impact is not None and not drop_queue and not embers and not barrel_queue and not (v24 and (tnt_pending() or any('barrelDeadline' in b for b in bodies))) and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
     if control is not None:
         for k,n in control['left'].items():r['buffs'][side][k]+=n
     if unified:
