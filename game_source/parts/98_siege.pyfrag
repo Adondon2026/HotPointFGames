@@ -478,24 +478,30 @@ def _siege_wall_damage(speed):
 def _siege_v24_push(body,vx,vy,layers,share=1.):
     if body.get('platform') or body['kind'] in ('core',*_SIEGE_TNT_KINDS) or layers<=0:return
     mag=max(1.,math.hypot(vx,vy))
-    body['pushAX']=vx/mag*240.*share
-    body['pushAY']=vy/mag*240.*share
-    body['pushTime']=min(10.,body.get('pushTime',0.)+2.*layers)
+    forces=body.setdefault('pushForces',[])
+    forces.append([vx/mag*240.*share,vy/mag*240.*share,min(10.,2.*layers)])
+    body['pushTime']=max(f[2] for f in forces)
     for key in ('fixed','motionY','floatFort','baseY'):body.pop(key,None)
 
-def _siege_tnt_arm(b,now):
+def _siege_tnt_arm(b,now,source=None):
     if b['kind'] not in _SIEGE_TNT_KINDS or b['hp']<=0:return False
     deadline=now+.10
-    b['tntDeadline']=min(deadline,b.get('tntDeadline',deadline))
+    if deadline<b.get('tntDeadline',float('inf')):
+        b['tntDeadline']=deadline;b['tntTriggerAt']=now
+        b['tntSource']=source if source in (0,1) else b.get('side',-1)
     b['tntTriggered']=True
     return True
 
+def _siege_body_supported(b,bodies,floor):
+    feet=b['y']+b['h']/2
+    return abs(feet-floor)<=1.5 or any(c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and abs(c['y']-c['h']/2-feet)<=1.5 for c in bodies)
+
 def _siege_tnt_step(b,bodies,floor,now,dt):
     if b['kind']!='tnt' or b['hp']<=0 or 'tntDeadline' in b:return
-    feet=b['y']+b['h']/2
-    supported=abs(feet-floor)<=1.5 or any(c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and abs(c['y']-c['h']/2-feet)<=1.5 for c in bodies)
+    supported=_siege_body_supported(b,bodies,floor)
     b['tntStable']=b.get('tntStable',0.)+dt if supported and math.hypot(b['vx'],b['vy'])<18. else 0.
-    if b['tntStable']>=.20-1e-8:b['tntDeadline']=now+1.
+    if b['tntStable']>=.20-1e-8:
+        b['tntDeadline']=now+1.;b['tntFuseStart']=now;b['tntSource']=b.get('side',-1)
 
 def _siege_tnt_alloc(counts):
     """Distribute the shared shot budget across separate projectile branches."""
@@ -782,7 +788,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     repeat_n=attack_counts.get('repeat',0);shell_scale=1. if unified else (1+.35*repeat_n)/(1+repeat_n)
     spiral_n=attack_counts.get('spiral',0);flight_distance=0.
     if live is not None:
-        live['dropQueues'][side]=drop_queue;live.setdefault('fieldSources',{})[side]=holes;live.setdefault('shotShields',{}).pop(side,None)
+        live['dropQueues'][side]=drop_queue;live.setdefault('fieldSources',{})[side]=holes;live.setdefault('fieldStarts',{})[side]=motion_start;live.setdefault('defenseSources',{})[side]=dict(defense_counts);live.setdefault('shotShields',{}).pop(side,None)
     launchers_before=[list(r['launchers'][i]) if r.get('launchers') else list(_siege_launcher(i,r,motion_start)) for i in (0,1)];gun_motion_before=[dict(m) for m in r.get('gunMotion',[])]
     _siege_motion(r,motion_start)
     n=attack_counts.get('big',0);radius=6+6*n;blast_radius=52 if v24 else 52+36*n
@@ -811,21 +817,31 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     barrel_queue=[]
     tnt_alloc=_siege_tnt_alloc(attack_counts) if v24 else []
     def world_now():return max(0.,live['clock']-r['motionEpoch']) if live is not None else motion_start+t
+    def active_fields():
+        now=world_now()
+        for owner,hs in (live.get('fieldSources',{}).items() if live is not None else [(side,holes)]):
+            start=live.get('fieldStarts',{}).get(owner,motion_start) if live is not None else motion_start
+            for hx,hy,ht,level,*share in hs:
+                if start+ht-1e-8<=now<start+ht+2:yield hx,hy,level,share[0] if share else 1.,owner
     def tnt_pending():
-        return any(b['hp']>0 and b['kind'] in _SIEGE_TNT_KINDS and (b['kind']=='tnt' or 'tntDeadline' in b) for b in bodies)
-    def hurt(b,damage):
+        return any(b['hp']>0 and b['kind'] in _SIEGE_TNT_KINDS and (b['kind']=='tnt' or 'tntDeadline' in b or math.hypot(b['vx'],b['vy'])>=18. or not _siege_body_supported(b,bodies,_siege_floor(r,b['x']))) for b in bodies)
+    def attack_defense(source):
+        return live.get('defenseSources',{}).get(source,{}) if v24 and live is not None else defense_counts if source==side else {}
+    def hurt(b,damage,source=None):
         nonlocal trial_damage
         if b.get('platform') or (v24 and b['kind'] in _SIEGE_TNT_KINDS):return
         if b['kind']!='core' and b['side'] in (0,1):damage*= {'normal':1.,'sturdy':.75,'fortified':.55}.get(r.get('fortStrength'),1.)
-        if b['side']==1-side:
-            if 'shield' in defenses and b['kind']=='core':damage*=.35**defense_counts['shield']
-            if 'armor' in defenses and b['kind']!='core':damage*=.65**defense_counts['armor']
+        source=source if v24 and source in (0,1) else side
+        source_defense=attack_defense(source)
+        if b['side']==1-source:
+            if source_defense.get('shield') and b['kind']=='core':damage*=.35**source_defense['shield']
+            if source_defense.get('armor') and b['kind']!='core':damage*=.65**source_defense['armor']
         if trial and b['kind']=='core':
             if b['side']==1:trial_damage+=max(0,damage);return
             b['hp']=max(1,b['hp']-damage)
         else:b['hp']=max(0,b['hp']-damage)
         if v24 and b['kind']=='barrel' and b['hp']<=0 and not b.get('detonated'):
-            b['detonated']=True;b['barrelDeadline']=world_now()+.08
+            b['detonated']=True;b['barrelDeadline']=world_now()+.08;b['barrelSource']=source
         if b.get('floatFort') and b['kind']!='core' and damage>=8:
             b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
 
@@ -898,7 +914,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             direct=24 if b is target else 0
             if dive_strike and counts.get('dive'):direct*=_siege_dive_strike(counts['dive'])
             if counts.get('pierce') and (b['kind']=='stone' if v24 else b['kind']!='core'):direct*=1+1.5*counts['pierce']
-            if v24 and b['kind'] in _SIEGE_TNT_KINDS and (b is target or (1-dist/br)*scale>=.45):_siege_tnt_arm(b,world_now())
+            if v24 and b['kind'] in _SIEGE_TNT_KINDS and (b is target or (1-dist/br)*scale>=.45):_siege_tnt_arm(b,world_now(),side)
             damage=((1-dist/br)*18+direct)*ds*scale
             if b['kind']=='core':damage*=.83
             hurt(b,damage)
@@ -912,8 +928,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 buffer=.25**defense_counts['buffer'] if b['side']==1-side and 'buffer' in defenses else 1.
                 mag*=buffer
                 n=max(18,math.hypot(dx,dy));b['vx']+=mag*dx/n;b['vy']+=min(-12*buffer*(scale if unified else 1),mag*dy/n-20*ins*scale*buffer)
-    def physical_blast(x,y,br,damage,core_damage,impulse,scale=1.):
+                if v24:b['impactSource']=side
+    def physical_blast(x,y,br,damage,core_damage,impulse,scale=1.,source=None):
         nonlocal last_hit,settled
+        source=source if source in (0,1) else side
         behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1),br]);last_hit=t;settled=0
         for b in bodies:
             if b['hp']<=0 or b.get('platform'):continue
@@ -922,11 +940,13 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if dist>=br:continue
             q=1-dist/br
             if b['kind'] in _SIEGE_TNT_KINDS:
-                if q*scale>=.45:_siege_tnt_arm(b,world_now())
-            else:hurt(b,(core_damage if b['kind']=='core' else damage)*q*scale)
+                if q*scale>=.45:_siege_tnt_arm(b,world_now(),source)
+            else:hurt(b,(core_damage if b['kind']=='core' else damage)*q*scale,source)
             if b['hp']<=0 or b.get('fixed'):continue
             d=max(12.,math.hypot(dx,dy));mag=impulse*q*scale/_siege_body_mass(b)
-            b['vx']+=mag*dx/d;b['vy']+=mag*dy/d-40*q*scale
+            guard=attack_defense(source)
+            if b['side']==1-source and ((b['kind']=='core' and guard.get('shield')) or (b['kind']!='core' and guard.get('armor'))):mag*=.6
+            b['vx']+=mag*dx/d;b['vy']+=mag*dy/d-40*q*scale;b['impactSource']=source
     def tick_tnt():
         if not v24:return
         now=world_now()
@@ -935,14 +955,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             _siege_tnt_step(b,bodies,_siege_floor(r,b['x']),now,dt)
         due=[b for b in bodies if b['hp']>0 and b['kind'] in _SIEGE_TNT_KINDS and b.get('tntDeadline',float('inf'))<=now+1e-8]
         for b in due:b['hp']=0.;b['detonated']=True
-        for b in due:physical_blast(b['x'],b['y'],92,32,12,360)
+        for b in due:physical_blast(b['x'],b['y'],92,32,12,360,source=b.get('tntSource',b.get('side')))
     def tick_barrels():
         nonlocal last_hit,settled
         if v24:
             now=world_now()
             due=[b for b in bodies if b.get('barrelDeadline',float('inf'))<=now+1e-8]
             for b in due:
-                b.pop('barrelDeadline',None);physical_blast(b['x'],b['y'],92,65,32,420)
+                b.pop('barrelDeadline',None);physical_blast(b['x'],b['y'],92,65,32,420,source=b.pop('barrelSource',side))
             return
         while barrel_queue and barrel_queue[0][0]<=t+1e-8:
             _,x,y=barrel_queue.pop(0);br=92
@@ -1107,7 +1127,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if generated_counts[k]>=limit:break
             if k in ('wooddrop','stonedrop'):
                 stone=k=='stonedrop';w=36;h=44 if stone else 38
-                if sum(bool(b.get('generated')) and b['hp']>0 for b in bodies)+(sum(map(len,live['dropQueues'].values())) if live is not None else len(drop_queue))>=60:break
+                if sum(bool(b.get('generated')) and b['hp']>0 and b['kind'] in ('wood','stone') for b in bodies)+sum(q[1] in ('wooddrop','stonedrop') for qs in (live['dropQueues'].values() if live is not None else [drop_queue]) for q in qs)>=60:break
                 xx=max(19,min(941,x+(j-(n-1)/2)*37))
                 if engineering:
                     placed=False
@@ -1155,8 +1175,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         scale=parent.get('scale',1.) if parent else 1.
         kind=parent.get('kind','split') if parent else 'main'
         if v24 and event in ('bounce','through','end') and target:
-            if target['kind'] in _SIEGE_TNT_KINDS:_siege_tnt_arm(target,world_now())
-            if counts.get('push'):_siege_v24_push(target,svx,svy,counts['push'],scale)
+            if target['kind'] in _SIEGE_TNT_KINDS:_siege_tnt_arm(target,world_now(),side)
+            if counts.get('push'):
+                _siege_v24_push(target,svx,svy,counts['push'],scale)
+                if target.get('pushTime',0)>0:target['impactSource']=side
         for k in _SIEGE_PAYLOADS:
             if v24 and k in ('wooddrop','stonedrop',*_SIEGE_TNT_KEYS):continue
             if k=='splitshot' or not counts.get(k) or (event not in ('bounce','through','end') if v24 else _siege_event_for(config,k)!=event):continue
@@ -1255,13 +1277,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if b['hp']<=0 or b.get('fixed'):continue
                 floor=_siege_floor(r,b['x'])-b['h']/2
                 if b['y']>floor:
-                    if b['vy']>115:hurt(b,(b['vy']-115)*.08)
-                    b['y']=floor;b['vy']=0;b['vx']*=.82
+                    if b['vy']>115:hurt(b,(b['vy']-115)*.08,b.get('impactSource'))
+                    b['y']=floor;b['vy']=0
+                    if not v24:b['vx']*=.82
                 edge=max(b['w']/2,min(960-b['w']/2,b['x']))
                 if v24 and edge!=b['x']:
                     outward=(b['x']<edge and b['vx']<0) or (b['x']>edge and b['vx']>0)
                     if outward:
-                        hurt(b,_siege_wall_damage(abs(b['vx'])) if b['kind']=='core' else max(0.,abs(b['vx'])-115)*.08)
+                        hurt(b,_siege_wall_damage(abs(b['vx'])) if b['kind']=='core' else max(0.,abs(b['vx'])-115)*.08,b.get('impactSource'))
                         b['vx']*=-.12
                 b['x']=edge
             for i,b in enumerate(live):
@@ -1276,7 +1299,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                         moving,sg=(c,sign) if b.get('fixed') else (b,-sign)
                         moving[axis]+=sg*depth
                         if moving[v]*sg<0:
-                            if abs(moving[v])>115:hurt(moving,(abs(moving[v])-115)*.08)
+                            if abs(moving[v])>115:hurt(moving,_siege_wall_damage(abs(moving[v])) if v24 and moving['kind']=='core' else (abs(moving[v])-115)*.08,moving.get('impactSource'))
                             moving[v]=0.
                         continue
                     b[axis]-=sign*depth*.5;c[axis]+=sign*depth*.5
@@ -1285,12 +1308,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                         # Heavier stone/large blocks carry more momentum.
                         mb=b['w']*b['h']*(1.8 if b['kind']=='stone' else 1);mc=c['w']*c['h']*(1.8 if c['kind']=='stone' else 1)
                         if v24:mb=_siege_body_mass(b)*1368;mc=_siege_body_mass(c)*1368
+                        source=b.get('impactSource',side) if abs(b[v])*mb>=abs(c[v])*mc else c.get('impactSource',side)
                         impulse=closing/(1/mb+1/mc);b[v]-=sign*impulse/mb;c[v]+=sign*impulse/mc
+                        if v24 and closing>95:b['impactSource']=c['impactSource']=source
                         if closing>95:
                             for z,other in ((b,mc),(c,mb)):
                                 if v24 and z['kind']=='core':
-                                    hurt(z,_siege_wall_damage(closing)*min(1.,other/(_siege_body_mass(z)*1368)))
-                                else:hurt(z,(closing-95)*.10*min(1.7,other/(z['w']*z['h'])))
+                                    hurt(z,_siege_wall_damage(closing)*min(1.,other/(_siege_body_mass(z)*1368)),source)
+                                else:hurt(z,(closing-95)*.10*min(1.7,other/(z['w']*z['h'])),source)
     def collect(x,y,radius,t):
         trigger_mines(x,y,radius)
         for item in list(r['items']):
@@ -1334,26 +1359,31 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if c and not c.get('generated'):hurt(c,(22 if b['kind']=='stone' else 12) if c['kind']=='core' else (8 if b['kind']=='stone' else 4))
         if v24:
             # Sum continuous forces and preserve already applied explosion impulses.
-            fields=[h for hs in live.get('fieldSources',{}).values() for h in hs] if live is not None else holes
-            local_time=t if live is None else world_now()-motion_start
+            fields=list(active_fields())
             for b in bodies:
                 if b['hp']<=0 or b.get('platform'):continue
-                ax=ay=0.
-                for hx,hy,ht,level,*share in fields:
-                    if not ht<=local_time<ht+2:continue
+                ax=ay=0.;field_force=0.
+                for hx,hy,level,share,owner in fields:
                     dx,dy=hx-b['x'],hy-b['y'];dist=math.hypot(dx,dy);reach=120+22*level
                     if dist>reach or dist<1:continue
                     if b.get('fixed'):
                         if b['kind']=='core' or not b.get('floatFort'):continue
                         b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
-                    accel=(130+105*level)*(1-dist/reach)*(share[0] if share else 1.)/_siege_body_mass(b)
+                    accel=(130+105*level)*(1-dist/reach)*share/_siege_body_mass(b)
                     ax+=dx/max(14.,dist)*accel;ay+=dy/max(14.,dist)*accel
+                    if accel>field_force:field_force=accel;b['impactSource']=owner
                 if b.get('fixed'):continue
                 force=math.hypot(ax,ay)
                 if force>540:ax*=540/force;ay*=540/force
                 if b.get('pushTime',0)>0:
-                    ax+=b.get('pushAX',0.)/_siege_body_mass(b);ay+=b.get('pushAY',0.)/_siege_body_mass(b)
-                    b['pushTime']=max(0.,b['pushTime']-dt)
+                    forces=b.get('pushForces')
+                    if forces is None:
+                        oldvx=b.get('pushVX',0.);oldvy=b.get('pushVY',0.);m=max(1.,math.hypot(oldvx,oldvy))
+                        forces=[[oldvx/m*240.,oldvy/m*240.,b['pushTime']]]
+                    pax=sum(f[0] for f in forces);pay=sum(f[1] for f in forces);pcap=max(1.,math.hypot(pax,pay)/540.)
+                    ax+=pax/pcap/_siege_body_mass(b);ay+=pay/pcap/_siege_body_mass(b)
+                    b['pushForces']=[[fx,fy,left-dt] for fx,fy,left in forces if left>dt]
+                    b['pushTime']=max((f[2] for f in b['pushForces']),default=0.)
                 b['vx']+=ax*dt;b['vy']+=(ay+_SIEGE_GRAV)*dt
                 speed=math.hypot(b['vx'],b['vy'])
                 if speed>650:b['vx']*=650/speed;b['vy']*=650/speed
@@ -1364,6 +1394,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     if b['hp']<=0 or b.get('fixed'):continue
                     b['x']+=b['vx']*dt/substeps;b['y']+=b['vy']*dt/substeps;b['vx']*=.994**(1/substeps)
                 collide()
+            # Apply ground friction once per physical tick, not per solver pass.
+            for b in bodies:
+                if b['hp']>0 and not b.get('fixed') and abs(b['y']+b['h']/2-_siege_floor(r,b['x']))<1.5:
+                    b['vx']=math.copysign(max(0.,abs(b['vx'])-105.*dt),b['vx'])
             tick_tnt();tick_barrels();_siege_gun_gravity(r,dt)
             active=max((abs(b['vx'])+abs(b['vy']) for b in bodies if b['hp']>0),default=0)
             settled=settled+1 if active<14 else 0
@@ -1588,7 +1622,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if target is None:hole_anchors.pop(i,None);continue
             h=holes[i];h[0]=round(target['x']+dx,1);h[1]=round(target['y']+dy,1)
             if step%6==0 and t<h[2]+2:hole_paths.append([i,round(t,3),h[0],h[1]])
-        field_holes=[h for hs in live.get('fieldSources',{}).values() for h in hs] if live is not None else holes
+        field_holes=([[hx,hy,t,level,share] for hx,hy,level,share,_ in active_fields()] if v24 else [h for hs in live.get('fieldSources',{}).values() for h in hs] if live is not None else holes)
         if field_holes:
             def pull(x,y):
                 ax=ay=0.
@@ -1624,7 +1658,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if live is None and last_hit is not None:integrate()
         if live is None and step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
         if live is not None or control is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
-        if impact is not None and not drop_queue and not embers and not barrel_queue and not (v24 and (tnt_pending() or any('barrelDeadline' in b for b in bodies))) and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
+        if impact is not None and not drop_queue and not embers and not barrel_queue and not (v24 and (tnt_pending() or any('barrelDeadline' in b for b in bodies))) and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=(6.0 if v24 else 2.7)):break
     if control is not None:
         for k,n in control['left'].items():r['buffs'][side][k]+=n
     if unified:
