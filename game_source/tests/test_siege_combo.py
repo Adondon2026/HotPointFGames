@@ -97,7 +97,7 @@ for page in (g.SIEGE_PAGE,g.HTML_PAGE):
     catalog=json.JSONDecoder().raw_decode(raw)[0]
     assert set(catalog)==set(g._SIEGE_ITEMS)
     assert len({v['path'] for v in catalog.values()})==len(catalog)
-    assert len({v['color'] for v in catalog.values()})==8
+    assert len({v['color'] for v in catalog.values()})==11
     assert all(catalog[k]['color']=='#b4b7bc' for k in g._SIEGE_NEGATIVE)
 assert "siegeBuffList.length" in g.HTML_PAGE
 assert "n+'/16'" not in g.HTML_PAGE

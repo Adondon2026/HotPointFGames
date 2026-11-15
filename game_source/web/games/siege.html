@@ -505,6 +505,7 @@ function drawBlastPulse(x,y,age,radius,heavy=true){
  ctx.restore()
 }
 function drawPayloadBlasts(events,t){
+ for(const e of (events||[]).filter(e=>e[0]==='salvage'&&t>=e[1]&&t-e[1]<.55)){const q=(t-e[1])/.55;ctx.save();ctx.strokeStyle='#78d9be';ctx.globalAlpha=1-q;ctx.lineWidth=3;ctx.beginPath();ctx.arc(e[2],e[3],e[4]*(1-.75*q),0,7);ctx.stroke();ctx.restore()}
  for(const e of (events||[]).filter(e=>e[0]==='bounceBlast'&&t>=e[1]&&t-e[1]<.58).slice(-24))drawBlastPulse(e[2],e[3],t-e[1],e[4]||28);
 }
 function payloadSounds(id,events,t){for(const e of events||[])if(e[0]==='bounceBlast'&&t>=e[1]&&t-e[1]<.58)siegeAudio.hit(id+':payload:'+e.slice(1).join(':'),t-e[1])}
