@@ -172,3 +172,45 @@ assert 0<damage[0]<damage[1],damage
 assert g._siege_release_interval(5,.35)<g._siege_release_interval(1,.35)
 assert g._siege_dive_strike(5)==2
 print('Siege dive strike damage and release density PASS')
+
+# Exercise the final HTTP dispatcher, not just the isolated siege_request helper.
+import threading, urllib.request, urllib.error
+server=g.ReliableThreadingHTTPServer(('127.0.0.1',0),g.Handler)
+threading.Thread(target=server.serve_forever,daemon=True).start()
+base='http://127.0.0.1:'+str(server.server_address[1])
+def http(path,data=None):
+    req=urllib.request.Request(base+path,data=json.dumps(data).encode() if data is not None else None,headers={'Content-Type':'application/json'})
+    try:res=urllib.request.urlopen(req,timeout=10)
+    except urllib.error.HTTPError as e:res=e
+    with res:return res.status,res.read()
+def trial_api(data):
+    status,raw=http('/api/siege-trial',data)
+    return status,json.loads(raw)
+try:
+    status,page=http('/siege?trial=1')
+    assert status==200 and b'/api/siege-trial' in page
+    assert http('/siege')[0]==404
+    assert http('/api/siege',{'type':'create','key':'e'*48})[0]==404
+    key='e'*48
+    status,v=trial_api({'type':'create','key':key})
+    assert status==200 and v['ok'] and v['trial'] and v['cores']==[100,100]
+    code=v['code']
+    def q(kind,**kw):return trial_api(dict(type=kind,key=key,code=code,**kw))[1]
+    assert q('state')['trial']
+    assert not trial_api(dict(type='state',key='f'*48,code=code))[1]['ok']
+    assert not q('join')['ok']
+    assert not q('return')['ok']
+    p=q('trialPreview',angle=42,power=65,selection={'dive':1},config={'simple':True})
+    assert p['ok'] and p['paths']
+    v=q('fire',rev=v['rev'],angle=42,power=65,selection={'dive':1},config={'simple':True})
+    assert v['ok'] and v['shots']==[1,0] and v['cores'][1]==100
+    g._SIEGE_ROOMS[code]['until']=0
+    v=q('trialReset',mode='sky')
+    assert v['ok'] and v['field']=='sky' and v['shots']==[0,0]
+    normal=g.siege_request(dict(type='create',key=key,bot=True))
+    assert normal['ok'] and not normal['trial']
+    assert not trial_api(dict(type='state',key=key,code=normal['code']))[1]['ok']
+    assert http('/')[0]==200
+finally:
+    server.shutdown();server.server_close()
+print('Siege trial HTTP route, isolation, preview, fire, reset PASS')
