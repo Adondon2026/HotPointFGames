@@ -31,9 +31,9 @@
 
 在电脑浏览器打开 http://127.0.0.1:8000/；也可以把生成的单文件放到 Termux 测试。修改规则、UI、词库、新游戏后，重新运行第一条命令即可。
 
-## Android APP 1.3：在线一键更新
+## Android APP 1.4：在线一键更新
 
-首次安装 Android build 生成的新版 APK。APP 首页自动检查公开 GitHub Releases；发现新版后点击「下载并更新」。若服务器正在运行，请等朋友结束游戏后手动停止，再确认更新。应用仅从本仓库的 HTTPS 发布地址下载，限制文件大小、校验 SHA-256 和 Python 接口，并原子替换游戏文件。加载失败时尝试恢复上一个导入版本，否则回退内置版。账户和积分文件不参与替换。更新需联网，游戏仍可离线。游戏源码提交 main 后，Game files 测试通过才发布独立游戏 Release；不需要安装新 APK。宿主变更仍需安装 APK；调试签名可能不同，卸载会丢失本地数据。
+首次安装 Android build 生成的新版 APK。APP 首页直接下载官方最新游戏版本清单，不请求 GitHub REST API，因此不受匿名 API 每小时额度影响；发现新版后点击「下载并更新」。若服务器正在运行，请等朋友结束游戏后手动停止，再确认更新。应用仅从本仓库的 HTTPS 发布地址下载，限制文件大小、校验 SHA-256 和 Python 接口，并原子替换游戏文件。加载失败时尝试恢复上一个导入版本，否则回退内置版。账户和积分文件不参与替换。更新需联网，游戏仍可离线。游戏源码提交 main 后，Game files 测试通过才发布独立游戏 Release；不需要安装新 APK。宿主变更仍需安装 APK；调试签名可能不同，卸载会丢失本地数据。
 
 ## Android APP：安装一次，离线导入更新
 
@@ -49,7 +49,7 @@
 推荐 GitHub Actions：
 
 - 游戏规则、UI 或词库更新：Actions → Game files，构建后在 Artifacts 下载可导入的 .py / .txt，无需编译 Android。
-- 首次安装或 Android 宿主更新：Actions → Android build，构建成功后在 Artifacts 下载 HotPointFGames-Android，解压后安装 app-debug.apk。游戏源码及宿主变更均会自动触发。
+- 首次安装或 Android 宿主更新：[Android 1.4 APK](https://github.com/Adondon2026/HotPointFGames/releases/download/android-v1.4/HotPointFGames-1.4.apk)，或 Actions → Android build → Artifacts 下载 HotPointFGames-Android，解压后安装 app-debug.apk。宿主 APK 发布为独立预发行版本，不改变最新游戏 Release。游戏源码及宿主变更均会自动触发。
 
 两种构建均无需在本机安装 Android SDK。
 

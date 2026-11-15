@@ -1,7 +1,6 @@
 package com.chuanmahjong.nearby
 
 import android.content.Context
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.URL
@@ -14,8 +13,9 @@ object GameUpdates {
     private const val MAX_GAME = 4 * 1024 * 1024
     private const val MANIFEST = "game-update.json"
     private const val GAME = "game_hall_lan_v6_2.py"
-    private const val HOST_VERSION = 4
-    private val allowedHosts = setOf("api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
+    private const val HOST_VERSION = 5
+    private val allowedHosts = setOf("github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
+    internal const val LATEST_MANIFEST = "https://github.com/$REPO/releases/latest/download/$MANIFEST"
     private val releaseTag = Regex("game-[0-9]+-[0-9]+-[a-f0-9]{7,40}")
     private val hashPattern = Regex("[a-f0-9]{64}")
 
@@ -58,7 +58,7 @@ object GameUpdates {
         return builtin(context)?.takeIf { it.sha256 == hash } ?: Info("本地导入", "unknown", 0, hash, active.length().toInt(), 1)
     }
 
-    private fun get(address: String, max: Int): ByteArray {
+    private fun get(address: String, max: Int, stage: String): ByteArray {
         var url = URL(address)
         repeat(6) {
             require(url.protocol == "https" && url.host in allowedHosts && url.userInfo == null && (url.port == -1 || url.port == 443)) { "拒绝非官方更新地址" }
@@ -67,13 +67,19 @@ object GameUpdates {
                 conn.instanceFollowRedirects = false
                 conn.connectTimeout = 8000
                 conn.readTimeout = 15000
-                conn.setRequestProperty("User-Agent", "HotPointFGames-Android/1.3")
-                conn.setRequestProperty("Accept", if (url.host == "api.github.com") "application/vnd.github+json" else "application/octet-stream")
+                conn.useCaches = false
+                conn.setRequestProperty("User-Agent", "HotPointFGames-Android/1.4")
+                conn.setRequestProperty("Accept", "application/octet-stream")
                 val code = conn.responseCode
                 if (code in 300..399) {
                     url = URL(url, conn.getHeaderField("Location") ?: error("更新地址无效"))
                 } else {
-                    require(code == 200) { "GitHub 返回 HTTP $code" }
+                    require(code == 200) { when (code) {
+                        403 -> "$stage：GitHub 下载被拒绝（HTTP 403），请检查网络或更换网络/代理。新版已不使用 GitHub API。"
+                        404 -> "$stage：未找到发布文件（HTTP 404），请确认官方 Release 已发布。"
+                        429 -> "$stage：请求过于频繁（HTTP 429），请稍后重试。"
+                        else -> "$stage：GitHub 返回 HTTP $code"
+                    } }
                     require(conn.contentLength <= max) { "更新文件超过大小限制" }
                     return conn.inputStream.use { input ->
                         val output = java.io.ByteArrayOutputStream()
@@ -90,25 +96,23 @@ object GameUpdates {
         require(releaseTag.matches(tag) && name in setOf(MANIFEST, GAME))
         return "https://github.com/$REPO/releases/download/$tag/$name"
     }
+    /** Latest points at the tested game release; APK releases must remain non-latest. */
     fun check(context: Context): Available? {
-        val releases = JSONArray(get("https://api.github.com/repos/$REPO/releases?per_page=20", 1024 * 1024).toString(Charsets.UTF_8))
-        val candidates = (0 until releases.length()).map { releases.getJSONObject(it) }.filter {
-            !it.optBoolean("draft") && !it.optBoolean("prerelease") && releaseTag.matches(it.optString("tag_name"))
-        }
-        val release = candidates.maxWithOrNull(compareBy<JSONObject> { it.optString("tag_name").split('-')[1].toLong() }.thenBy { it.optString("tag_name").split('-')[2].toLong() }) ?: return null
-        val tag = release.getString("tag_name")
-        val assets = release.getJSONArray("assets")
-        val names = (0 until assets.length()).map { assets.getJSONObject(it).optString("name") }
-        require(MANIFEST in names && GAME in names) { "发布文件不完整" }
-        val info = parse(get(asset(tag, MANIFEST), 16384).toString(Charsets.UTF_8))
-        require(info.version == tag && info.source.matches(Regex("[a-f0-9]{40}")) && info.source.startsWith(tag.substringAfterLast('-'))) { "版本清单不匹配" }
-        val local = current(context)
+        val raw = get(LATEST_MANIFEST, 16384, "检查更新").toString(Charsets.UTF_8)
+        return resolveLatest(raw, current(context))
+    }
+
+    internal fun resolveLatest(raw: String, local: Info?): Available? {
+        val info = parse(raw)
+        val tag = info.version
+        require(releaseTag.matches(tag) && info.source.matches(Regex("[a-f0-9]{40}")) && info.source.startsWith(tag.substringAfterLast('-'))) { "版本清单不匹配" }
         if (local?.sha256 == info.sha256 || (local != null && local.sourceEpoch > info.sourceEpoch)) return null
         require(info.minHost <= HOST_VERSION) { "此游戏版本需要先升级 Android APP" }
-        return Available(tag, info, release.optString("body").take(500))
+        // Pin downloads to the manifest's immutable release, even if latest changes.
+        return Available(tag, info, "官方游戏版本 · 已通过发布构建测试")
     }
     fun download(update: Available, pending: File) {
-        val data = get(asset(update.tag, GAME), MAX_GAME)
+        val data = get(asset(update.tag, GAME), MAX_GAME, "下载游戏文件")
         require(data.size == update.info.size && digest(data) == update.info.sha256) { "更新文件校验失败，已保留原版本" }
         pending.outputStream().use { it.write(data); it.fd.sync() }
     }
