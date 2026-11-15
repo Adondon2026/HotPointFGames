@@ -59,4 +59,32 @@ rt['plans']=[(90,65,{'fuse':1}),(90,65,{'fuse':1})]
 rt['configs']=[g._siege_config({'fuseTime':1}),g._siege_config({'fuseTime':2})]
 g._siege_sync_compute(r,rt,now)
 assert r['shots']==[1,1] and rt['replay'] and not any(inv['fuse'] for inv in r['buffs'])
-print('Siege combo: engineering, shared resources, fuse modes, all split triggers, bounded copies, scopes, fire and sync PASS')
+# Every configurable copy pattern creates real, bounded shells.
+for mode,pattern in [('expire','radial'),('trail','trail'),('chaos','chaos'),('orbit','orbit')]:
+    r,e=fire({'larpa':2},{'copyMode':mode},90,65)
+    n=sum(v[4] for v in e['behaviorEvents'] if v[0]=='spawn' and v[5]==pattern)
+    assert 0<n<=4,(mode,e['behaviorEvents'])
+r,e=fire({'splitshot':2},{'childSplit':True},90,65)
+assert sum(v[4] for v in e['behaviorEvents'] if v[0]=='spawn' and v[5]=='secondary')==4
+r,e=fire({'splitshot':1,'firearc':1},{},90,65)
+assert e['fireArcs'],e['behaviorEvents']
+# Persistent mines are unarmed on their deployment shot and trigger on a later shot.
+r,e=fire({'mine':1},{},175,65)
+assert len(r['mines'])==1 and e['mineEvents'][0][0]=='place'
+m=r['mines'][0];r['turn']=0;r['phase']='play'
+g._siege_fire(r,175,65,{})
+assert not r['mines'] and any(v[0]=='detonate' for v in r['event']['mineEvents']),r['event']['mineEvents']
+# A projectile shield is reserved for simultaneous combat and deflects an approaching shell.
+r,e=fire({'shotshield':1},{},90,65)
+assert r['buffs'][0]['shotshield']==1
+r=new();r['combatMode']='sync';r['buffs'][0]['shotshield']=1
+now=time.time();rt=g._siege_sync_runtime(r,now)
+rt['plans']=[(20,65,{'shotshield':1}),(20,65,{})];rt['locked']=[True,True]
+g._siege_sync_compute(r,rt,now)
+samples=[v for f in rt['replay']['frames'] for v in f[2]]
+assert any(v[0]=='shieldDeflect' for shot in samples for v in shot.get('behaviorEvents',[])), 'shield never deflected'
+# A surviving hit object carries an attached gravity field.
+r=new();r['bodies'].append(dict(id=90,side=1,x=430,y=350,w=40,h=70,kind='stone',hp=1000,max=1000,vx=0.,vy=0.))
+r['buffs'][0]['blackhole']=1;g._siege_fire(r,5,55,{'blackhole':1},config={'blackholeMode':'attached'})
+assert r['event']['holePaths'],r['event']['holes']
+print('Siege combo: all projectile patterns, triggers, resource budgets, material fire, deflection, persistent mines and sync PASS')
