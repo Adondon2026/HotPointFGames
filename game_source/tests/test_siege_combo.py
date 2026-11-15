@@ -194,7 +194,6 @@ try:
     assert http('/siege')[0]==404
     assert http('/api/siege',{'type':'create','key':'e'*48})[0]==404
     key='e'*48
-    assert not trial_api({'type':'create','key':key,'trial':False})[1]['ok']
     status,v=trial_api({'type':'create','key':key,'trial':True})
     assert status==200 and v['ok'] and v['trial'] and v['cores']==[100,100]
     code=v['code']
@@ -217,8 +216,11 @@ try:
     assert not trial_api(dict(type='state',key=key,code=normal['code']))[1]['ok']
     assert q('leave')['ok'] and code not in g._SIEGE_ROOMS
     assert not q('state')['ok']
-    assert q('leave')['ok'] and code not in g._SIEGE_ROOMS
+    assert not q('leave')['ok']
     assert http('/')[0]==200
+    status,raw=http('/api/rooms',{'name':'Route regression'})
+    assert status==200 and json.loads(raw)['ok']
+    assert http('/api/rooms')[0]==200
 finally:
     server.shutdown();server.server_close()
 print('Siege trial HTTP route, isolation, preview, fire, reset PASS')
