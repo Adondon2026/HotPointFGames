@@ -53,7 +53,7 @@ _SIEGE_MAX_RADIUS=36
 _SIEGE_HARD_CAPS={k:(1 if k in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE,'fuse') else 20 if k=='bounce' else 10 if k=='through' else 5) for k in _SIEGE_ITEMS}
 _SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_NEGATIVE)
 _SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield') else 1 if k in ('homing','heal','coreteleport','gunteleport') else 5 for k in _SIEGE_V24_KEYS}
-_SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport')
+_SIEGE_V24_SKILLS=('shield','heal','coreteleport','gunteleport')
 _SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport') else 'rare' if k in ('repeat','blackhole','shield') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_WEIGHTS={'common':8,'uncommon':4,'rare':2,'precious':1}
 _SIEGE_V24_ART={'splitshot':16,'repeat':24,'bounce':16,'bounceblast':22,'through':5,'big':5,'homing':1,'blackhole':2,'push':3,'pierce':3,'shield':2,'armor':2,'tntdrop':4,'tntwait':3}
@@ -421,6 +421,7 @@ def _siege_selection(r,selection,side=None):
     _siege_normalize_buffs(r);inv=r['buffs'][r['turn'] if side is None else side];out={}
     for k,n in selection.items():
         if k not in _SIEGE_SELECTABLE or (k in _SIEGE_TNT_KEYS and not _siege_v24(r)) or (_siege_v24(r) and (k not in _SIEGE_V24_KEYS or k in _SIEGE_V24_SKILLS)) or type(n) is not int or not 0<=n<=min(_siege_cap(r,k),inv[k]):raise ValueError('增益数量超出库存或单次上限')
+        if _siege_v24(r) and k=='armor' and n+r.get('armed',[{},{}])[r['turn'] if side is None else side].get(k,0)>_siege_cap(r,k):raise ValueError('已有加固待命，请减少本炮选择数量')
         if n:out[k]=n
     return out
 
@@ -716,6 +717,7 @@ def _siege_trial_steps(r,angle,power,selection,force=False,config=None,control=N
         core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==0);core['hp']=min(core['max'],core['hp']+18)
     # Target defense enables real damage-reduction comparisons without enemy fire.
     if not _siege_v24(r):r['armed'][1]={k:selected[k] for k in _SIEGE_DEFENSE if k in selected}
+    elif selected.get('armor'):r['armed'][1]['armor']=selected['armor'] # test target's armor without an opponent shot
     chosen={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
     yield from _siege_fire_steps(r,angle,power,chosen,force=force,config=config,control=control)
     _siege_trial_stock(r)
@@ -775,7 +777,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         defense_counts=dict(armed[1-side]);armed[1-side]={}
         if live is not None:
             armed[side]={**armed[side],**{k:armed[side].get(k,0)+n for k,n in chosen.items() if k in _SIEGE_DEFENSE}}
-        elif not v24:armed[side]={k:n for k,n in chosen.items() if k in _SIEGE_DEFENSE}
+        elif v24:
+            if chosen.get('armor'):armed[side]['armor']=armed[side].get('armor',0)+chosen['armor']
+        else:armed[side]={k:n for k,n in chosen.items() if k in _SIEGE_DEFENSE}
         for k,n in chosen.items():r['buffs'][side][k]-=n
     else:
         attack_counts={k:1 for k in (*_SIEGE_ATTACK,*_SIEGE_EXTRA_ATTACK) if r['buffs'][side][k]>0 and k not in suppressed and not (_siege_robot(r,side) and k in _SIEGE_ONE_SHOT)}
@@ -1778,7 +1782,7 @@ def _siege_v24_skill(r,side,k,target,now):
     inv=r['buffs'][side]
     if not inv.get(k):raise ValueError('技能库存不足')
     core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==side)
-    if k in ('shield','armor'):
+    if k=='shield':
         armed=r.setdefault('armed',[{},{}])[side]
         if armed.get(k,0)>=_SIEGE_V24_CAPS[k]:raise ValueError('技能已满')
         armed[k]=armed.get(k,0)+1

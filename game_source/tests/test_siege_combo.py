@@ -386,6 +386,28 @@ core=next(b for b in r['bodies'] if b['side']==0 and b['kind']=='core');core['hp
 g._siege_v24_skill(r,0,'heal',None,time.time());assert core['hp']==68 and r['buffs'][0]['heal']==0
 g._siege_v24_skill(r,0,'shield',None,time.time());assert r['armed'][0]['shield']==1 and r['buffs'][0]['shield']==2
 g._siege_fire(r,75,40,{},config=g._siege_public_config({}));assert r['armed'][0]['shield']==1
+# Armor is a reversible draft, never an immediate-use skill.
+r=v24();r['buffs'][0]['armor']=5
+assert g._siege_selection(r,{'armor':5},0)=={'armor':5}
+assert g._siege_selection(r,{'armor':2},0)=={'armor':2}
+assert g._siege_selection(r,{'armor':0},0)=={} and r['buffs'][0]['armor']==5 and not r['armed'][0]
+try:g._siege_v24_skill(r,0,'armor',None,time.time());assert False
+except ValueError:pass
+assert r['buffs'][0]['armor']==5
+g._siege_fire(r,75,40,{'armor':2},config=g._siege_public_config({}))
+assert r['buffs'][0]['armor']==3 and r['armed'][0]['armor']==2
+assert 'armor' not in r['event']['attackCounts']
+r['turn']=1
+g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
+assert r['event']['defenseCounts']['armor']==2 and not r['armed'][0]
+# Sync draft/cancel doesn't consume armor; the committed round does.
+r=v24();r['buffs'][0]['armor']=5;now=time.time();rt=g._siege_sync_runtime(r,now)
+g._siege_sync_plan(r,rt,0,{'round':rt['round'],'angle':75,'power':40,'selection':{'armor':4}},False)
+g._siege_sync_plan(r,rt,0,{'round':rt['round'],'angle':75,'power':40,'selection':{'armor':1}},False)
+assert r['buffs'][0]['armor']==5 and not r['armed'][0]
+g._siege_sync_compute(r,rt,now)
+assert r['buffs'][0]['armor']==4 and not r['armed'][0]
+print('Siege v0.24 armor: reversible selection, commit and opposing defense, sync PASS')
 # Automatic guidance: no influence in own half, mirrored strong steering in
 # enemy half, every branch uses the same rule, no live controls.
 import math
