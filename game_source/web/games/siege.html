@@ -360,13 +360,13 @@ function updateSkills(){
  dock.classList.toggle('hidden',room.rulesVersion!==24||!canAim()||stockOpen||!keys.length);
  if(room.rulesVersion!==24)return;
  const sig=keys.map(k=>k+inv[k]).join('/')+skillTarget;if(dock.dataset.sig===sig)return;dock.dataset.sig=sig;dock.replaceChildren();
- for(const k of keys){const b=document.createElement('button');b.type='button';b.classList.toggle('active',skillTarget===k);b.title=siegeV24Names[k];b.innerHTML=siegeIcon(k,18)+' '+inv[k];b.setAttribute('aria-label',siegeV24Names[k]+' '+inv[k]);b.onclick=()=>{if(k==='coreteleport'||k==='gunteleport'){skillTarget=skillTarget===k?null:k;notice=skillTarget?'点击己方空地选择落点':'';update()}else useSkill(k)};dock.append(b)}
+ for(const k of keys){const b=document.createElement('button');b.type='button';b.classList.toggle('active',skillTarget===k);b.title=siegeV24Names[k];b.innerHTML=siegeIcon(k,18)+' '+({shield:'护盾',armor:'加固',heal:'修复',coreteleport:'核心移',gunteleport:'炮台移'}[k])+' '+inv[k];b.setAttribute('aria-label',siegeV24Names[k]+' '+inv[k]);b.onclick=()=>{if(k==='coreteleport'||k==='gunteleport'){skillTarget=skillTarget===k?null:k;notice=skillTarget?'点击己方空地选择落点':'';update()}else useSkill(k)};dock.append(b)}
 }
 function updateV24Stock(){
  const active=canAim(),inv=room.buffs[room.seat]||{},keys=siegeV24Keys.filter(k=>inv[k]>0&&!siegeV24Skills.includes(k)&&(room.trial||!siegeV24Negatives.includes(k)));
  $('stockPanel').classList.toggle('hidden',!active||!stockOpen);$('stockBtn').classList.toggle('hidden',!active);$('stockBtn').textContent='弹药 '+Object.values(selection).reduce((a,b)=>a+b,0);
  if(!active||!stockOpen)return;
- $('stockHelp').textContent='点选叠加 · 再点满层归零';$('stockClear').classList.remove('hidden');
+ $('stockHelp').textContent='点击加一层 · 满层后再点清零';$('stockClear').classList.remove('hidden');
  $('stockPanel').querySelector('h3').textContent='本炮配置';
  const n=(1+(selection.repeat||0))*2**(selection.splitshot||0);
  $('stockSummary').textContent=n+' 枚炮弹'+(selection.splitshot?' · 单枚 '+(100/2**selection.splitshot).toFixed(1).replace(/\.0$/,'')+'% 基础攻击':'')+(selection.repeat?' · 连发 '+(1+selection.repeat)+' 次':'');
