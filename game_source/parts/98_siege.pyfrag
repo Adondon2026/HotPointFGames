@@ -885,7 +885,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             oldx,oldy=px,py;px+=vx*dt;py+=vy*dt
             ox,oy=_siege_path_offset(t,root_counts,negatives);ex,ey=_siege_path_offset(t-dt,root_counts,negatives)
             px+=ox-ex;py+=oy-ey;px,py,vx,vy=deflect(px,py,vx,vy,radius);flight_distance+=math.hypot(px-oldx,py-oldy)
-            vy+=(_siege_gravity(root_counts,negatives)-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;vx+=wind*dt
+            vy+=((_siege_gravity({},negatives) if main_dived and config.get('simple') else _siege_gravity(root_counts,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;vx+=wind*dt
             if negatives.get('fart') and step%9==0:puffs.append([round(px,1),round(py,1),round(t,3)])
             rr=_siege_v20_radius(radius,flight_distance,negatives);draw_radius=rr;vanish_scale=_siege_v20_vanish(flight_distance,negatives)
             target=None
@@ -947,7 +947,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             ox,oy=f['x'],f['y'];f['x']+=f['vx']*dt;f['y']+=f['vy']*dt
             a1,b1=_siege_path_offset(age,counts,negatives);a0,b0=_siege_path_offset(age-dt,counts,negatives)
             f['x']+=a1-a0;f['y']+=b1-b0;f['travel']=f.get('travel',0)+math.hypot(f['x']-ox,f['y']-oy)
-            f['vy']+=(_siege_gravity(counts,negatives)-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;f['vx']+=wind*dt
+            f['vy']+=((_siege_gravity({},negatives) if f.get('dived') and config.get('simple') else _siege_gravity(counts,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;f['vx']+=wind*dt
             if 'orbit' in f:
                 if impact is None and main_stop is None:
                     ang=f['orbit']+age*5;f['x']=px+math.cos(ang)*(radius+22);f['y']=py+math.sin(ang)*(radius+22);f['vx']=vx-math.sin(ang)*(radius+22)*5;f['vy']=vy+math.cos(ang)*(radius+22)*5
@@ -1234,7 +1234,7 @@ def _siege_sync_tick(r,rt,now=None):
         return False
     if r['phase']!='play':return False
     if r['bot'] and not rt['locked'][1]:
-        plan={'planOnly':True};_siege_bot(r,plan);rt['plans'][1]=plan['plan'];rt['locked'][1]=True
+        plan={'planOnly':True};_siege_bot(r,plan);rt['plans'][1]=plan['plan'];rt['configs'][1]=_siege_config({'simple':True});rt['locked'][1]=True
     if all(rt['locked']) or (rt['deadline'] is not None and now>=rt['deadline']):
         _siege_sync_compute(r,rt,now);return True
     return False
@@ -1255,8 +1255,8 @@ def _siege_bot_fire(r,a,p,live=None):
                 selection[k]=min(selection[k],max(0,_siege_cap(r,k)-r.get('armed',[{},{}])[1].get(k,0)))
                 if not selection[k]:selection.pop(k)
     def shoot(angle,selection):
-        if live is not None:_siege_live_start(r,live,1,angle,p,selection)
-        else:_siege_fire(r,angle,p,selection)
+        if live is not None:_siege_live_start(r,live,1,angle,p,selection,config={'simple':True})
+        else:_siege_fire(r,angle,p,selection,config={'simple':True})
     for angle in ((a,135,155,175,105,90,75,45,5) if a>90 else (a,45,25,5,75,90,115,145,175)):
         try:shoot(angle,selection);return
         except ValueError:continue
