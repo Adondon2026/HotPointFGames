@@ -231,4 +231,4 @@ const siegeCatalog={
 };
 const siegeIcon=(k,size=22)=>{const i=siegeCatalog[k];return i?'<svg class="siege-item-icon" aria-hidden="true" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" style="color:'+i.color+';vertical-align:middle;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+i.path+'"/></svg>':''};
 
-const siegeActiveKeys=Object.keys(siegeCatalog).filter(k=>!['larpa','downpour'].includes(k));
+const siegeActiveKeys=Object.keys(siegeCatalog).filter(k=>!['larpa','downpour','fuse'].includes(k));
