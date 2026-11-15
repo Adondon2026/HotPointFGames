@@ -61,6 +61,9 @@ jobs:
           python game_source/tests/test_siege_v20.py
           python game_source/tests/test_siege_v201.py
           python game_source/tests/test_siege_map_pools.py
+          python game_source/tests/test_siege_zmz_v20.py
+          python game_source/tests/test_siege_zmz_v202.py
+          python game_source/tests/test_siege_combo.py
           python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
       - name: Generate update manifest
