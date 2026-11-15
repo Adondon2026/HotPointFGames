@@ -485,3 +485,37 @@ core.update(x=940,y=394,vx=650.,vy=0.,hp=20)
 g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
 assert core['hp']==0 and r['winner']==0,core
 print('Siege dual TNT: shared allocation, terminal support, fuse, persistent trap, chain and wall collision PASS')
+
+# Real simulated impulses, not just event counters: same-side TNT accelerates a
+# core further towards the wall than the same charges spread around it.
+def chain_layout(xs):
+    r=v24();core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==1)
+    core.update(x=800,y=394,vx=0.,vy=0.)
+    for i,x in enumerate(xs):
+        r['bodies'].append(dict(id=90+i,side=0,x=x,y=404,w=24,h=24,kind='tnt_wait',hp=18,max=18,vx=0.,vy=0.,generated=True,tntDeadline=0,tntSource=0))
+    g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
+    e=r['event'];right=max(z[1] for f in e['frames'] for z in f[2] if z[0]==core['id'])
+    assert len([v for v in e['behaviorEvents'] if v[0]=='bounceBlast'])==3
+    return right,core['hp']
+same=chain_layout((720,746,772));opposite=chain_layout((720,854,828))
+assert same[0]>opposite[0]+50 and same[1]<opposite[1]-5,(same,opposite)
+print('TNT directional impulse comparison:',same,opposite)
+# Black hole + automatic TNT, with an actual terminal placement and later detonation.
+r=v24();r['buffs'][0].update(blackhole=1,tntdrop=1)
+g._siege_fire(r,90,40,{'blackhole':1,'tntdrop':1},config=g._siege_public_config({}))
+e=r['event'];assert e['payloadEvents']['blackhole']==1 and e['generatedCounts']['tntdrop']==1
+assert any(b['kind']=='tnt' and b.get('detonated') for b in r['bodies'])
+# Maximum projectile combination respects the shared charge budget in the actual world.
+r=v24();sel=dict(splitshot=3,repeat=3,tntdrop=5,tntwait=5);r['buffs'][0].update(sel)
+g._siege_fire(r,75,55,sel,config=g._siege_public_config({}))
+counts=r['event']['generatedCounts']
+assert 0<counts['tntdrop'] and 0<counts['tntwait'] and counts['tntdrop']+counts['tntwait']<=8,counts
+for k in ('tntdrop','tntwait'):assert r['buffs'][0][k]==5-min(5,counts[k]),(k,counts,r['buffs'][0])
+# Waiting stock cap returns unused inventory and never deletes existing traps.
+r=v24();r['buffs'][0]['tntwait']=1
+for i in range(12):
+    r['bodies'].append(dict(id=90+i,side=0,x=400+35*i,y=404,w=24,h=24,kind='tnt_wait',hp=18,max=18,vx=0.,vy=0.,generated=True))
+g._siege_fire(r,90,40,{'tntwait':1},config=g._siege_public_config({}))
+assert r['event']['generatedCounts'].get('tntwait',0)==0 and r['buffs'][0]['tntwait']==1
+assert sum(b['kind']=='tnt_wait' and b['hp']>0 for b in r['bodies'])==12
+print('Siege physical combinations: directional TNT, blackhole TNT, actual 32-shell budget and persistent trap cap PASS')
