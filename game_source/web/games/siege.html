@@ -347,7 +347,7 @@ $('trialSize').onchange=()=>fillTrialMap();
 $('trialReset').onclick=()=>resetTrial();$('trialMenuReset').onclick=()=>resetTrial($('trialMap').value);
 $('trialPreview').onclick=async()=>{
  if(!room?.trial||!canAim())return;
- if(Object.keys(selection).some(k=>['pingpong','dive','antigrav','homing'].includes(k)&&selection[k])){notice='主动操纵请直接试射';update();return}
+ if(Object.keys(selection).some(k=>['pingpong','dive','antigrav'].includes(k)&&selection[k])){notice='主动操纵请直接试射';update();return}
  const key=forceKey();requesting=true;update();try{const d=await req('trialPreview',{angle,power,selection,config:shotConfig});trialGhost={...d,key};closePanels();mapOpen=true;notice='虚线为预演 · 靶心预计受伤 '+d.damage;cameraSnap(home(0));}catch(e){notice=e.message}finally{requesting=false;update()}
 };
 function drawTrialGhost(c){
@@ -373,7 +373,7 @@ function v24StockSummary(){
  $('stockSummary').textContent=Object.keys(selection).length?n+' 枚炮弹'+(selection.splitshot?' · 单枚 '+pct+'% 基础攻击':'')+(selection.repeat?' · 连发 '+(1+selection.repeat)+' 次':'')+((selection.tntdrop||selection.tntwait)?' · TNT ≤'+Math.min(8,n*((selection.tntdrop||0)+(selection.tntwait||0))):''):'普通炮弹 · 不消耗增益';
 }
 function v24EffectHint(k,n){
- return ({splitshot:2**n+' 枚 · 单枚 '+(100/2**n).toFixed(1).replace(/\.0$/,'')+'% 攻击',repeat:(1+n)+' 发完整母弹',bounce:n+' 次反弹',through:n+' 次穿透',homing:'飞行中点击目标 · 一次',big:'增大碰撞体积 · 不增伤',bounceblast:'碰撞产生向外冲击',blackhole:'碰撞产生向内吸引',pierce:'对坚硬建筑额外伤害',push:'沿入射方向持续推力',wooddrop:'最终落点生成木块',stonedrop:'最终落点生成石块',tntdrop:'停稳1秒后爆炸',tntwait:'留场 · 命中或爆炸引爆',shield:'保护核心 · 独立使用',armor:'加固防御 · 独立使用',heal:'恢复核心18点',coreteleport:'选择己方空地',gunteleport:'选择己方空地',heavy:'降低飞行能力',vanish:'炮弹可能提前消失',wobble:'弹道不稳定',fart:'炮弹产生异常推进'})[k]||'';
+ return ({splitshot:2**n+' 枚 · 单枚 '+(100/2**n).toFixed(1).replace(/\.0$/,'')+'% 攻击',repeat:(1+n)+' 发完整母弹',bounce:n+' 次反弹',through:n+' 次穿透',homing:'过中线后强力追踪敌方核心',big:'增大碰撞体积 · 不增伤',bounceblast:'碰撞产生向外冲击',blackhole:'碰撞产生向内吸引',pierce:'对坚硬建筑额外伤害',push:'沿入射方向持续推力',wooddrop:'最终落点生成木块',stonedrop:'最终落点生成石块',tntdrop:'停稳1秒后爆炸',tntwait:'留场 · 命中或爆炸引爆',shield:'保护核心 · 独立使用',armor:'加固防御 · 独立使用',heal:'恢复核心18点',coreteleport:'选择己方空地',gunteleport:'选择己方空地',heavy:'降低飞行能力',vanish:'炮弹可能提前消失',wobble:'弹道不稳定',fart:'炮弹产生异常推进'})[k]||'';
 }
 function updateV24Stock(){
  const active=canAim(),inv=room.buffs[room.seat]||{},keys=siegeV24Keys.filter(k=>inv[k]>0&&(room.trial||!siegeV24Negatives.includes(k)));

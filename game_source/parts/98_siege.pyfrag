@@ -618,6 +618,23 @@ def _siege_release_interval(level,base):
 def _siege_dive_strike(level):
     return 1+.2*max(0,level)
 
+def _siege_v24_guidance(vx,vy,x,y,dt,side,bodies):
+    """Strong continuous steering only inside the opposing half; no teleport or collision bypass."""
+    if (side==0 and x<480.) or (side==1 and x>480.):return vx,vy
+    target=next((b for b in bodies if b['kind']=='core' and b['side']==1-side and b['hp']>0),None)
+    if target is None:return vx,vy
+    dx,dy=target['x']-x,target['y']-y
+    if math.hypot(dx,dy)<1e-8:return vx,vy
+    goal=math.atan2(dy,dx)
+    speed=math.hypot(vx,vy)
+    angle=math.atan2(vy,vx) if speed>1. else goal
+    diff=(goal-angle+math.pi)%(2*math.pi)-math.pi
+    turn=7.5*dt
+    angle+=max(-turn,min(turn,diff))
+    # Strong propulsion prevents a slow shell from falling short after crossing.
+    speed=min(800.,max(400.,speed+(650.-speed)*min(1.,6.*dt)))
+    return speed*math.cos(angle),speed*math.sin(angle)
+
 def _siege_motion_delta(vx,vy,x,y,age,dt,counts,config,side,bodies,dived=False):
     """A real velocity transform, shared by the mother and every child."""
     if counts.get('dive') and not dived and (age>=config['diveTime'] if not config.get('simple') else age>=.18 and (vy>=0 or age>=2.5)):
@@ -626,7 +643,9 @@ def _siege_motion_delta(vx,vy,x,y,age,dt,counts,config,side,bodies,dived=False):
     # until it is redirected by a subsequent real bounce or homing force.
     folds=int((max(0,age)+1e-8)/.65);previous=int((max(0,age-dt)+1e-8)/.65)
     if counts.get('pingpong') and previous<folds<=counts['pingpong'] and not dived:vx=-vx
-    if counts.get('homing'):
+    if counts.get('homing') and config.get('autoHomingV24'):
+        vx,vy=_siege_v24_guidance(vx,vy,x,y,dt,side,bodies)
+    elif counts.get('homing'):
         target=next((b for b in bodies if b['kind']=='core' and b['side']==1-side and b['hp']>0),None)
         if target and math.hypot(target['x']-x,target['y']-y)<=100+20*counts['homing']:
             speed=math.hypot(vx,vy)
@@ -713,7 +732,7 @@ def _siege_fire(r,angle,power,selection=None,force=False,config=None):
 def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=False,config=None,control=None):
     config=_siege_config(config)
     v24=_siege_v24(r)
-    if v24:config.update(unified=True,simple=True,manual=True,delayedSplit=False,triggers={},splitPattern='fan',burstMode='serial',build='attack')
+    if v24:config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={},splitPattern='fan',burstMode='serial',build='attack')
     unified=config['unified'];trial=bool(r.get('trial'));trial_damage=0.
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
     side=r['turn'] if side is None else side; direction=1 if side==0 else -1; motion_start=max(0,(live['clock'] if live is not None else time.time())-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get('windPair',0)*direction if live is not None else r.get('wind',0)
@@ -765,13 +784,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for k in defense_counts:r['buffs'][1-side][k]-=1
     spec=_siege_compile_spec(attack_counts,config);root_counts=spec['root'];child_counts=spec['child']
     manual=bool(config.get('manual') and not _siege_robot(r,side))
-    manual_keys=('homing',) if v24 else _SIEGE_MANUAL_KEYS
+    manual_keys=() if v24 else _SIEGE_MANUAL_KEYS
     if control is not None:control.update(left={k:attack_counts[k] for k in manual_keys if attack_counts.get(k)},levels={k:attack_counts[k] for k in manual_keys if attack_counts.get(k)},pending=[])
     motion_root={k:v for k,v in root_counts.items() if not manual or k not in manual_keys}
     motion_child={k:v for k,v in child_counts.items() if not manual or k not in manual_keys}
     def maneuver(k,vx,vy,x=0.,y=0.):
-        if k=='homing' and v24:
-            tx,ty=control['target'];dx,dy=tx-x,ty-y;d=max(1.,math.hypot(dx,dy));speed=max(400.,math.hypot(vx,vy));return dx/d*speed,dy/d*speed
         speed=max(280.,math.hypot(vx,vy))
         if k=='pingpong':return (-math.copysign(max(300.,abs(vx)),vx if abs(vx)>1 else direction),vy*.4)
         if k=='dive':return (0.,max(400.,speed))
@@ -1030,7 +1047,6 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 ang=2*math.pi*j/max(1,count) if pattern=='radial' else copy_rng.uniform(-math.pi,math.pi)
                 ux,uy=math.cos(ang)*260,math.sin(ang)*260
             else:ux,uy=svx,svy
-            if v24 and control is not None and control.get('guided'):ux,uy=maneuver('homing',ux,uy,x,y)
             if unified_split:
                 x0=max(radius+.2,min(960-radius-.2,x));y0=min(_siege_floor(r,x0)-radius-.2,y)
             else:x0,y0=x,y
@@ -1430,7 +1446,6 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 for f in fragments:
                     if f['live'] and (v24 or t>=f.get('bornAt',0)) and not f.get('stop'):
                         f['vx'],f['vy']=maneuver(k,f['vx'],f['vy'],f['x'],f['y']);f['dived']=k=='dive';behavior_events.append(['maneuver',round(t,3),round(f['x'],1),round(f['y'],1),k])
-            if v24 and 'target' in control:control['guided']=True
             control['pending'].clear()
         _siege_motion(r,motion_start+t)
         if live is not None and not unified and shield_left and impact is None and main_stop is None:
@@ -1735,7 +1750,7 @@ _SIEGE_LIVE_DT=1/60
 _SIEGE_MANUAL_ROUNDS={}
 _SIEGE_SLOW=(.9,.8,.7,.6,.5)
 def _siege_has_controls(r,selection,side,config):
-    return bool(config and config.get('manual') and not _siege_robot(r,side) and any((selection if isinstance(selection,dict) else {}).get(k) if r.get('buffMode')=='stock' else r['buffs'][side].get(k) for k in (('homing',) if _siege_v24(r) else _SIEGE_MANUAL_KEYS)))
+    return bool(config and config.get('manual') and not _siege_robot(r,side) and any((selection if isinstance(selection,dict) else {}).get(k) if r.get('buffMode')=='stock' else r['buffs'][side].get(k) for k in (() if _siege_v24(r) else _SIEGE_MANUAL_KEYS)))
 
 def _siege_control_clock(rt,now):
     # Fixed simulation ticks; bullet time affects the authoritative whole world.
@@ -1749,14 +1764,11 @@ def _siege_control_clock(rt,now):
 
 def _siege_command(rt,side,k,shot,now,target=None):
     entry=rt['active'].get(side);c=entry and entry.get('control');sample=entry and entry['sample']
-    if not c or not sample or shot!=sample['shotNo'] or k not in (*_SIEGE_MANUAL_KEYS,'homing') or not sample.get('controls',{}).get(k) or not c['left'].get(k):
+    if not c or not sample or shot!=sample['shotNo'] or k not in _SIEGE_MANUAL_KEYS or not sample.get('controls',{}).get(k) or not c['left'].get(k):
         raise ValueError('当前没有可用操纵次数')
     if c.get('pending'):raise ValueError('上一项操纵正在执行')
-    if k=='homing':
-        if not isinstance(target,list) or len(target)!=2 or any(type(x) not in (int,float) or not math.isfinite(x) for x in target) or not 0<=target[0]<=960 or not -600<=target[1]<=480:raise ValueError('请点击战场目标')
-        c['target']=target
     c['left'][k]-=1;c['pending'].append(k)
-    rate=1. if k=='homing' else _SIEGE_SLOW[min(5,c['levels'][k])-1]
+    rate=_SIEGE_SLOW[min(5,c['levels'][k])-1]
     rt['slowRate']=min(rate,rt.get('slowRate',1.) if now<rt.get('slowUntil',0.) else 1.)
     rt['slowUntil']=now+1.2
     sample['controls'][k]=c['left'][k]
@@ -1985,7 +1997,7 @@ def _siege_sync_public(r,rt,key,last=-1):
     return v
 
 def _siege_bot_fire(r,a,p,live=None):
-    selection={k:min(_siege_cap(r,k),2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE and k not in _SIEGE_ONE_SHOT and (not _siege_v24(r) or k not in _SIEGE_V24_SKILLS and k!='homing')} if r.get('buffMode')=='stock' else None
+    selection={k:min(_siege_cap(r,k),2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE and k not in _SIEGE_ONE_SHOT and (not _siege_v24(r) or k not in _SIEGE_V24_SKILLS)} if r.get('buffMode')=='stock' else None
     if live is not None and live.get('planOnly'):
         live['plan']=(a,p,selection or {});return
     if live is not None and selection is not None:
