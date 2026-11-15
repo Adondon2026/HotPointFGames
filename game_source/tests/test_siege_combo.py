@@ -97,7 +97,7 @@ for page in (g.SIEGE_PAGE,g.HTML_PAGE):
     catalog=json.JSONDecoder().raw_decode(raw)[0]
     assert set(catalog)==set(g._SIEGE_ITEMS)
     assert len({v['path'] for v in catalog.values()})==len(catalog)
-    assert len({v['color'] for v in catalog.values()})==6
+    assert len({v['color'] for v in catalog.values()})==8
     assert all(catalog[k]['color']=='#b4b7bc' for k in g._SIEGE_NEGATIVE)
 assert "siegeBuffList.length" in g.HTML_PAGE
 assert "n+'/16'" not in g.HTML_PAGE
@@ -348,7 +348,7 @@ r=g._siege_new('A','a',True,0,'overtop');assert r['reflectors']
 assert 'manualActions' in g.SIEGE_PAGE and 'siegeMapSize' in g.HTML_PAGE and 'trialSize' in g.SIEGE_PAGE
 print('Siege v0.23: live maneuvers, shared bullet time, charges, delayed reflection split, falling fire and themed maps PASS')
 
-# v0.24 compact rules: 21 items, fixed limits, independent skills, physical
+# v0.24 compact rules: 23 items, fixed limits, independent skills, physical
 # collision effects and seeded theme worlds. Historical tests above use v0.23.
 def v24(theme='classic',allowed=None):
     r=new()
@@ -356,7 +356,7 @@ def v24(theme='classic',allowed=None):
     g._siege_v24_setup(r,theme)
     r['items']=[];r['respawns']=[];r['until']=0
     return r
-assert len(g._SIEGE_V24_KEYS)==21 and g._SIEGE_V24_CAPS['splitshot']==3 and g._SIEGE_V24_CAPS['repeat']==3
+assert len(g._SIEGE_V24_KEYS)==23 and g._SIEGE_V24_CAPS['splitshot']==3 and g._SIEGE_V24_CAPS['repeat']==3
 assert g._SIEGE_V24_CAPS['heal']==g._SIEGE_V24_CAPS['homing']==1
 assert g._SIEGE_V24_CAPS['shield']==3 and g._SIEGE_V24_CAPS['bounce']==5
 r=v24();r['buffs'][0].update(splitshot=3,repeat=3,bounceblast=1)
@@ -430,3 +430,53 @@ r.update(mode='random',itemCount=13);g._siege_field(r)
 assert len(r['items'])==13 and all(i['zone']=='air' and i['kind']=='heavy' for i in r['items'])
 assert 'siege-theme-switch' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'stock-group-label' in g.SIEGE_PAGE
 print('Siege UI polish: fixed negative resource pool and grouped stock controls PASS')
+
+
+# Dual TNT and terminal-only support. Historical v0.23 behaviour remains above.
+assert g._SIEGE_V24_CAPS['tntdrop']==g._SIEGE_V24_CAPS['tntwait']==5
+for s in ({'tntdrop':2,'splitshot':2},{'tntdrop':5,'tntwait':5,'splitshot':3,'repeat':3}):
+    alloc=g._siege_tnt_alloc(s)
+    assert sum(sum(a.values()) for a in alloc)==8
+    assert sum(bool(a) for a in alloc)==(4 if not s.get('repeat') else 8)
+    assert all(all(n<=s[k] for k,n in a.items()) for a in alloc)
+# Support material emits only at the terminal collision, not at the wall bounce.
+r=v24();r['buffs'][0].update(bounce=1,wooddrop=2)
+g._siege_fire(r,175,65,{'bounce':1,'wooddrop':2},config=g._siege_public_config({}))
+e=r['event'];assert e['bounces'] and e['payloadEvents']['wooddrop']==1
+assert e['generatedCounts']['wooddrop']==2 and e['cores']==[100,100],e
+# Automatic TNT waits for support AND a quiet interval, then irreversibly lights.
+b=dict(kind='tnt',hp=18,x=400,y=300,w=24,h=24,vx=0.,vy=0.)
+for j in range(30):g._siege_tnt_step(b,[b],416,j/60,1/60)
+assert 'tntDeadline' not in b
+b['y']=404
+for j in range(12):g._siege_tnt_step(b,[b],416,1+j/60,1/60)
+assert abs(b['tntDeadline']-(1+11/60+1))<1e-8
+deadline=b['tntDeadline'];b['vy']=-300
+g._siege_tnt_step(b,[b],416,1.3,1/60);assert b['tntDeadline']==deadline
+# Actual automatic TNT is generated and explodes before the shot finishes.
+r=v24();r['buffs'][0]['tntdrop']=1
+g._siege_fire(r,90,40,{'tntdrop':1},config=g._siege_public_config({}))
+e=r['event'];auto=[b for b in r['bodies'] if b['kind']=='tnt']
+assert len(auto)==1 and auto[0]['hp']==0 and auto[0].get('detonated'),(auto,e['duration'])
+assert e['generatedCounts']['tntdrop']==1 and any(x[0]=='bounceBlast' for x in e['behaviorEvents'])
+# Waiting TNT survives a shot without a fuse.
+r=v24();r['buffs'][0]['tntwait']=1
+g._siege_fire(r,90,40,{'tntwait':1},config=g._siege_public_config({}))
+waiting=[b for b in r['bodies'] if b['kind']=='tnt_wait']
+assert len(waiting)==1 and waiting[0]['hp']>0 and 'tntDeadline' not in waiting[0]
+# Direct hit starts a real chain, but a distant waiting entity stays alive.
+r=v24()
+for i,(x,y) in enumerate(((235,250),(270,250),(305,250),(540,404))):
+    r['bodies'].append(dict(id=90+i,side=1,x=x,y=y,w=24,h=24,kind='tnt_wait',hp=18,max=18,vx=0.,vy=0.,generated=True))
+g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
+tnts=[b for b in r['bodies'] if b['kind']=='tnt_wait']
+assert all(b['hp']==0 and b.get('detonated') for b in tnts[:3]),tnts
+assert tnts[3]['hp']>0 and 'tntDeadline' not in tnts[3],tnts
+assert len([e for e in r['event']['behaviorEvents'] if e[0]=='bounceBlast'])==3
+assert g._siege_wall_damage(120)==0 and 80<g._siege_wall_damage(650)<=85
+assert g._siege_wall_damage(200)<g._siege_wall_damage(400)<g._siege_wall_damage(650)
+r=v24();core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==1)
+core.update(x=938,y=250,vx=650.,vy=0.)
+g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
+assert 0<core['hp']<100,core
+print('Siege dual TNT: shared allocation, terminal support, fuse, persistent trap, chain and wall collision PASS')

@@ -227,10 +227,10 @@ const siegeCatalog={
     "color": "#b4b7bc",
     "label": "屁屁子弹",
     "path": "M5 15Q1 12 5 9Q4 3 10 5Q15 1 18 7Q25 8 20 14Q23 20 15 19H6 M3 20H9"
-  }
+  },
+  "tntdrop": {"group":"防御与建造","color":"#ed8b74","label":"TNT生成","path":"M4 6H20V21H4Z M4 11H20 M4 16H20 M12 6V3 M12 3L15 1"},
+  "tntwait": {"group":"防御与建造","color":"#dfb66e","label":"待爆TNT生成","path":"M4 6H20V21H4Z M4 11H20 M4 16H20 M12 6V3 M10 2H14 M12 12V15 M12 18H12.1"}
 };
-siegeCatalog.tntdrop={group:'防御与建造',color:'#ed8b74',label:'TNT生成',path:'M4 6H20V21H4Z M4 11H20 M4 16H20 M12 6V3 M12 3L15 1'};
-siegeCatalog.tntwait={group:'防御与建造',color:'#dfb66e',label:'待爆TNT生成',path:'M4 6H20V21H4Z M4 11H20 M4 16H20 M12 6V3 M10 2H14 M12 12V15 M12 18H12.1'};
 const siegeIcon=(k,size=22)=>{const i=siegeCatalog[k];return i?'<svg class="siege-item-icon" aria-hidden="true" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" style="color:'+i.color+';vertical-align:middle;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+i.path+'"/></svg>':''};
 
 const siegeActiveKeys=Object.keys(siegeCatalog).filter(k=>!['larpa','downpour','fuse','tntdrop','tntwait'].includes(k));
