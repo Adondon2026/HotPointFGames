@@ -376,6 +376,9 @@ def _siege_config(config=None):
         if type(out[k]) not in (int,float) or not .5<=out[k]<=5:raise ValueError('触发时间须在0.5至5秒之间')
     if type(out['childFuseTime']) not in (int,float) or not (out['childFuseTime']==0 or .5<=out['childFuseTime']<=5):raise ValueError('子弹引信时间无效')
     if not isinstance(out['scopes'],dict) or any(k not in _SIEGE_SCOPEABLE or v not in ('mother','child','both') for k,v in out['scopes'].items()):raise ValueError('修饰器作用对象无效')
+    if out['simple']:
+        # Game-facing presets own their timing. Legacy explicit configurations remain compatible.
+        out.update(fuseTime=2.5,splitTime=1.5,diveTime=1.2,childFuseTime=0)
     return out
 
 def _siege_compile_spec(counts,config):
@@ -404,7 +407,7 @@ def _siege_motion_delta(vx,vy,x,y,age,dt,counts,config,side,bodies,dived=False):
         vx=0.;vy=300.+60*(counts['dive']-1);dived=True
     # Each layer purchases exactly one periodic reversal. Vertical dive owns vx
     # until it is redirected by a subsequent real bounce or homing force.
-    folds=int(max(0,age)/.65);previous=int(max(0,age-dt)/.65)
+    folds=int((max(0,age)+1e-8)/.65);previous=int((max(0,age-dt)+1e-8)/.65)
     if counts.get('pingpong') and previous<folds<=counts['pingpong'] and not dived:vx=-vx
     if counts.get('homing'):
         target=next((b for b in bodies if b['kind']=='core' and b['side']==1-side and b['hp']>0),None)
@@ -454,7 +457,11 @@ def _siege_trial_reset(r,mode=None):
         if mode not in (*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS,'classic'):raise ValueError('试验地图无效')
         r['mode']=mode
     r.update(turn=0,shots=[0,0],phase='play',winner=None,rev=r['rev']+1,event=None,until=0.,ammo=0,itemCount=0,buffMode='stock',combatMode='turn',trial=True,trialDamage=0.)
-    _siege_field(r);_siege_trial_stock(r)
+    rng=random.getstate()
+    try:
+        random.seed('siege-trial-'+r['mode']);_siege_field(r)
+    finally:random.setstate(rng)
+    _siege_trial_stock(r)
 
 def _siege_trial_fire(r,angle,power,selection,force=False,config=None):
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
