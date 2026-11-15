@@ -279,43 +279,69 @@ def _siege_field(r):
 def _siege_v24_world(r):
     # Stable mirrored templates, randomized within each selected map size.
     art=r.get('theme')=='art';bodies=r['bodies'];count=r['itemCount']
-    if art:
-        layout=random.choice(('suspended','layers','tower','opentop'))
+    if art or (r.get('mode') in ('random',*_SIEGE_MAP_POOLS) and r.get('field') not in _SIEGE_NEW_FIELDS):
+        layout=random.choice(('suspended','layers','tower','opentop','wall'))
         size=next((k for k,v in _SIEGE_MAP_POOLS.items() if r.get('field') in v),'pool_medium')
         offset=random.randint(-12,12)+({'pool_small':35,'pool_medium':0,'pool_large':-28}.get(size,0))
-        r.update(layout=layout,offset=offset,rise=0,gunShift=0,bodies=_siege_fort(offset,layout),gunMotion=[],reflectors=[])
-        gx=random.randint(185,242);r['launchers']=[(gx,368),(960-gx,368)];bodies=r['bodies']
+        rise=0 if art else r.get('rise',0)
+        r.update(layout=layout,offset=offset,rise=rise,gunShift=0,bodies=_siege_fort(offset,layout,rise),gunMotion=[],reflectors=[])
+        gx=235+offset+random.randint(-6,15);r['launchers']=[(gx,368-rise),(960-gx,368-rise)];bodies=r['bodies']
     slots=[]
     def free(x,y,w,h):
-        return not any(b['hp']>0 and abs(b['x']-x)<(b['w']+w)/2+1 and abs(b['y']-y)<(b['h']+h)/2+1 for b in bodies)
+        return not any(b['hp']>0 and abs(b['x']-x)<(b['w']+w)/2+.1 and abs(b['y']-y)<(b['h']+h)/2+.1 for b in bodies)
     def add(x,y,w,h,kind,side=-1):
         hp={'wood':42,'stone':75,'barrel':18}[kind]
         bodies.append(dict(id=max((b['id'] for b in bodies),default=-1)+1,side=side,x=x,y=y,w=w,h=h,kind=kind,hp=hp,max=hp,vx=0.,vy=0.))
-    # The rarity belongs to the slot, NOT to its surviving walls.
-    for x,zone in ((480,'center'),(350,'side'),(610,'side')):
-        floor=_siege_floor(r,x);h=random.choice((72,84,96));y=floor-h/2
-        if not free(x,y,78,h):continue
-        for xx in (x-30,x+30):add(xx,y,16,h,'stone' if zone=='center' else 'wood')
-        add(x,floor-h-8,76,16,'stone');slots.append((x,floor-h*.55,zone))
+    def tower(x,zone,h,base):
+        for xx in (x-30,x+30):add(xx,base-h/2,16,h,'stone' if zone=='center' else 'wood')
+        add(x,base-h-8,76,16,'stone')
+        slots.append((x,base-h*.55,zone))
         if art:
-            for xx in (x-12,x+12):add(xx,floor-12,20,24,'barrel')
-    if art:
-        x=random.randint(270,305)
-        for xx in (x,960-x):
-            floor=_siege_floor(r,xx)
-            if free(xx,floor-12,20,24):add(xx,floor-12,20,24,'barrel')
+            for xx in (x-12,x+12):add(xx,base-12,20,24,'barrel')
+    # Same side-tower height and layout on both sides. The slot retains its
+    # zone even after destruction. A blocked center gets a supported roof base.
+    if count or art:
+        h=random.choice((72,84,96));base=_siege_floor(r,480)
+        if not free(480,base-h/2,78,h):
+            base=min([base]+[b['y']-b['h']/2 for b in bodies if b['hp']>0 and abs(b['x']-480)<b['w']/2+39])
+        if free(480,base-h/2-.2,78,h):tower(480,'center',h,base)
+        h=random.choice((72,84,96))
+        for x in (350,330,375):
+            y=_siege_floor(r,x)
+            if free(x,y-h/2,78,h) and free(960-x,y-h/2,78,h):
+                tower(x,'side',h,y);tower(960-x,'side',h,y);break
+    if art or random.random()<.35:
+        # Explosives near actual fort supports can propagate into the core.
+        cx=next(b['x'] for b in bodies if b['side']==0 and b['kind']=='core')
+        candidates=[cx+d for d in (-62,-44,44,62,78,95,110) if 30<cx+d<420]
+        random.shuffle(candidates);placed=0
+        for x in candidates:
+            floor=_siege_floor(r,x)
+            if free(x,floor-12,20,24) and free(960-x,floor-12,20,24):
+                add(x,floor-12,20,24,'barrel');add(960-x,floor-12,20,24,'barrel');placed+=1
+                if placed>=(2 if art else 1):break
     r['nextBodyId']=max(100,max((b['id'] for b in bodies),default=0)+1)
-    keys=_siege_allowed(r)
-    if not count or not keys:r['items']=[];return
-    air=[(i['x'],i['y'],'air') for i in r['items'] if free(i['x'],i['y'],30,30)]
-    positions=slots[:count]+air[:max(0,count-len(slots))]
-    for _ in range(1000):
-        if len(positions)>=count:break
-        x=random.randint(310,650);y=random.randint(65,155)
-        if free(x,y,30,30) and all(math.hypot(x-a,y-b)>30 for a,b,_ in positions):positions.append((x,y,'air'))
-    r['items']=[]
-    for x,y,zone in positions:
-        k=_siege_v24_draw(r,zone)
+    if not count or not _siege_allowed(r):r['items']=[];return
+    center=next((p for p in slots if p[2]=='center'),None)
+    positions=[center] if center else []
+    sides=[p for p in slots if p[2]=='side']
+    if len(sides)==2 and count-len(positions)>=2:positions+=sides
+    # Allocate mirrored pairs; an even total with a center slot gets a second
+    # neutral air slot rather than favoring one player.
+    if (count-len(positions))%2:
+        for y in (75,110,145,185,35):
+            if free(480,y,30,30) and all(math.hypot(480-a,y-b)>30 for a,b,_ in positions):
+                positions.append((480,y,'air'));break
+    air=[(i['x'],i['y']) for i in r['items'] if i['x']<450]
+    for _ in range(1200):
+        if len(positions)+2>count:break
+        x,y=air.pop(0) if air else (random.randint(45,445),random.randint(45,250))
+        if not free(x,y,30,30) or not free(960-x,y,30,30):continue
+        if any(math.hypot(xx-a,y-b)<30 for xx in (x,960-x) for a,b,_ in positions):continue
+        positions.extend([(x,y,'air'),(960-x,y,'air')])
+    r['items']=[];pair_kind={}
+    for x,y,zone in positions[:count]:
+        key=(round(min(x,960-x),1),round(y,1),zone);k=pair_kind.get(key) or _siege_v24_draw(r,zone);pair_kind[key]=k
         if k:r['items'].append(dict(id=len(r['items']),slot=len(r['items']),kind=k,x=x,y=y,r=15,amount=1,zone=zone))
 
 def _siege_new(name,identity,bot=False,item_count=_SIEGE_DEFAULT_ITEMS,mode='classic',wind_level='off',ammo=0,buff_mode='auto',allowed_buffs=None,stack_caps=None,fort_strength='normal'):
@@ -736,7 +762,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             b['hp']=max(1,b['hp']-damage)
         else:b['hp']=max(0,b['hp']-damage)
         if v24 and b['kind']=='barrel' and b['hp']<=0 and not b.get('detonated'):
-            b['detonated']=True;barrel_queue.append((b['x'],b['y']))
+            b['detonated']=True;barrel_queue.append((t+.08,b['x'],b['y']))
         if b.get('floatFort') and b['kind']!='core' and damage>=8:
             b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
 
@@ -824,8 +850,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 n=max(18,math.hypot(dx,dy));b['vx']+=mag*dx/n;b['vy']+=min(-12*buffer*(scale if unified else 1),mag*dy/n-20*ins*scale*buffer)
     def tick_barrels():
         nonlocal last_hit,settled
-        while barrel_queue:
-            x,y=barrel_queue.pop(0);br=92
+        while barrel_queue and barrel_queue[0][0]<=t+1e-8:
+            _,x,y=barrel_queue.pop(0);br=92
             behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1),br]);last_hit=t;settled=0
             for b in bodies:
                 if b['hp']<=0:continue
@@ -888,6 +914,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 ang=2*math.pi*j/max(1,count) if pattern=='radial' else copy_rng.uniform(-math.pi,math.pi)
                 ux,uy=math.cos(ang)*260,math.sin(ang)*260
             else:ux,uy=svx,svy
+            if v24 and control is not None and control.get('guided'):ux,uy=maneuver('homing',ux,uy,x,y)
             if unified_split:
                 x0=max(radius+.2,min(960-radius-.2,x));y0=min(_siege_floor(r,x0)-radius-.2,y)
             else:x0,y0=x,y
@@ -1202,8 +1229,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if impact is None and main_stop is None:
                     vx,vy=maneuver(k,vx,vy,px,py);main_dived=k=='dive';behavior_events.append(['maneuver',round(t,3),round(px,1),round(py,1),k])
                 for f in fragments:
-                    if f['live'] and t>=f.get('bornAt',0) and not f.get('stop'):
+                    if f['live'] and (v24 or t>=f.get('bornAt',0)) and not f.get('stop'):
                         f['vx'],f['vy']=maneuver(k,f['vx'],f['vy'],f['x'],f['y']);f['dived']=k=='dive';behavior_events.append(['maneuver',round(t,3),round(f['x'],1),round(f['y'],1),k])
+            if v24 and 'target' in control:control['guided']=True
             control['pending'].clear()
         _siege_motion(r,motion_start+t)
         if live is not None and not unified and shield_left and impact is None and main_stop is None:
@@ -1422,7 +1450,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if live is None and last_hit is not None:integrate()
         if live is None and step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
         if live is not None or control is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
-        if impact is not None and not drop_queue and not embers and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
+        if impact is not None and not drop_queue and not embers and not barrel_queue and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
     if control is not None:
         for k,n in control['left'].items():r['buffs'][side][k]+=n
     if unified:
