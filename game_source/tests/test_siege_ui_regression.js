@@ -1,10 +1,10 @@
-/* ZMZ v0.20.1: verify upstream immersive UI + room-settings escape + audio re-entry. */
+/* ZMZ v0.20.2: verify upstream immersive UI + room-settings escape + audio re-entry. */
 'use strict';
 const fs=require('fs'),assert=require('assert'),vm=require('vm');
 const src=p=>fs.readFileSync(__dirname+'/../'+p,'utf8');
 const b=src('build.py'),s=src('web/games/siege.html'),a=src('web/games/siege_audio.js');
 const lobby=src('web/90_shell_after_games.html'),css=src('web/lite.css'),lite=src('web/lite.js');
-assert(b.includes('GAME_DISPLAY_VERSION = "ZMZ v0.20.1"'));
+assert(b.includes('GAME_DISPLAY_VERSION = "ZMZ v0.20.2"'));
 assert(b.includes('replace("@@ZMZ_GAME_VERSION@@", GAME_DISPLAY_VERSION)'));
 assert(s.includes('@@ZMZ_GAME_VERSION@@'));
 assert(src('web/hub.html').includes('@@ZMZ_GAME_VERSION@@'));
@@ -30,4 +30,4 @@ assert.equal(cx.all.length,24);
 for(const id of ['spiral','repeat','push','clone','heavy','vanish','wobble','fart'])
   assert(cx.all.some(k=>k[0]===id),id);
 assert(a.includes('function enterBattle()')&&a.includes('return {unlock,enterBattle'),'Persistent music should restart on room entry');
-console.log('Integrated v0.20.1 UI bootstrap, version, menu, 24 buffs, scrolling and audio API PASS');
+console.log('Integrated v0.20.2 UI bootstrap, version, menu, 24 buffs, scrolling and audio API PASS');
