@@ -161,10 +161,19 @@ function cameraFit(b,w,x,y){
 }
 // Online fallback for legacy live/manual shots. Normal v24 shots use a
 // preplanned replay camera below, so no emergency zoom is needed.
-function cameraGroup(points,dt){
- const b=cameraBounds(points);if(!b)return;const need=cameraNeed(b),w=Math.max(need,VIEW_W+(need-VIEW_W)*(1-Math.exp(-dt*2.8))),h=w/ASPECT;
+function cameraGroup(points,dt,forecast=[]){
+ const b=cameraBounds(points);if(!b)return;const look=cameraUnion(b,cameraBounds(forecast)),need=cameraNeed(look);
+ const hard=clamp(Math.max(BASE_W,b.r-b.l,(b.b-b.t)*ASPECT),BASE_W,WORLD_W);
+ const w=Math.max(hard,VIEW_W+(need-VIEW_W)*(1-Math.exp(-dt*(need>VIEW_W?5:2.8)))),h=w/ASPECT;
  const q=1-Math.exp(-dt*5),cx=camera.x+VIEW_W/2,cy=camera.y+VIEW_H/2;
- cameraSnap(cameraFit(b,w,cx+( (b.l+b.r)/2-cx)*q-w/2,cy+((b.t+b.b)/2-cy)*q-h/2));
+ cameraSnap(cameraFit(b,w,cx+((look.l+look.r)/2-cx)*q-w/2,cy+((look.t+look.b)/2-cy)*q-h/2));
+}
+function cameraLiveForecast(shots,previous){
+ const out=[];for(const s of shots){const old=previous?.find(q=>q.side===s.side&&q.shotNo===s.shotNo);if(!old)continue;
+ const predict=(p,q,r)=>{if(p&&q)out.push([clamp(p[0]+(p[0]-q[0])*2.5,0,WORLD_W),Math.min(MAP_BOTTOM,p[1]+(p[1]-q[1])*2.5),r])};
+ const rad=(s.radius||6)+5;predict(s.p,old.p,rad);
+ for(const f of s.fragments||[]){const a=old.fragments?.find(z=>z[0]===f[0]);predict(f.slice(1),a?.slice(1),rad)}
+ }return out
 }
 function cameraFlight(p,dt){cameraGroup([[p[0],p[1],8]],dt)}
 function cameraHandoff(p,q){const t=clamp(q,0,1),e=t*t*(3-2*t),w0=p.from.w??BASE_W,w1=p.to.w??BASE_W;cameraSnap({x:p.from.x+(p.to.x-p.from.x)*e,y:p.from.y+(p.to.y-p.from.y)*e,w:w0+(w1-w0)*e})}
@@ -529,13 +538,13 @@ function renderMap(blocks,items,f,now,full){
 function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(0,(now-(cameraTime||now))/1000));cameraTime=now;if(!room)return;
  let f=null,elapsed=0,actualRoom=null,replayTime=0;
  if(syncReplay){
-  const data=syncReplay.data,frames=data.frames,t=clamp((now-syncReplay.start)/1000,0,data.duration);replayTime=t;let i=Math.min(frames.length-1,Math.floor(t*10));while(i>0&&frames[i][0]>t)i--;while(i+1<frames.length&&frames[i+1][0]<=t)i++;
+  const data=syncReplay.data,frames=data.frames,rawSync=(now-syncReplay.start)/1000,t=clamp(rawSync,0,data.duration);replayTime=t;let i=Math.min(frames.length-1,Math.floor(t*10));while(i>0&&frames[i][0]>t)i--;while(i+1<frames.length&&frames[i+1][0]<=t)i++;
   const a=frames[i],b=frames[Math.min(i+1,frames.length-1)],q=clamp((t-a[0])/Math.max(.001,b[0]-a[0]),0,1),lerp=(x,y)=>x+(y-x)*q;
   const pos=new Map(b[1].map(x=>[x[0],x])),meta=new Map(data.meta.map(x=>[x.id,x]));
   const bodies=a[1].map(x=>{const y=pos.get(x[0])||x;return {...meta.get(x[0]),x:lerp(x[1],y[1]),y:lerp(x[2],y[2]),hp:x[3],burnRounds:a[6]?Number(a[6].includes(x[0])):meta.get(x[0])?.burnRounds}});
   const shots=a[2].map(x=>{const y=b[2].find(z=>z.side===x.side&&z.shotNo===x.shotNo)||x;return {...x,p:x.p&&y.p?[lerp(x.p[0],y.p[0]),lerp(x.p[1],y.p[1])]:x.p,fragments:x.fragments.map(z=>{const k=y.fragments.find(v=>v[0]===z[0])||z;return [z[0],lerp(z[1],k[1]),lerp(z[2],k[2])]}),age:lerp(x.age,y.age)}});
-  for(const x of shots){const id=room.code+':'+data.id+':'+x.side;siegeAudio.shot(id,x.attacks||[],t);payloadSounds(id,x.behaviorEvents,t);if(!x.engineering&&!x.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&x.hitAt!=null&&t>=x.hitAt)siegeAudio.hit(id,t-x.hitAt);for(const bounce of x.bounces||[])if(t>=bounce[2])siegeAudio.bounce(id+':'+bounce.join(':'),t-bounce[2])}for(const p of syncReplay.pickups)if(t>=p.at)siegeAudio.pickup(room.code+':'+data.id+':'+p.id,t-p.at,p.kind);
-  actualRoom=room;room={...room,bodies,items:data.items.filter(x=>a[4].includes(x.id)),launchers:a[3].map((v,j)=>v.map((x,k)=>lerp(x,b[3][j][k]))),gunMotion:[],liveShots:shots,mines:a[5]||[],motionTime:data.motionStart+t};motionReceipt=now;
+  for(const x of rawSync>=0?shots:[]){const id=room.code+':'+data.id+':'+x.side;siegeAudio.shot(id,x.attacks||[],t);payloadSounds(id,x.behaviorEvents,t);if(!x.engineering&&!x.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&x.hitAt!=null&&t>=x.hitAt)siegeAudio.hit(id,t-x.hitAt);for(const bounce of x.bounces||[])if(t>=bounce[2])siegeAudio.bounce(id+':'+bounce.join(':'),t-bounce[2])}for(const p of syncReplay.pickups)if(t>=p.at)siegeAudio.pickup(room.code+':'+data.id+':'+p.id,t-p.at,p.kind);
+  actualRoom=room;room={...room,bodies,items:data.items.filter(x=>a[4].includes(x.id)),launchers:a[3].map((v,j)=>v.map((x,k)=>lerp(x,b[3][j][k]))),gunMotion:[],liveShots:rawSync>=0?shots:[],mines:a[5]||[],motionTime:data.motionStart+t};motionReceipt=now;
   for(let j=0;j<2;j++){const hp=bodies.find(x=>x.side===j&&x.kind==='core')?.hp||0;$('hp'+j).style.width=clamp(hp,0,100)+'%';$('n'+j).textContent=(room.seat===j?'你':room.players[j]||'对手')+' · '+Math.round(hp);$('s'+j).textContent=(room.ammo===0?'∞':Math.max(0,(room.ammo??6)-room.shots[j]))+' 发';}
  }
  if(liveMode()&&!playing){
@@ -543,11 +552,11 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(
    if(raw<0)cameraHandoff({from:syncReplay.cameraFrom,to:cameraPlanAt(syncReplay.cameraPlan,0)},1+raw/CAMERA_PREROLL);
    else if(raw<=data.duration)cameraSnap(cameraPlanAt(syncReplay.cameraPlan,raw));
    else{syncReplay.handoff??={from:{...camera,w:VIEW_W},to:home(room.seat)};cameraHandoff(syncReplay.handoff,(raw-data.duration)/HANDOFF)}
-  }else{const shots=liveDraw(now),pts=cameraShotPoints(shots);if(shots.length&&livePrevious){const a=livePrevious.bodies.map(b=>[b.id,b.x,b.y,b.hp]),b=room.bodies.map(b=>[b.id,b.x,b.y,b.hp]);pts.push(...cameraWorldPoints(b,a,room.bodies,.1,room.motionTime||0))}for(const s of shots)pts.push(...cameraBlastPoints(s.behaviorEvents,s.age));cameraGroup(pts,dt)}
+  }else{const shots=liveDraw(now),pts=cameraShotPoints(shots);if(shots.length&&livePrevious){const a=livePrevious.bodies.map(b=>[b.id,b.x,b.y,b.hp]),b=room.bodies.map(b=>[b.id,b.x,b.y,b.hp]);pts.push(...cameraWorldPoints(b,a,room.bodies,.1,room.motionTime||0))}for(const s of shots)pts.push(...cameraBlastPoints(s.behaviorEvents,s.age));cameraGroup(pts,dt,cameraLiveForecast(shots,livePrevious?.liveShots))}
  }
- if(playing){const ev=playing.event,rawElapsed=(now-playing.start)/1000;elapsed=Math.max(0,rawElapsed);const soundId=room.code+':'+ev.id+':'+ev.side;siegeAudio.shot(soundId,eventAttacks(ev),elapsed);payloadSounds(soundId,ev.behaviorEvents,elapsed);if(!ev.engineering&&!ev.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&ev.hitAt!=null&&elapsed>=ev.hitAt)siegeAudio.hit(soundId,elapsed-ev.hitAt);for(const b of ev.bounces||[])if(elapsed>=b[2])siegeAudio.bounce(soundId+':'+b.join(':'),elapsed-b[2]);for(const p of eventPickups(ev))if(elapsed>=p.at)siegeAudio.pickup(soundId+':'+p.id,elapsed-p.at,p.kind);for(const b of ev.fragmentHits||[])if(elapsed>=b[2])siegeAudio.hit(soundId+':fragment:'+b.join(':'),elapsed-b[2]);const frames=ev.frames;let i=0;while(i+1<frames.length&&frames[i+1][0]<=elapsed)i++;const a=frames[i],b=frames[Math.min(i+1,frames.length-1)],q=clamp((elapsed-a[0])/Math.max(.001,b[0]-a[0]),0,1);
+ if(playing){const ev=playing.event,rawElapsed=(now-playing.start)/1000;elapsed=Math.max(0,rawElapsed);const soundId=room.code+':'+ev.id+':'+ev.side;if(rawElapsed>=0)siegeAudio.shot(soundId,eventAttacks(ev),elapsed);payloadSounds(soundId,ev.behaviorEvents,elapsed);if(!ev.engineering&&!ev.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&ev.hitAt!=null&&elapsed>=ev.hitAt)siegeAudio.hit(soundId,elapsed-ev.hitAt);for(const b of ev.bounces||[])if(elapsed>=b[2])siegeAudio.bounce(soundId+':'+b.join(':'),elapsed-b[2]);for(const p of eventPickups(ev))if(elapsed>=p.at)siegeAudio.pickup(soundId+':'+p.id,elapsed-p.at,p.kind);for(const b of ev.fragmentHits||[])if(elapsed>=b[2])siegeAudio.hit(soundId+':fragment:'+b.join(':'),elapsed-b[2]);const frames=ev.frames;let i=0;while(i+1<frames.length&&frames[i+1][0]<=elapsed)i++;const a=frames[i],b=frames[Math.min(i+1,frames.length-1)],q=clamp((elapsed-a[0])/Math.max(.001,b[0]-a[0]),0,1);
  f=[elapsed,a[1]&&b[1]?[a[1][0]+(b[1][0]-a[1][0])*q,a[1][1]+(b[1][1]-a[1][1])*q]:a[1],a[2].map(p=>{const n=b[2].find(z=>z[0]===p[0])||p;return [p[0],p[1]+(n[1]-p[1])*q,p[2]+(n[2]-p[2])*q,p[3]]}),(a[3]||[]).map(p=>{const next=(b[3]||[]).find(z=>z[0]===p[0]);return next?[p[0],p[1]+(next[1]-p[1])*q,p[2]+(next[2]-p[2])*q]:p}),a[4]&&b[4]?a[4]+(b[4]-a[4])*q:(a[4]||ev.radius),a[5]];animFrame=f;
- if(ev.hitAt!==null&&elapsed>=ev.hitAt)f[1]=null;
+ if(rawElapsed<0){f[1]=null;f[3]=[]}else if(ev.hitAt!==null&&elapsed>=ev.hitAt)f[1]=null;
  if(!playing.handoff&&elapsed<ev.duration+.12){
   playing.cameraPlan??=cameraPlan(ev,room.bodies);
   if(rawElapsed<0)cameraHandoff({from:playing.cameraFrom,to:cameraPlanAt(playing.cameraPlan,0)},1+rawElapsed/CAMERA_PREROLL);

@@ -96,6 +96,29 @@ try:
         }""",event)
         assert result['ok'] and result['count']>5 and result['max']>=8,result
         assert result['maxZoomRate']<850,result
+        # Exercise the actual requestAnimationFrame renderer, not just the planner.
+        # During preroll no projectile is visible; once playback starts every
+        # rendered projectile stays inside the camera and the map stays bounded.
+        real=page.evaluate("""async ev=>{
+            closePanels();stockOpen=false;cameraSnap(home(0));overview=null;
+            playing={event:ev,start:performance.now()+CAMERA_PREROLL*1000,handoff:null,cameraFrom:{...camera,w:VIEW_W}};
+            const start=performance.now();let count=0,pre=0,fail=null,prior=null,maxJump=0;
+            while(playing&&performance.now()-start<16000){
+                await new Promise(requestAnimationFrame);
+                if(!playing||!animFrame)continue;
+                const elapsed=(performance.now()-playing.start)/1000;
+                const w=VIEW_W,h=VIEW_H;
+                if(camera.x<-.001||camera.x+w>960.001||camera.y+h>480.001){fail='map boundary';break}
+                if(elapsed<0){pre++;if(animFrame[1]||animFrame[3]?.length){fail='premature projectile';break}continue}
+                if(playing.handoff)continue;
+                const pts=cameraShotPoints([{p:animFrame[1],fragments:animFrame[3],radius:animFrame[4]}]);
+                if(pts.length){count++;if(!pts.every(([x,y,r])=>Math.max(0,x-r)>=camera.x-.6&&Math.min(960,x+r)<=camera.x+w+.6&&y-r>=camera.y-.6&&Math.min(480,y+r)<=camera.y+h+.6)){fail='projectile outside actual view';break}}
+                if(prior)maxJump=Math.max(maxJump,Math.abs(w-prior));prior=w;
+            }
+            playing=null;animFrame=null;cameraSnap(home(0));return {count,pre,fail,maxJump}
+        }""",event)
+        assert not real['fail'] and real['count']>10 and real['pre']>0,real
+        print('Siege camera rendered playback:',real)
         assert not errors,errors
         print('Siege camera actual replay coverage:',result)
         print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')
