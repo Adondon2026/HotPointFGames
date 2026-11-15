@@ -154,3 +154,21 @@ for level in range(1,6):
 assert '俯冲开始时间（秒）' not in g.SIEGE_PAGE and '高级组合 · 母弹与子弹' not in g.SIEGE_PAGE
 assert 'trialPreview' in g.SIEGE_PAGE and 'liteSiegeTrial' in g.HTML_PAGE
 print('Siege trial and automatic modifier stacks PASS')
+
+# Compare actual dive impact against a stationary dummy, holding angle/power fixed.
+damage=[]
+for n in (1,5):
+    r=g._siege_new('Trial','d'*48,True,0,'classic','off',0,'stock')
+    r['trial']=True;g._siege_trial_stock(r)
+    r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
+    r['launchers']=[[235,368],[725,368]]
+    # At 70 degrees and power 55, the apex lies near x=388.
+    core=next(b for b in r['bodies'] if b['side']==1)
+    core.update(x=388,y=380,w=150,h=40,vx=0.,vy=0.,fixed=True)
+    g._siege_fire(r,70,55,{'dive':n},config={'simple':True})
+    assert any(e[0]=='dive' for e in r['event']['behaviorEvents'])
+    damage.append(r['trialDamage'])
+assert 0<damage[0]<damage[1],damage
+assert g._siege_release_interval(5,.35)<g._siege_release_interval(1,.35)
+assert g._siege_dive_strike(5)==2
+print('Siege dive strike damage and release density PASS')
