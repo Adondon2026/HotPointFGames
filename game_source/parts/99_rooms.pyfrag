@@ -189,10 +189,12 @@ def _room_siege(data):
     if not p or not r or STATE['mode']!='siege' or STATE['phase']!='siege_play':return {'ok':False,'error':'对局已结束，请返回房间','roomEnded':True}
     touch_player(p);kind=data.get('type');now=time.time();seat=next((i for i,x in enumerate(r['players']) if x['key']==pid),None)
     if seat is None:return {'ok':False,'error':'不在对局中'}
+    _siege_migrate_catalog(r)
     if r.get('combatMode')=='live':
         r.update(combatMode='sync',reloadSeconds=15);STATE['settings'].update(siegeCombatMode='sync',siegeReload=15);save_state()
     sync=r.get('combatMode')=='sync';sr=_room_siege_sync(r) if sync else None
     if sync:
+        sr['configs']=[_siege_public_config(c) for c in sr['configs']]
         # Accept the current draft before the deadline, never a stale previous-round action.
         if kind in ('draft','ready','unready') and r['phase']=='play' and not sr['replay'] and (sr['deadline'] is None or now<sr['deadline']):
             try:
@@ -212,8 +214,8 @@ def _room_siege(data):
         if not live and (r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']):return {'ok':False,'error':'当前不能发射，请等待回合'}
         if type(a) not in (int,float) or type(power) not in (int,float) or not (5<=a<=175 and 15<=power<=100):return {'ok':False,'error':'角度或力度无效'}
         try:
-            if live:_siege_live_start(r,rt,seat,a,power,data.get('selection'),now,force=data.get('force') is True,config=data.get('config') or {'unified':True})
-            else:_siege_fire(r,a,power,data.get('selection'),data.get('force') is True,data.get('config') or {'unified':True})
+            if live:_siege_live_start(r,rt,seat,a,power,data.get('selection'),now,force=data.get('force') is True,config=_siege_public_config(data.get('config')))
+            else:_siege_fire(r,a,power,data.get('selection'),data.get('force') is True,_siege_public_config(data.get('config')))
         except ValueError as e:return {'ok':False,'error':str(e)}
         _settle_match();save_state()
     elif kind=='rematch':
