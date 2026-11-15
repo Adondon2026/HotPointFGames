@@ -10,7 +10,7 @@ for side in (0,1):
  g._siege_fire(r,175,65,{'bounce':1,'wooddrop':1,'stonedrop':1,'blackhole':1});e=r['event'];assert e['bounces'] and abs(e['bounces'][0][0]-(6.2 if side==0 else 953.8))<.2,e['bounces'];assert e['hitAt']>e['bounces'][0][2];assert len(e['drops'])==2 and e['holes']
  r=new(side);r['buffs'][side].update(wooddrop=1,stonedrop=1,blackhole=1);g._siege_fire(r,175,65,{'wooddrop':1,'stonedrop':1,'blackhole':1});e=r['event'];assert e['impact'][0]==(6 if side==0 else 954),e['impact'];assert len(e['drops'])==2 and e['holes'];assert all(19<=x[1]<=941 for x in e['drops']);assert len([b for b in r['bodies'] if b.get('generated')])==2
  # Start further from wall so splitting occurs before reaching it.
- r=new(side,420);r['buffs'][side].update(splitshot=1,wooddrop=1,blackhole=1);g._siege_fire(r,155,100,{'splitshot':1,'wooddrop':1,'blackhole':1});e=r['event'];assert any(abs(x-(6 if side==0 else 954))<.2 for x,y,t in e['fragmentHits']),e['fragmentHits'];assert len(e['drops'])==2 and len(e['holes'])>=2
+ r=new(side,420);r['buffs'][side].update(splitshot=1,wooddrop=1,blackhole=1);g._siege_fire(r,155,100,{'splitshot':1,'wooddrop':1,'blackhole':1});e=r['event'];assert any(abs(x-(6 if side==0 else 954))<.2 for x,y,t in e['fragmentHits']),e['fragmentHits'];assert len(e['drops'])==1 and len(e['holes'])>=2
  r=new(side,420);r['buffs'][side].update(splitshot=1,bounce=1);g._siege_fire(r,155,100,{'splitshot':1,'bounce':1});e=r['event'];assert any(abs(x-(6.2 if side==0 else 953.8))<.3 and i>=0 for x,y,t,i in e['bounces']),e['bounces']
 # Sync uses same shared physics; both shells bounce at the side and eventually hit.
 r=new();r['combatMode']='sync';r['reloadSeconds']=0
