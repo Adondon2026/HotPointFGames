@@ -207,8 +207,18 @@ try:
     p=q('trialPreview',angle=42,power=65,selection={'dive':1},config={'simple':True})
     assert p['ok'] and p['paths']
     v=q('fire',rev=v['rev'],angle=42,power=65,selection={'dive':1},config={'simple':True})
-    assert v['ok'] and v['shots']==[1,0] and v['cores'][1]==100
-    g._SIEGE_ROOMS[code]['until']=0
+    assert v['ok'] and v['manualFlight'] and v['liveShots'][0]['controls']['dive']==1 and v['cores'][1]==100
+    shot=v['liveShots'][0]['shotNo']
+    assert not trial_api(dict(type='maneuver',key='f'*48,code=code,action='dive',shotNo=shot))[1]['ok']
+    v=q('maneuver',action='dive',shotNo=shot)
+    assert v['ok'] and v['slowRate']==.9 and v['liveShots'][0]['controls']['dive']==0
+    assert not q('maneuver',action='dive',shotNo=shot)['ok']
+    arena=g._SIEGE_ROOMS[code];clock=time.time()
+    for j in range(1,121):
+        if g._siege_manual_tick(arena,clock+j*.25):break
+    v=q('state')
+    assert v['ok'] and not v.get('manualFlight') and v['shots']==[1,0] and v['cores'][1]==100
+    arena['until']=0
     v=q('trialReset',mode='sky')
     assert v['ok'] and v['field']=='sky' and v['shots']==[0,0]
     normal=g.siege_request(dict(type='create',key=key,bot=True))
@@ -267,7 +277,7 @@ for mode in ('serial','volley'):
     r,e=unified({'repeat':2,'splitshot':5},{'splitshot':'launch'},burstMode=mode)
     splits=[v for v in e['behaviorEvents'] if v[0]=='split']
     assert len(splits)==3 and all(v[4]==5 and abs(v[5]-.2)<1e-8 for v in splits),splits
-assert len(g._SIEGE_ACTIVE_ITEMS)==36 and not set(g._SIEGE_RETIRED)&set(g._siege_allowed({'allowedBuffs':None}))
+assert len(g._SIEGE_ACTIVE_ITEMS)==35 and not set(g._SIEGE_RETIRED)&set(g._siege_allowed({'allowedBuffs':None}))
 print('Siege unified: event dispatch, single-generation split, conserved power, full-power repeat, inherited penetration and capped/refunded payloads PASS')
 
 # In synchronous combat, each child inherits a fresh projectile shield.
@@ -283,3 +293,57 @@ blasts=[v for v in e['behaviorEvents'] if v[0]=='bounceBlast']
 assert len(blasts)==3 and all(v[4]==83 for v in blasts) and e['payloadEvents']['bounceblast']==3,blasts
 assert 'drawPayloadBlasts' in g.SIEGE_PAGE and 'splitPattern' in g.SIEGE_PAGE and '二次分裂 · 开' not in g.SIEGE_PAGE
 print('Siege unified shield inheritance and per-event explosion radius PASS')
+
+# v0.23: player commands are authoritative changes to velocity; layer count is
+# a shared per-shot click budget, not an automatic timed trajectory modifier.
+for k in g._SIEGE_MANUAL_KEYS:
+    r=new();r['buffs'][0][k]=5;now=time.time()
+    cfg=g._siege_public_config({})
+    g._siege_manual_start(r,0,45,65,{k:5},False,cfg,now)
+    rt=g._SIEGE_MANUAL_ROUNDS[id(r)]
+    g._siege_manual_tick(r,now+.2);before=rt['active'][0]['sample']
+    x,y=before['p'];shot=before['shotNo']
+    assert before['controls'][k]==5 and not any(e[0]=='maneuver' for e in before['behaviorEvents'])
+    g._siege_command(rt,0,k,shot,now+.2)
+    assert rt['slowRate']==.5 and rt['active'][0]['control']['left'][k]==4
+    g._siege_manual_tick(r,now+.4);after=rt['active'][0]['sample'];xx,yy=after['p']
+    assert after['controls'][k]==4 and any(e[0]=='maneuver' and e[4]==k for e in after['behaviorEvents'])
+    assert .08<=after['age']-before['age']<=.12,(before['age'],after['age'])
+    if k=='pingpong':assert xx<x,(x,xx)
+    elif k=='dive':assert yy>y,(y,yy)
+    else:assert yy<y,(y,yy)
+    for j in range(3,161):
+        if g._siege_manual_tick(r,now+j*.25):break
+    assert id(r) not in g._SIEGE_MANUAL_ROUNDS and r['shots']==[1,0] and r['turn']==1 and r['buffs'][0][k]==4
+# Delayed bounce split follows actual reflected motion.
+r,e=unified({'splitshot':5,'bounce':2},{'splitshot':'bounce'},delayedSplit=True)
+bounce=next(v for v in e['bounces'] if v[3]==-1);split=next(v for v in e['behaviorEvents'] if v[0]=='split')
+assert .09<=split[1]-bounce[2]<=.13 and split[4]==5 and abs(split[3]-bounce[1])>5,(bounce,split)
+# Actual concurrent round, not a replay: shared bullet time and owner-specific commands.
+r=new();r['bot']=False;r['combatMode']='sync';r['buffs'][0]['dive']=3;r['buffs'][1]['pingpong']=2
+now=time.time();rt=g._siege_sync_runtime(r,now);rt['plans']=[(55,65,{'dive':3}),(55,65,{'pingpong':2})];rt['configs']=[g._siege_public_config({}),g._siege_public_config({})]
+g._siege_sync_compute(r,rt,now);engine=rt['activeEngine'];assert len(engine['active'])==2 and not rt['replay']
+g._siege_sync_tick(r,rt,now+.2);left=engine['active'][0]['sample'];right=engine['active'][1]['sample']
+try:g._siege_command(engine,1,'dive',right['shotNo'],now+.2);assert False
+except ValueError:pass
+g._siege_command(engine,0,'dive',left['shotNo'],now+.2)
+g._siege_sync_tick(r,rt,now+.4)
+assert engine['slowRate']==.7 and engine['active'][0]['sample']['controls']['dive']==2
+assert abs(engine['active'][0]['sample']['age']-engine['active'][1]['sample']['age'])<.02
+for j in range(3,161):
+    if g._siege_sync_tick(r,rt,now+j*.25):break
+assert not rt.get('activeEngine') and r['shots']==[1,1] and rt['round']==2
+# Fire falls from the trajectory and can ignite a wooden structure below it.
+r=new();r['buffs'][0]['firetrail']=3
+r['bodies'].append(dict(id=90,side=1,x=400,y=395,w=100,h=42,kind='wood',hp=42,max=42,vx=0.,vy=0.,fixed=True))
+g._siege_fire(r,60,65,{'firetrail':3},config={'unified':True,'delayedSplit':True})
+assert r['event']['emberEvents'] and next(b for b in r['bodies'] if b['id']==90).get('burnDamage',0)>=14
+# New map themes preserve map IDs and include a guaranteed legal bounce pickup.
+for mode in ('fragments','peaks','obstacle','overtop'):
+    r=g._siege_new('A','a',True,13,mode)
+    assert r['field']==mode and any(i['kind']=='bounce' for i in r['items'])
+r=g._siege_new('A','a',True,0,'fragments')
+assert any(b['kind']=='wood' and b['h']>=70 for b in r['bodies'])
+r=g._siege_new('A','a',True,0,'overtop');assert r['reflectors']
+assert 'manualActions' in g.SIEGE_PAGE and 'siegeMapSize' in g.HTML_PAGE and 'trialSize' in g.SIEGE_PAGE
+print('Siege v0.23: live maneuvers, shared bullet time, charges, delayed reflection split, falling fire and themed maps PASS')
