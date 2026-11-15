@@ -382,9 +382,27 @@ r=v24('classic',list(g._SIEGE_ELITE_KEYS))
 assert g._siege_v24_draw(r,'air') is None
 assert all(g._siege_v24_draw(r,'center') in g._SIEGE_ELITE_KEYS for _ in range(20))
 # Compound adds one penetration and one explosion without consuming their stocks.
-r=v24();r['buffs'][0]['compound']=1
+r=v24();r['buffs'][0]['compound']=1;r['compoundRecipes']=['burst',None]
 g._siege_fire(r,90,40,{'compound':1},config=g._siege_public_config({}))
 assert r['buffs'][0]['compound']==0 and r['event']['payloadEvents']['bounceblast']>0
+# Curated recipes are committed at pickup, stable in public inventory, and
+# consumed only at fire; each constituent adds one layer without spending stock.
+assert set(g._SIEGE_COMPOUND_RECIPES)=={'breach','ricochet','burst','seek'}
+for recipe,effects in g._SIEGE_COMPOUND_RECIPES.items():
+    r=v24();x,y=g._siege_muzzle(0,r,75)
+    r['items']=[dict(id=999,kind='compound',recipe=recipe,x=x,y=y,r=20,amount=1,zone='center')]
+    g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
+    assert r['compoundRecipes'][0]==recipe and g._siege_public(r,'a',-1)['compoundRecipes'][0]==recipe
+    r['turn']=0;r['until']=0
+    g._siege_fire(r,75,40,{'compound':1},config=g._siege_public_config({}))
+    assert r['event']['compoundRecipe']==recipe and r['buffs'][0]['compound']==0 and r['compoundRecipes'][0] is None
+    assert all(r['buffs'][0][k]==0 for k in effects)
+# Presentation timing does not depend on the final simulated debris frame.
+frames=[[0,[1,1],[],[],6,[]],[.1,None,[],[],6,[]],[6,None,[],[],6,[]]]
+timing=g._siege_replay_timing(frames,6,.1)
+assert timing==dict(shellEnd=.1,handoffAt=1.,playbackDuration=1.48),timing
+assert g._siege_replay_timing(frames,60,.1)==timing
+print('Siege replay tempo: 0.1s shell, 1s viewing minimum, 1.48s display independent of debris PASS')
 # Salvage with no eligible material returns the charge.
 r=v24();r['buffs'][0]['salvage']=1
 g._siege_fire(r,90,40,{'salvage':1},config=g._siege_public_config({}))

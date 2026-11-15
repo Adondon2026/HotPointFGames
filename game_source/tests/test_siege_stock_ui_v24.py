@@ -96,6 +96,8 @@ try:
         }""",event)
         assert result['ok'] and result['count']>5 and result['max']>=8,result
         assert result['maxZoomRate']<.001,result # fixed focal length
+        assert page.evaluate("""()=>{const d={shellEnd:.1,handoffAt:1,playbackDuration:1.48,duration:6};return replayClock(d,.1)===.1&&replayClock(d,1)<.3&&replayClock(d,1.48)===6}""")
+        assert page.evaluate("""()=>compoundHint('ricochet').includes('弹跳 +1')&&compoundHint('seek').includes('制导 +1')""")
         # Exercise the actual requestAnimationFrame renderer, not just the planner.
         # During preroll no projectile is visible; once playback starts every
         # rendered projectile stays inside the camera and the map stays bounded.
