@@ -381,7 +381,7 @@ def _siege_selection(r,selection,side=None):
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
     _siege_normalize_buffs(r);inv=r['buffs'][r['turn'] if side is None else side];out={}
     for k,n in selection.items():
-        if k not in _SIEGE_SELECTABLE or type(n) is not int or not 0<=n<=min(_siege_cap(r,k),inv[k]):raise ValueError('增益数量超出库存或单次上限')
+        if k not in _SIEGE_SELECTABLE or (_siege_v24(r) and (k not in _SIEGE_V24_KEYS or k in _SIEGE_V24_SKILLS)) or type(n) is not int or not 0<=n<=min(_siege_cap(r,k),inv[k]):raise ValueError('增益数量超出库存或单次上限')
         if n:out[k]=n
     return out
 
@@ -605,7 +605,7 @@ def _siege_trial_steps(r,angle,power,selection,force=False,config=None,control=N
     if selected.get('heal'):
         core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==0);core['hp']=min(core['max'],core['hp']+18)
     # Target defense enables real damage-reduction comparisons without enemy fire.
-    r['armed'][1]={k:selected[k] for k in _SIEGE_DEFENSE if k in selected}
+    if not _siege_v24(r):r['armed'][1]={k:selected[k] for k in _SIEGE_DEFENSE if k in selected}
     chosen={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
     yield from _siege_fire_steps(r,angle,power,chosen,force=force,config=config,control=control)
     _siege_trial_stock(r)
@@ -629,9 +629,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     r.setdefault('negativePending',[{},{}]);r.setdefault('clones',[]);r.setdefault('mines',[])
     mines_before=[dict(m) for m in r['mines']]
     negatives=dict(r['negativePending'][side])
-    if v24:
+    if v24 and not trial:
         for k in _SIEGE_NEGATIVE:
-            if r['buffs'][side].get(k):negatives[k]=1;r['buffs'][side][k]-=1
+            if r['buffs'][side].get(k):negatives[k]=1
     angle_offset=0.
     if negatives.get('wobble'):
         magnitude=random.uniform(14.,24.);sign=random.choice((-1,1))
@@ -646,7 +646,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     stock=r.get('buffMode','auto')=='stock'
     armed=r.setdefault('armed',[{},{}]);armed_before=[dict(x) for x in armed]
     chosen=_siege_selection(r,selection,side)
-    engineering=config['build']=='safe' and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop'))
+    engineering=(config['build']=='safe' or (v24 and not any(chosen.get(k) for k in ('bounceblast','blackhole','pierce','push')))) and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop'))
     suppressed=('power','shock','pierce','push','blackhole','clone','gunteleport','coreteleport','bounceblast','ignite','firetrail','firearc','mine') if engineering else ()
     if live is None:suppressed=(*suppressed,'shotshield')
     if unified:
@@ -657,6 +657,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     _siege_motion(r,motion_start)
     blocked=_siege_launch_check(r,side,actual_angle,chosen,motion_start,force)
     r['negativePending'][side].clear()
+    if v24 and not trial:
+        for k in negatives:r['buffs'][side][k]=max(0,r['buffs'][side].get(k,0)-1)
     if stock:
         if live is not None and any(armed[side].get(k,0)+n>_siege_cap(r,k) for k,n in chosen.items() if k in _SIEGE_DEFENSE):raise ValueError('已有防御待命，请等待对方开炮后再启用')
         attack_counts={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
@@ -705,7 +707,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     fragment_radius=radius
     
     # Push is an almost non-damaging manipulation shell: roughly 14% direct damage.
-    def damage_for(counts):return (1+.70*counts.get('power',0))*shell_scale*(.14 if counts.get('push') else 1.)
+    def damage_for(counts):return (1+.70*counts.get('power',0))*shell_scale*(.14 if counts.get('push') and not v24 else 1.)
     damage_scale=damage_for(root_counts);impulse_scale=1+2.2*root_counts.get('shock',0)
     # Delayed extra rounds retain angle/power; total damage grows while each shell weakens.
     for j in range(repeat_n):
@@ -970,7 +972,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     # a full budget never prevents a later valid event from contributing to refunds.
     event_counts={k:0 for k in _SIEGE_PAYLOADS};generated_counts={k:0 for k in _SIEGE_OBJECT_LIMITS}
     triggered=set();main_apex=False;main_rising=False;main_launched=False;main_split_at=None
-    def generate_payload(k,n,x,y,target=None):
+    def generate_payload(k,n,x,y,target=None,scale=1.):
         nonlocal last_hit,settled
         event_counts[k]+=1
         limit=_SIEGE_OBJECT_LIMITS[k]
@@ -1009,7 +1011,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             elif k=='blackhole':
                 # One field per event, with level determining intensity, not overlapping identical fields.
                 if len(holes)>=12:break
-                holes.append([round(x,1),round(y,1),round(t,3),n])
+                holes.append([round(x,1),round(y,1),round(t,3),n]+([scale] if v24 else []))
                 if config['blackholeMode']=='attached' and target and target['hp']>0:hole_anchors[len(holes)-1]=(target['id'],x-target['x'],y-target['y'])
                 generated_counts[k]+=1;break
             generated_counts[k]+=1
@@ -1024,7 +1026,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if k=='splitshot' or not counts.get(k) or (event not in ('bounce','through','end') if v24 else _siege_event_for(config,k)!=event):continue
             if k in _SIEGE_OBJECT_LIMITS:
                 if k=='clone' and kind=='clone':continue
-                generate_payload(k,counts[k],x,y,target)
+                generate_payload(k,counts[k],x,y,target,scale)
             elif k=='bounceblast':
                 # Explicit blast payload is extra attack, scaled by shell's allocated strength.
                 event_counts[k]+=1;n=counts[k];br=38+9*n+(0 if v24 else 12*counts.get('big',0))
@@ -1388,11 +1390,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if field_holes:
             def pull(x,y):
                 ax=ay=0.
-                for hx,hy,ht,level in field_holes:
+                for hx,hy,ht,level,*share in field_holes:
                     if not ht<=t<ht+2:continue
                     dx=hx-x;dy=hy-y;d=math.hypot(dx,dy);reach=120+22*level
                     if d<14 or d>reach:continue
-                    a=min(220,(75+40*level)*(1-d/reach))
+                    a=min(220,(75+40*level)*(1-d/reach))*(share[0] if share else 1.)
                     ax+=dx/d*a;ay+=dy/d*a
                 cap=max(1,math.hypot(ax,ay)/320)
                 return ax*dt/cap,ay*dt/cap
@@ -1403,7 +1405,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     ax,ay=pull(f['x'],f['y']);f['vx']+=ax;f['vy']+=ay
         if last_hit is not None:
             # A finite, softened pull. Nothing is deleted by the black hole.
-            for hx,hy,ht,level in holes:
+            for hx,hy,ht,level,*share in holes:
                 if not ht<=t<ht+2:continue
                 for b in bodies:
                     if b['hp']<=0 or b.get('platform'):continue
@@ -1412,8 +1414,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     if b.get('fixed'):
                         if b['kind']=='core' or not b.get('floatFort'):continue
                         b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
-                    accel=(130+105*level)*(1-dist/(120+22*level))
-                    b['vx']+=dx/dist*accel*dt;b['vy']+=(dy/dist*accel-350)*dt
+                    accel=(130+105*level)*(1-dist/(120+22*level))*(share[0] if share else 1.)
+                    b['vx']+=dx/dist*accel*dt;b['vy']+=(dy/dist*accel-350*(share[0] if share else 1.))*dt
                     b['vx']=max(-350,min(350,b['vx']));b['vy']=max(-350,min(350,b['vy']))
         tick_embers()
         if v24:tick_barrels()
@@ -1746,7 +1748,7 @@ def _siege_sync_public(r,rt,key,last=-1):
     return v
 
 def _siege_bot_fire(r,a,p,live=None):
-    selection={k:min(_siege_cap(r,k),2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE and k not in _SIEGE_ONE_SHOT} if r.get('buffMode')=='stock' else None
+    selection={k:min(_siege_cap(r,k),2,n) for k,n in r['buffs'][1].items() if n>0 and k in _SIEGE_SELECTABLE and k not in _SIEGE_ONE_SHOT and (not _siege_v24(r) or k not in _SIEGE_V24_SKILLS and k!='homing')} if r.get('buffMode')=='stock' else None
     if live is not None and live.get('planOnly'):
         live['plan']=(a,p,selection or {});return
     if live is not None and selection is not None:
