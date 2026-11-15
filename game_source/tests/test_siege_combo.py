@@ -102,7 +102,7 @@ for page in (g.SIEGE_PAGE,g.HTML_PAGE):
 assert "siegeBuffList.length" in g.HTML_PAGE
 assert "n+'/16'" not in g.HTML_PAGE
 assert 'return {unlock,enterBattle:' in g.SIEGE_PAGE
-assert 'Object.entries(siegeCatalog).map' in g.SIEGE_PAGE
+assert 'siegeActiveKeys.map' in g.SIEGE_PAGE
 key='b'*48
 created=g.siege_request({'type':'create','key':key,'bot':True,'allowedBuffs':list(g._SIEGE_ITEMS)})
 assert created['ok'] and created['bot']
@@ -120,7 +120,7 @@ import copy
 key='c'*48
 v=g.siege_request({'type':'create','key':key,'trial':True})
 assert v['ok'] and v['trial'] and v['ammo']==0 and v['buffMode']=='stock'
-assert set(v['buffs'][0])==set(g._SIEGE_ITEMS) and all(v['buffs'][0].values())
+assert set(v['buffs'][0])==set(g._SIEGE_ITEMS) and all(v['buffs'][0][k] for k in g._SIEGE_ACTIVE_ITEMS) and not any(v['buffs'][0][k] for k in g._SIEGE_RETIRED)
 code=v['code'];r=g._SIEGE_ROOMS[code]
 r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
 r['launchers']=[[235,368],[725,368]]
@@ -224,3 +224,62 @@ try:
 finally:
     server.shutdown();server.server_close()
 print('Siege trial HTTP route, isolation, preview, fire, reset PASS')
+
+# Unified rules: exact child count, one generation, inherited movement and payloads.
+def unified(sel,trigger=None,angle=90,power=25,**kw):
+    r=new();r['stackCaps']=dict(g._SIEGE_HARD_CAPS);r['buffs'][0].update(sel)
+    cfg={'unified':True,'build':'attack','triggers':trigger or {},**kw}
+    g._siege_fire(r,angle,power,sel,config=cfg)
+    return r,r['event']
+cfg=g._siege_config({'unified':True,'triggers':{'splitshot':'bounce','wooddrop':'end'}})
+spec=g._siege_compile_spec({'splitshot':5,'bounce':2,'through':3,'power':2,'shock':3,'wooddrop':5},cfg)
+assert 'splitshot' not in spec['child'] and spec['child']=={'bounce':2,'through':3,'power':2,'shock':3,'wooddrop':5}
+r,e=unified({'splitshot':5,'bounce':2},{'splitshot':'bounce'})
+split=[v for v in e['behaviorEvents'] if v[0]=='split']
+assert len(split)==1 and split[0][4]==5 and abs(split[0][5]-.2)<1e-8 and split[0][6]=='bounce',e['behaviorEvents']
+assert len([b for b in e['bounces'] if b[3]==-1])==1 and any(b[3]>=0 for b in e['bounces'])
+assert len({f[0] for frame in e['frames'] for f in frame[3]})==5
+# No actual reflection = no reflection payload and full refund.
+r,e=unified({'splitshot':5,'wooddrop':2},{'splitshot':'bounce','wooddrop':'bounce'})
+assert not any(v[0]=='split' for v in e['behaviorEvents']) and not e['drops']
+assert r['buffs'][0]['splitshot']==5 and r['buffs'][0]['wooddrop']==2
+# Repeated real bounces dispatch the same payload, no hidden bounce charges.
+r,e=unified({'bounce':3,'mine':2},{'mine':'bounce'})
+assert e['payloadEvents']['mine']==3 and e['generatedCounts']['mine']==6
+# A 5-way split with five material layers can exceed the old five-block limit.
+r,e=unified({'splitshot':5,'wooddrop':5},{'splitshot':'launch','wooddrop':'end'},angle=90,power=25)
+assert e['generatedCounts']['wooddrop']==24 and e['payloadEvents']['wooddrop']==5 and len(e['drops'])==24,(e['generatedCounts'],e['payloadEvents'],e['behaviorEvents'])
+# With five independent terminal events, five layers still contribute to 24 blocks.
+# Ten independent terminal events require only three layers after capping at 24.
+r,e=unified({'repeat':1,'splitshot':5,'wooddrop':5},{'splitshot':'launch','wooddrop':'end'},angle=90,power=25)
+assert len([v for v in e['behaviorEvents'] if v[0]=='split'])==2
+assert e['payloadEvents']['wooddrop']==10 and e['generatedCounts']['wooddrop']==24 and r['buffs'][0]['wooddrop']==2,(e['payloadEvents'],e['generatedCounts'],r['buffs'][0])
+# Terminal split waits until penetration has been exhausted; children start with their own through count.
+r=new();r['buffs'][0].update(splitshot=5,through=1)
+for i,x in enumerate((350,450,550)):
+    r['bodies'].append(dict(id=90+i,side=1,x=x,y=350,w=24,h=120,kind='stone',hp=1000,max=1000,vx=0.,vy=0.,fixed=True))
+g._siege_fire(r,5,75,{'splitshot':5,'through':1},config={'unified':True,'triggers':{'splitshot':'end'}})
+e=r['event'];split=[v for v in e['behaviorEvents'] if v[0]=='split']
+assert len(split)==1 and 420<split[0][2]<450 and 90 in e['passed'],(split,e['passed'])
+assert next(b for b in r['bodies'] if b['id']==91)['hp']<1000
+# Full-power repeat source shells independently conserve power when splitting.
+for mode in ('serial','volley'):
+    r,e=unified({'repeat':2,'splitshot':5},{'splitshot':'launch'},burstMode=mode)
+    splits=[v for v in e['behaviorEvents'] if v[0]=='split']
+    assert len(splits)==3 and all(v[4]==5 and abs(v[5]-.2)<1e-8 for v in splits),splits
+assert len(g._SIEGE_ACTIVE_ITEMS)==36 and not set(g._SIEGE_RETIRED)&set(g._siege_allowed({'allowedBuffs':None}))
+print('Siege unified: event dispatch, single-generation split, conserved power, full-power repeat, inherited penetration and capped/refunded payloads PASS')
+
+# In synchronous combat, each child inherits a fresh projectile shield.
+r=new();r['bot']=False;r['combatMode']='sync';r['buffs'][0].update(splitshot=5,shotshield=1)
+rt=g._siege_sync_runtime(r,time.time());rt['plans']=[(90,25,{'splitshot':5,'shotshield':1}),(90,25,{})]
+rt['configs']=[g._siege_config({'unified':True,'triggers':{'splitshot':'launch'}}),g._siege_config({'unified':True})]
+g._siege_sync_compute(r,rt,time.time())
+shots=[shot for frame in rt['replay']['frames'] for shot in frame[2] if shot['side']==0]
+assert any(len(shot.get('shields',[]))==5 and all(sh['left']==2 for sh in shot['shields']) for shot in shots)
+# The event blast radius and damage grow with layers, and each real bounce triggers once.
+r,e=unified({'bounce':3,'bounceblast':5},{'bounceblast':'bounce'})
+blasts=[v for v in e['behaviorEvents'] if v[0]=='bounceBlast']
+assert len(blasts)==3 and all(v[4]==83 for v in blasts) and e['payloadEvents']['bounceblast']==3,blasts
+assert 'drawPayloadBlasts' in g.SIEGE_PAGE and 'splitPattern' in g.SIEGE_PAGE and '二次分裂 · 开' not in g.SIEGE_PAGE
+print('Siege unified shield inheritance and per-event explosion radius PASS')

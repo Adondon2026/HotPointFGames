@@ -4,7 +4,7 @@ os.environ['GAMEHALL_DATA_DIR']=tempfile.mkdtemp()
 spec=importlib.util.spec_from_file_location('g',pathlib.Path(__file__).resolve().parents[1]/'dist/game_hall_lan_v6_2.py');g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
 random.seed(40412)
 # Friend's whitelist regression, expanded to all maps, disabled and rare kinds.
-ALL=set(g._SIEGE_ITEMS)
+ALL=set(g._SIEGE_ACTIVE_ITEMS)
 for allowed in ([],['big'],['splitshot','shock'],['gunteleport','heal'],['blackhole'],list(ALL)):
  for mode in g._SIEGE_MODES:
   r=g._siege_new('A','a',True,13,mode,'off',0,'stock',allowed)

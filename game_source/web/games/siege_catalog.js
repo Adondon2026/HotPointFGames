@@ -27,7 +27,7 @@ const siegeCatalog={
   "repeat": {
     "group": "弹道",
     "color": "#80d2e5",
-    "label": "连续弹",
+    "label": "连发弹",
     "path": "M4 6H11L14 9 11 12H4Z M10 14H17L20 17 17 20H10Z"
   },
   "downpour": {
@@ -105,7 +105,7 @@ const siegeCatalog={
   "bounceblast": {
     "group": "火力",
     "color": "#edaf67",
-    "label": "反弹爆破",
+    "label": "爆破弹",
     "path": "M3 18L10 7 17 18 M10 2V5 M5 4L7 6 M15 4L13 6 M19 8H22 M17 11L20 14"
   },
   "blackhole": {
@@ -230,3 +230,5 @@ const siegeCatalog={
   }
 };
 const siegeIcon=(k,size=22)=>{const i=siegeCatalog[k];return i?'<svg class="siege-item-icon" aria-hidden="true" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" style="color:'+i.color+';vertical-align:middle;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+i.path+'"/></svg>':''};
+
+const siegeActiveKeys=Object.keys(siegeCatalog).filter(k=>!['larpa','downpour'].includes(k));
