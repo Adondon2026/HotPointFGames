@@ -133,43 +133,107 @@ const $=id=>document.getElementById(id),canvas=$('field'),ctx=canvas.getContext(
 const defaultShotConfig=()=>({simple:true,unified:true,manual:true,delayedSplit:true,build:'safe',fuseMode:'either',triggers:{},splitPattern:'fan',burstMode:'serial',blackholeMode:'fixed'});let shotConfig=defaultShotConfig(),stockCat='全部',stockLastCat='';const buffCategories=Object.fromEntries([...new Set(Object.values(siegeCatalog).map(v=>v.group))].map(group=>[group,siegeActiveKeys.filter(k=>siegeCatalog[k].group===group)]));
 // Camera is a presentation-only world-to-screen transform; server physics remains 960×480.
 const WORLD_W=960, MAP_TOP=-100, MAP_BOTTOM=480;let VIEW_W=460,VIEW_H=359,ZOOM=1,HOME_Y=140,BASE_W=460,ASPECT=460/359;
-function cameraWidth(w){VIEW_W=w;VIEW_H=w/ASPECT;ZOOM=canvas.width/w;HOME_Y=416-VIEW_H*.83}
-function resizeField(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;const center={x:camera.x+VIEW_W/2,y:camera.y+VIEW_H/2},old=VIEW_W;const dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ASPECT=canvas.width/canvas.height;BASE_W=clamp(ASPECT*345,360,700);cameraWidth(playing||syncReplay?Math.max(BASE_W,old):BASE_W);if(playing||syncReplay){cameraSnap({x:center.x-VIEW_W/2,y:center.y-VIEW_H/2});if(playing?.handoff)playing.handoff={from:{...camera,w:VIEW_W},to:home(room.turn)}}else if(room&&!overview)browse(center.x-VIEW_W/2,center.y-VIEW_H/2);else cameraSnap(home(room?.seat||0))}
+function cameraWidth(w){VIEW_W=clamp(w,BASE_W,WORLD_W);VIEW_H=VIEW_W/ASPECT;ZOOM=canvas.width/VIEW_W;HOME_Y=416-VIEW_H*.83}
+function resizeField(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;const center={x:camera.x+VIEW_W/2,y:camera.y+VIEW_H/2},old=VIEW_W;const dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ASPECT=canvas.width/canvas.height;BASE_W=clamp(ASPECT*345,360,700);cameraWidth(playing||syncReplay?Math.max(BASE_W,old):BASE_W);if(playing||syncReplay){cameraSnap({x:center.x-VIEW_W/2,y:center.y-VIEW_H/2});if(playing){playing.cameraPlan=null;if(playing.handoff)playing.handoff={from:{...camera,w:VIEW_W},to:home(room.turn)}}if(syncReplay)syncReplay.cameraPlan=null}else if(room&&!overview)browse(center.x-VIEW_W/2,center.y-VIEW_H/2);else cameraSnap(home(room?.seat||0))}
 window.addEventListener('resize',resizeField);
 if(typeof ResizeObserver!=='undefined'){const fieldObserver=new ResizeObserver(()=>resizeField());fieldObserver.observe($('stage'))}
-const camera={x:0,y:HOME_Y}, HANDOFF=.42;let cameraTime=0;
+const camera={x:0,y:HOME_Y}, HANDOFF=.48,CAMERA_PREROLL=.38;let cameraTime=0;
 function viewBounds(h=VIEW_H){const low=Math.min(MAP_TOP,(MAP_TOP+MAP_BOTTOM-h)/2),high=Math.max(low,MAP_BOTTOM-h);return [low,high]}
 function browse(x,y){const [lo,hi]=viewBounds();cameraSnap({x:clamp(x,0,Math.max(0,WORLD_W-VIEW_W)),y:clamp(y,lo,hi)})}
 const home=s=>{const [x,y]=launcher(s),h=BASE_W/ASPECT,[lo,hi]=viewBounds(h);return {x:clamp(x-BASE_W*.5,0,Math.max(0,WORLD_W-BASE_W)),y:clamp(y-h*.73,lo,hi),w:BASE_W}};
-function cameraSnap(p){if(p.w!=null)cameraWidth(p.w);camera.x=p.x;camera.y=p.y}
+function cameraSnap(p){if(p.w!=null)cameraWidth(p.w);camera.x=clamp(p.x,0,Math.max(0,WORLD_W-VIEW_W));camera.y=Math.min(p.y,MAP_BOTTOM-VIEW_H)}
 function cameraLerp(p,dt){const q=1-Math.exp(-dt*10);camera.x+=(p.x-camera.x)*q;camera.y+=(p.y-camera.y)*q}
-// Points are [world x, world y, radius]. Fit all active targets with screen-relative
-// safe margins; expansion is immediate, contraction is eased to avoid zoom pumping.
-function cameraGroup(points,dt){
- const valid=points.filter(p=>p&&Number.isFinite(p[0])&&Number.isFinite(p[1]));if(!valid.length)return;
+// World-space target envelope, clipped to actual battlefield boundaries.
+function cameraBounds(points){
  let l=Infinity,r=-Infinity,t=Infinity,b=-Infinity;
- for(const [x,y,rad=0] of valid){l=Math.min(l,x-rad);r=Math.max(r,x+rad);t=Math.min(t,y-rad);b=Math.max(b,y+rad)}
- const need=Math.max(BASE_W,(r-l)/.84,(b-t)*ASPECT/.72),old=VIEW_W,q=1-Math.exp(-dt*4);
- const cx=camera.x+old/2,cy=camera.y+VIEW_H/2;
- cameraWidth(Math.max(need,old+(need-old)*q));
- const w=VIEW_W,h=VIEW_H,mx=w*.08,my=h*.14,tx=(l+r-w)/2,ty=(t+b-h)/2;
- // Prefer the world edges, but allow margins beyond the map when required
- // to keep a shell at a wall or in very high flight fully visible.
- const preferX=w<=WORLD_W?clamp(tx,0,WORLD_W-w):(WORLD_W-w)/2;
- const xlo=r+mx-w,xhi=l-mx,ylo=b+my-h,yhi=t-my;
- camera.x=clamp(cx-w/2+(preferX-(cx-w/2))*(1-Math.exp(-dt*10)),xlo,Math.max(xlo,xhi));
- camera.y=clamp(cy-h/2+(ty-(cy-h/2))*(1-Math.exp(-dt*10)),ylo,Math.max(ylo,yhi));
+ for(const [x,y,rad=0] of points){if(!Number.isFinite(x)||!Number.isFinite(y))continue;l=Math.min(l,clamp(x-rad,0,WORLD_W));r=Math.max(r,clamp(x+rad,0,WORLD_W));t=Math.min(t,y-rad);b=Math.max(b,Math.min(MAP_BOTTOM,y+rad))}
+ return l===Infinity?null:{l,r,t,b};
+}
+function cameraUnion(a,b){return !a?b:!b?a:{l:Math.min(a.l,b.l),r:Math.max(a.r,b.r),t:Math.min(a.t,b.t),b:Math.max(a.b,b.b)}}
+function cameraNeed(b){return b?clamp(Math.max(BASE_W,(b.r-b.l)/.80,(b.b-b.t)*ASPECT/.74),BASE_W,WORLD_W):BASE_W}
+function cameraFit(b,w,x,y){
+ const h=w/ASPECT,hiX=Math.max(0,WORLD_W-w),hiY=MAP_BOTTOM-h;
+ if(!b)return {x:clamp(x,0,hiX),y:Math.min(y,hiY),w};
+ // The hard interval contains the target envelope, but is never allowed
+ // to expose the sides or ground beyond the battlefield.
+ const loX=Math.max(0,b.r-w),upX=Math.min(hiX,b.l),loY=b.b-h,upY=Math.min(hiY,b.t);
+ return {x:clamp(x,loX,Math.max(loX,upX)),y:clamp(y,Math.min(loY,upY),upY),w};
+}
+// Online fallback for legacy live/manual shots. Normal v24 shots use a
+// preplanned replay camera below, so no emergency zoom is needed.
+function cameraGroup(points,dt,forecast=[]){
+ const b=cameraBounds(points);if(!b)return;const look=cameraUnion(b,cameraBounds(forecast)),need=cameraNeed(look);
+ const hard=clamp(Math.max(BASE_W,b.r-b.l,(b.b-b.t)*ASPECT),BASE_W,WORLD_W);
+ const w=Math.max(hard,VIEW_W+(need-VIEW_W)*(1-Math.exp(-dt*(need>VIEW_W?5:2.8)))),h=w/ASPECT;
+ const q=1-Math.exp(-dt*5),cx=camera.x+VIEW_W/2,cy=camera.y+VIEW_H/2;
+ cameraSnap(cameraFit(b,w,cx+((look.l+look.r)/2-cx)*q-w/2,cy+((look.t+look.b)/2-cy)*q-h/2));
+}
+function cameraLiveForecast(shots,previous){
+ const out=[];for(const s of shots){const old=previous?.find(q=>q.side===s.side&&q.shotNo===s.shotNo);if(!old)continue;
+ const predict=(p,q,r)=>{if(p&&q)out.push([clamp(p[0]+(p[0]-q[0])*2.5,0,WORLD_W),Math.min(MAP_BOTTOM,p[1]+(p[1]-q[1])*2.5),r])};
+ const rad=(s.radius||6)+5;predict(s.p,old.p,rad);
+ for(const f of s.fragments||[]){const a=old.fragments?.find(z=>z[0]===f[0]);predict(f.slice(1),a?.slice(1),rad)}
+ }return out
 }
 function cameraFlight(p,dt){cameraGroup([[p[0],p[1],8]],dt)}
 function cameraHandoff(p,q){const t=clamp(q,0,1),e=t*t*(3-2*t),w0=p.from.w??BASE_W,w1=p.to.w??BASE_W;cameraSnap({x:p.from.x+(p.to.x-p.from.x)*e,y:p.from.y+(p.to.y-p.from.y)*e,w:w0+(w1-w0)*e})}
+// Replay director. All trajectories are already known: reserve space
+// before a split/impact, then keep a continuous, rate-limited zoom track.
+function cameraPlan(data,meta,sync=false){
+ const frames=data.frames;if(!frames?.length)return [];
+ const samples=frames.map((f,i)=>{
+  const t=f[0],prev=frames[Math.max(0,i-1)],dt=Math.max(.01,t-prev[0]),clock=(data.motionStart||0)+t;
+  const shots=sync?f[2]:[{p:f[1],fragments:f[3],radius:f[4]}];
+  const shells=cameraShotPoints(shots);
+  const action=cameraWorldPoints(sync?f[1]:f[2],sync?prev[1]:prev[2],meta,dt,clock);
+  if(sync){for(const s of shots)action.push(...cameraBlastPoints(s.behaviorEvents,s.age))}
+  else {action.push(...cameraBlastPoints(data.behaviorEvents,t));for(const [x,y,at] of data.fragmentHits||[])if(t>=at&&t-at<.5)action.push([x,y,data.blastRadius||52]);if(data.impact&&data.hitAt!=null&&t>=data.hitAt&&t-data.hitAt<.65)action.push([...data.impact,data.blastRadius||52]);for(const z of data.teleports||[])if(t>=z[6]&&t<=(z[8]??z[6])+.4)action.push([z[4],z[5],30])}
+  // Actual shells are the non-negotiable visibility constraint. Effects
+  // are framing subjects, not a reason to snap toward microscopic debris.
+  return {t,hard:cameraBounds(shells),subject:cameraBounds([...shells,...action])};
+ });
+ let last=null;
+ for(let i=0;i<samples.length;i++){const s=samples[i];if(s.subject)last=s.subject;else s.subject=last}
+ for(let i=samples.length-1;i>=0;i--){if(!samples[i].subject)samples[i].subject=samples[i+1]?.subject||{l:480,r:480,t:200,b:200}}
+ const n=samples.length;
+ for(let i=0;i<n;i++){
+  const s=samples[i];let ahead=s.subject,hard=s.hard;
+  // Look ahead 0.44 s and retain the last 0.20 s of composition.
+  // Adjacent hard envelopes guarantee visibility between replay keyframes.
+  for(let j=i-1;j>=0&&s.t-samples[j].t<=.20;j--)ahead=cameraUnion(ahead,samples[j].subject);
+  for(let j=i+1;j<n&&samples[j].t-s.t<=.44;j++)ahead=cameraUnion(ahead,samples[j].subject);
+  hard=cameraUnion(hard,samples[i-1]?.hard);hard=cameraUnion(hard,samples[i+1]?.hard);
+  s.fit=hard;s.look=ahead;s.w=cameraNeed(cameraUnion(ahead,hard));
+ }
+ // Anticipate zoom-outs (max 520 world units/s), delay zoom-ins
+ // (max 230/s). No frame-local jump when a target joins/leaves.
+ for(let i=n-2;i>=0;i--)samples[i].w=Math.max(samples[i].w,samples[i+1].w-520*(samples[i+1].t-samples[i].t));
+ for(let i=1;i<n;i++)samples[i].w=Math.max(samples[i].w,samples[i-1].w-230*(samples[i].t-samples[i-1].t));
+ // Smooth the upper envelope without reducing its required width.
+ for(let i=0;i<n;i++){let w=samples[i].w;for(let j=i-1;j>=0&&samples[i].t-samples[j].t<.12;j--)w=Math.max(w,samples[j].w);for(let j=i+1;j<n&&samples[j].t-samples[i].t<.12;j++)w=Math.max(w,samples[j].w);samples[i].wide=w}
+ const out=[];
+ for(let i=0;i<n;i++){
+  const s=samples[i];let cx=0,cy=0,w=0,sum=0;
+  for(let j=Math.max(0,i-12);j<Math.min(n,i+13);j++){const d=Math.abs(samples[j].t-s.t);if(d>.25)continue;const weight=Math.max(.01,1-d/.26),b=samples[j].look;cx+=(b.l+b.r)/2*weight;cy+=(b.t+b.b)/2*weight;w+=samples[j].wide*weight;sum+=weight}
+  w=clamp(Math.max(s.w,w/sum),BASE_W,WORLD_W);const h=w/ASPECT;
+  out.push({t:s.t,...cameraFit(s.fit,w,cx/sum-w/2,cy/sum-h*.52)});
+ }
+ return out;
+}
+function cameraPlanAt(plan,t){
+ if(!plan.length)return {x:camera.x,y:camera.y,w:VIEW_W};
+ let lo=0,hi=plan.length-1;while(lo<hi){const m=Math.ceil((lo+hi)/2);if(plan[m].t<=t)lo=m;else hi=m-1}
+ const a=plan[lo],b=plan[Math.min(lo+1,plan.length-1)],q=clamp((t-a.t)/Math.max(.001,b.t-a.t),0,1);
+ return {x:a.x+(b.x-a.x)*q,y:a.y+(b.y-a.y)*q,w:a.w+(b.w-a.w)*q}
+}
 function cameraShotPoints(shots){const pts=[];for(const s of shots){const r=Math.max(8,(s.radius||6)+5);if(s.p)pts.push([...s.p,r]);for(const f of s.fragments||[])pts.push([f[1],f[2],r])}return pts}
 // Compare actual replay snapshots, not final world state. Ignore scripted
 // ambient platforms; include moving/damaged bodies, newly dropped and lit TNT.
 function cameraWorldPoints(current,previous,meta,seconds,clock){
  const old=new Map((previous||[]).map(p=>[p[0],p])),byId=new Map(meta.map(b=>[b.id,b])),pts=[];
  for(const p of current||[]){const [id,x,y,hp]=p,b=byId.get(id),a=old.get(id);if(!b||b.platform||b.motionY)continue;
- const moved=a&&!b.fixed&&Math.hypot(x-a[1],y-a[2])>Math.max(.65,seconds*12),damaged=a&&a[3]>hp;
- const lit=hp>0&&['tnt','tnt_wait'].includes(b.kind)&&Number.isFinite(b.tntFuseStart)&&clock>=b.tntFuseStart&&clock<(b.tntTriggerAt??b.tntDeadline??b.tntFuseStart+1)+.15;
+ const moved=a&&!b.fixed&&Math.hypot(x-a[1],y-a[2])>Math.max(b.kind==='core'?1.2:3.5,seconds*(b.kind==='core'?18:45)),damaged=a&&a[3]-hp>=2;
+ const lit=hp>0&&['tnt','tnt_wait'].includes(b.kind)&&Number.isFinite(b.tntFuseStart??b.tntTriggerAt)&&clock>=(b.tntFuseStart??b.tntTriggerAt)&&clock<(b.tntDeadline??(b.tntTriggerAt??b.tntFuseStart)+1)+.15;
  if((hp>0&&(moved||!a||lit))||damaged)pts.push([x,y,Math.hypot(b.w||24,b.h||24)/2]);
  }return pts
 }
@@ -188,7 +252,7 @@ function apply(d){const old=room;room=d;motionReceipt=performance.now();
   const fresh=!old||old.code!==d.code||old.combatMode!=='sync'||old.shots.some((n,i)=>n>d.shots[i]);
   const changed=fresh||old.round!==d.round;
   if(changed){closePanels();selection={};shotConfig=defaultShotConfig();stockOpen=false;stockKey='';drag=null;pan=null;syncReplay=null;notice=''}
-  if(d.replay&&(!syncReplay||syncReplay.data.id!==d.replay.id)){syncReplay={data:d.replay,pickups:replayPickups(d.replay),start:performance.now()-Math.min(d.replay.duration,Math.max(0,d.replayElapsed||0))*1000};drag=null;pan=null;stockOpen=false;selection={};shotConfig=defaultShotConfig();cameraSnap(home(d.seat))}
+  if(d.replay&&(!syncReplay||syncReplay.data.id!==d.replay.id)){syncReplay={data:d.replay,pickups:replayPickups(d.replay),start:performance.now()-Math.min(d.replay.duration,Math.max(0,d.replayElapsed||0))*1000+((d.replayElapsed||0)<.15?CAMERA_PREROLL*1000:0),cameraFrom:{...camera,w:VIEW_W}};drag=null;pan=null;stockOpen=false;selection={};shotConfig=defaultShotConfig()}
   if(!d.busy){if(syncReplay)cameraSnap(home(d.seat));syncReplay=null;}
   if(fresh&&d.myPlan){[angle,power,selection]=d.myPlan;selection={...selection};shotConfig={...defaultShotConfig(),...(d.myConfig||{}),unified:true,simple:true}}
   livePrevious=d.manualFlight&&old?.manualFlight?old:null;playing=null;overview=null;animFrame=null;rev=d.rev;
@@ -212,7 +276,7 @@ function apply(d){const old=room;room=d;motionReceipt=performance.now();
   if(fresh){resizeField();cameraSnap(home(d.seat))}else if((old.busy&&!d.busy)||(old.liveShots?.length&&!d.liveShots?.length)){cameraSnap(home(d.seat));notice=''}
   update();return;
  }
- livePrevious=null;if(!old||old.rev!==d.rev||old.turn!==d.turn){closePanels();if(!d.trial||!old||old.code!==d.code){selection={};shotConfig=defaultShotConfig();stockCat=d.trial?'弹道':'全部'}trialGhost=null;pan=null;stockOpen=false;stockKey="";}if(!d.trial&&!trialPage)localStorage.setItem('gh_siege_room',d.code);if(d.event&&d.event.id!==rev){overview=null;lastEvent=d.event;playing={event:d.event,start:performance.now(),handoff:null};animFrame=null;cameraSnap(home(d.event.side));drag=null}else if(old&&d.rev!==rev){playing=null;lastEvent=null;animFrame=null}if(!old||old.code!==d.code||(!playing&&d.rev!==rev))cameraSnap(home(playing?playing.event.side:d.seat));if(d.mode!=='classic'&&d.shots.every(n=>n===0)&&d.phase==='play'&&(!old||d.rev!==rev||old.phase==='wait'))overview={start:performance.now(),side:d.turn};rev=d.rev;$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}if(!old||old.code!==d.code){resizeField();cameraSnap(home(playing?playing.event.side:d.seat))}update()}
+ livePrevious=null;if(!old||old.rev!==d.rev||old.turn!==d.turn){closePanels();if(!d.trial||!old||old.code!==d.code){selection={};shotConfig=defaultShotConfig();stockCat=d.trial?'弹道':'全部'}trialGhost=null;pan=null;stockOpen=false;stockKey="";}if(!d.trial&&!trialPage)localStorage.setItem('gh_siege_room',d.code);if(d.event&&d.event.id!==rev){overview=null;lastEvent=d.event;playing={event:d.event,start:performance.now()+CAMERA_PREROLL*1000,handoff:null,cameraFrom:{...camera,w:VIEW_W}};animFrame=null;drag=null}else if(old&&d.rev!==rev){playing=null;lastEvent=null;animFrame=null}if(!old||old.code!==d.code||(!playing&&d.rev!==rev))cameraSnap(home(playing?playing.event.side:d.seat));if(d.mode!=='classic'&&d.shots.every(n=>n===0)&&d.phase==='play'&&(!old||d.rev!==rev||old.phase==='wait'))overview={start:performance.now(),side:d.turn};rev=d.rev;$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}if(!old||old.code!==d.code){resizeField();cameraSnap(home(playing?playing.event.side:d.seat))}update()}
 async function enter(type,extra={}){if(requesting)return;if(type!=='state')try{siegeAudio.unlock?.()}catch(e){console.warn('audio unavailable',e)}requesting=true;$('err').textContent='';try{room=null;rev=-1;playing=null;lastEvent=null;apply(await req(type,extra));poll()}catch(e){$('err').textContent=e.message}finally{requesting=false;update()}}
 const siegeBuffOptions=siegeV24Keys.map(k=>[k,siegeV24Names[k]]);
 $('siegeStandaloneBuffChoices').innerHTML=siegeBuffOptions.map(([k,n])=>'<label><input type="checkbox" data-siege-buff="'+k+'" checked> '+siegeIcon(k,18)+' '+n+'</label>').join('');
@@ -221,7 +285,7 @@ $('siegeStandaloneNone').onclick=()=>document.querySelectorAll('#siegeStandalone
 $('siegeStandaloneBack').onclick=()=>{$('siegeStandaloneSelect').open=false;$('siegeStandaloneSelect').scrollIntoView({block:'nearest'})};
 const siegeStandaloneAllowed=()=>Array.from(document.querySelectorAll('#siegeStandaloneBuffChoices input')).filter(x=>x.checked).map(x=>x.dataset.siegeBuff);
 $('trialStart').onclick=()=>enter('create',{trial:true});$('solo').onclick=()=>enter('create',{bot:true,allowedBuffs:siegeStandaloneAllowed()});$('host').onclick=()=>enter('create',{bot:false,allowedBuffs:siegeStandaloneAllowed()});$('join').onclick=()=>enter('join');$('resume').onclick=()=>enter('join',{code:saved});
-async function poll(){if(polling)return;polling=true;try{while(room){await new Promise(r=>setTimeout(r,room?.manualFlight?80:room?.combatMode==='live'?100:350));if(!room)break;if(requesting||playing||syncReplay&&performance.now()-syncReplay.start<syncReplay.data.duration*1000)continue;const code=room.code,epoch=manualEpoch;try{const draft=syncMode()&&!room.busy&&!room.ready?.[room.seat]&&room.phase==='play';const d=await req(draft?'draft':'state',draft?{round:room.round,angle,power,selection,config:shotConfig}:{});if(room?.code===code&&!requesting&&epoch===manualEpoch&&d.rev>=rev)apply(d)}catch(e){notice=e.message;update()}}}finally{polling=false}}
+async function poll(){if(polling)return;polling=true;try{while(room){await new Promise(r=>setTimeout(r,room?.manualFlight?80:room?.combatMode==='live'?100:350));if(!room)break;if(requesting||playing||syncReplay&&performance.now()-syncReplay.start<(syncReplay.data.duration+HANDOFF)*1000)continue;const code=room.code,epoch=manualEpoch;try{const draft=syncMode()&&!room.busy&&!room.ready?.[room.seat]&&room.phase==='play';const d=await req(draft?'draft':'state',draft?{round:room.round,angle,power,selection,config:shotConfig}:{});if(room?.code===code&&!requesting&&epoch===manualEpoch&&d.rev>=rev)apply(d)}catch(e){notice=e.message;update()}}}finally{polling=false}}
 if(trialPage){document.querySelector('header a').href=trialBack;$('host').classList.add('hidden');$('solo').classList.add('hidden');$('join').classList.add('hidden');$('resume').classList.add('hidden');$('code').classList.add('hidden');document.querySelector('label[for="code"]').classList.add('hidden');$('siegeStandaloneSelect').classList.add('hidden');setTimeout(()=>enter('create',{trial:true}),0);}else if(roomPrefix){$('trialLink').href='/trial/siege?from='+encodeURIComponent(roomPrefix+'/')}
 const liveMode=()=>!!room?.manualFlight||room?.combatMode==='live'||syncMode();
 const ownLive=()=>liveMode()?room.liveShots?.find(s=>s.side===room.seat):null;
@@ -438,7 +502,7 @@ function displayBuffs(e,t){const b=(e.buffsBefore||[{},{}]).map(x=>{const v={...
 function buffText(b){if(!b)return '';const counts={...b};if(b.attack)counts[b.attack]=1;return (room?.rulesVersion===24?siegeV24Keys:siegeActiveKeys).filter(k=>counts[k]>0).map(k=>itemNames[k]+' ×'+Number(counts[k])).join(' · ')}
 
 function rect(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x,y,w,h)}function line(x,y,xx,yy,col,w){ctx.strokeStyle=col;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(xx,yy);ctx.stroke()}
-function scene(t){const palette={overtop:['#d5b092','#f1dcc0','#b8a27d','#968c68','#66573e','#d1b980'],floating:['#a2bbd3','#e6e4d1','#9eada5','#8199a0','#536971','#b8c9c2'],floatingcenter:['#a8a4cc','#e7d7e2','#9a9bb1','#7c88a2','#515b75','#b6b9d1'],sky:['#8db5da','#dcebf3','#a4b5c5','#7d9aaf','#506776','#b4c4ca'],movingwall:['#a8b5b7','#dce0d3','#a0aaa1','#7a8b82','#53675c','#b5c6a3'],standard:['#9bc1cb','#e4ddae','#86a99d','#71957e','#4b5c43','#9db16d'],close:['#d9b18d','#f3dbaf','#b6a07b','#968b61','#725b42','#d3ba79'],far:['#8ea8cc','#dbe4ed','#9babc0','#788ca4','#4a596a','#b4c4ca'],peaks:['#83b7c6','#e1edf0','#8ca6ae','#6b8b97','#4e6264','#b9d3ca'],obstacle:['#a9b4bc','#dfdfcf','#9b9e91','#818c80','#555e53','#b9bf99'],fragments:['#a0bdab','#e0e6bd','#8ba894','#71937d','#4f634c','#aecb83']};const c=palette[room?.field]||palette.standard;const g=ctx.createLinearGradient(0,-420,0,416);g.addColorStop(0,c[0]);g.addColorStop(1,c[1]);ctx.fillStyle=g;ctx.fillRect(0,-1800,960,2400);ctx.fillStyle='#f5e4aa';ctx.beginPath();ctx.arc(810,69,35,0,Math.PI*2);ctx.fill();for(const [col,off] of [[c[2],0],[c[3],45]]){ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(0,416);for(let x=0;x<=960;x+=40)ctx.lineTo(x,318+off+Math.sin(x*.008+off)*37+Math.cos(x*.018)*17);ctx.lineTo(960,416);ctx.fill()}rect(0,416,960,1200,c[4]);rect(0,416,960,8,c[5]);for(let x=0;x<960;x+=32){rect(x+3,437+(x%7),16,3,'#68774f');rect(x+15,459,8,2,'#3f513c')}
+function scene(t){const palette={overtop:['#d5b092','#f1dcc0','#b8a27d','#968c68','#66573e','#d1b980'],floating:['#a2bbd3','#e6e4d1','#9eada5','#8199a0','#536971','#b8c9c2'],floatingcenter:['#a8a4cc','#e7d7e2','#9a9bb1','#7c88a2','#515b75','#b6b9d1'],sky:['#8db5da','#dcebf3','#a4b5c5','#7d9aaf','#506776','#b4c4ca'],movingwall:['#a8b5b7','#dce0d3','#a0aaa1','#7a8b82','#53675c','#b5c6a3'],standard:['#9bc1cb','#e4ddae','#86a99d','#71957e','#4b5c43','#9db16d'],close:['#d9b18d','#f3dbaf','#b6a07b','#968b61','#725b42','#d3ba79'],far:['#8ea8cc','#dbe4ed','#9babc0','#788ca4','#4a596a','#b4c4ca'],peaks:['#83b7c6','#e1edf0','#8ca6ae','#6b8b97','#4e6264','#b9d3ca'],obstacle:['#a9b4bc','#dfdfcf','#9b9e91','#818c80','#555e53','#b9bf99'],fragments:['#a0bdab','#e0e6bd','#8ba894','#71937d','#4f634c','#aecb83']};const c=palette[room?.field]||palette.standard;const g=ctx.createLinearGradient(0,-420,0,416);g.addColorStop(0,c[0]);g.addColorStop(1,c[1]);ctx.fillStyle=g;ctx.fillRect(0,Math.min(-1800,camera.y-2),960,Math.max(2400,600-Math.min(-1800,camera.y-2)));ctx.fillStyle='#f5e4aa';ctx.beginPath();ctx.arc(810,69,35,0,Math.PI*2);ctx.fill();for(const [col,off] of [[c[2],0],[c[3],45]]){ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(0,416);for(let x=0;x<=960;x+=40)ctx.lineTo(x,318+off+Math.sin(x*.008+off)*37+Math.cos(x*.018)*17);ctx.lineTo(960,416);ctx.fill()}rect(0,416,960,1200,c[4]);rect(0,416,960,8,c[5]);for(let x=0;x<960;x+=32){rect(x+3,437+(x%7),16,3,'#68774f');rect(x+15,459,8,2,'#3f513c')}
 if(room?.rise){const y=416-room.rise;for(const x of [0,660]){rect(x,y,300,room.rise,'#637b54');rect(x,y,300,8,'#a0b774');for(let j=x+12;j<x+300;j+=32)rect(j,y+25,15,3,'#839365')}}
 for(let s=0;s<2;s++){const [x,y]=launcher(s),a=(playing&&playing.event.side===s?playing.event.angle??42:room.liveShots?.find(z=>z.side===s)?.angle??(s===room?.seat?angle:42))*Math.PI/180,dir=s===0?1:-1;if(room.gunMotion?.[s]?.amplitude){rect(x-36,y+22,72,9,'#4e6b7d');rect(x-32,y+31,64,4,'#9bd8dc');line(x-22,y+38,x-16,y+49,'#c4f2ed',3);line(x+22,y+38,x+16,y+49,'#c4f2ed',3)}if(!room.gunMotion?.[s]?.amplitude){const floor=Math.min(416-((x<=300||x>=660)?(room.rise||0):0),...room.bodies.filter(b=>b.hp>0&&Math.abs(b.x-x)<b.w/2+26&&b.y-b.h/2>=y+24).map(b=>b.y-b.h/2));if(floor-y<80){rect(x-12,y+19,24,Math.max(0,floor-y-19),'#4f625c');rect(x-27,floor-6,54,6,'#344b46')}}ctx.fillStyle='#3c4740';ctx.beginPath();ctx.ellipse(x,y+19,28,7,0,0,7);ctx.fill();rect(x-23,y+7,46,13,s===0?'#b28a4b':'#6589a0');ctx.fillStyle=s===0?'#d9b271':'#a0c6d6';ctx.beginPath();ctx.arc(x,y,14,0,7);ctx.fill();line(x,y,x+dir*Math.cos(a)*35,y-Math.sin(a)*35,'#303f3a',13);line(x,y-2,x+dir*Math.cos(a)*35,y-Math.sin(a)*35-2,'#809188',4);if(s===room?.seat&&canFire()){ctx.strokeStyle='#fff1b2';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,31,0,7);ctx.stroke()}}
 }
@@ -474,33 +538,29 @@ function renderMap(blocks,items,f,now,full){
 function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(0,(now-(cameraTime||now))/1000));cameraTime=now;if(!room)return;
  let f=null,elapsed=0,actualRoom=null,replayTime=0;
  if(syncReplay){
-  const data=syncReplay.data,frames=data.frames,t=clamp((now-syncReplay.start)/1000,0,data.duration);replayTime=t;let i=Math.min(frames.length-1,Math.floor(t*10));while(i>0&&frames[i][0]>t)i--;while(i+1<frames.length&&frames[i+1][0]<=t)i++;
+  const data=syncReplay.data,frames=data.frames,rawSync=(now-syncReplay.start)/1000,t=clamp(rawSync,0,data.duration);replayTime=t;let i=Math.min(frames.length-1,Math.floor(t*10));while(i>0&&frames[i][0]>t)i--;while(i+1<frames.length&&frames[i+1][0]<=t)i++;
   const a=frames[i],b=frames[Math.min(i+1,frames.length-1)],q=clamp((t-a[0])/Math.max(.001,b[0]-a[0]),0,1),lerp=(x,y)=>x+(y-x)*q;
   const pos=new Map(b[1].map(x=>[x[0],x])),meta=new Map(data.meta.map(x=>[x.id,x]));
   const bodies=a[1].map(x=>{const y=pos.get(x[0])||x;return {...meta.get(x[0]),x:lerp(x[1],y[1]),y:lerp(x[2],y[2]),hp:x[3],burnRounds:a[6]?Number(a[6].includes(x[0])):meta.get(x[0])?.burnRounds}});
   const shots=a[2].map(x=>{const y=b[2].find(z=>z.side===x.side&&z.shotNo===x.shotNo)||x;return {...x,p:x.p&&y.p?[lerp(x.p[0],y.p[0]),lerp(x.p[1],y.p[1])]:x.p,fragments:x.fragments.map(z=>{const k=y.fragments.find(v=>v[0]===z[0])||z;return [z[0],lerp(z[1],k[1]),lerp(z[2],k[2])]}),age:lerp(x.age,y.age)}});
-  for(const x of shots){const id=room.code+':'+data.id+':'+x.side;siegeAudio.shot(id,x.attacks||[],t);payloadSounds(id,x.behaviorEvents,t);if(!x.engineering&&!x.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&x.hitAt!=null&&t>=x.hitAt)siegeAudio.hit(id,t-x.hitAt);for(const bounce of x.bounces||[])if(t>=bounce[2])siegeAudio.bounce(id+':'+bounce.join(':'),t-bounce[2])}for(const p of syncReplay.pickups)if(t>=p.at)siegeAudio.pickup(room.code+':'+data.id+':'+p.id,t-p.at,p.kind);
-  actualRoom=room;room={...room,bodies,items:data.items.filter(x=>a[4].includes(x.id)),launchers:a[3].map((v,j)=>v.map((x,k)=>lerp(x,b[3][j][k]))),gunMotion:[],liveShots:shots,mines:a[5]||[],motionTime:data.motionStart+t};motionReceipt=now;
+  for(const x of rawSync>=0?shots:[]){const id=room.code+':'+data.id+':'+x.side;siegeAudio.shot(id,x.attacks||[],t);payloadSounds(id,x.behaviorEvents,t);if(!x.engineering&&!x.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&x.hitAt!=null&&t>=x.hitAt)siegeAudio.hit(id,t-x.hitAt);for(const bounce of x.bounces||[])if(t>=bounce[2])siegeAudio.bounce(id+':'+bounce.join(':'),t-bounce[2])}for(const p of syncReplay.pickups)if(t>=p.at)siegeAudio.pickup(room.code+':'+data.id+':'+p.id,t-p.at,p.kind);
+  actualRoom=room;room={...room,bodies,items:data.items.filter(x=>a[4].includes(x.id)),launchers:a[3].map((v,j)=>v.map((x,k)=>lerp(x,b[3][j][k]))),gunMotion:[],liveShots:rawSync>=0?shots:[],mines:a[5]||[],motionTime:data.motionStart+t};motionReceipt=now;
   for(let j=0;j<2;j++){const hp=bodies.find(x=>x.side===j&&x.kind==='core')?.hp||0;$('hp'+j).style.width=clamp(hp,0,100)+'%';$('n'+j).textContent=(room.seat===j?'你':room.players[j]||'对手')+' · '+Math.round(hp);$('s'+j).textContent=(room.ammo===0?'∞':Math.max(0,(room.ammo??6)-room.shots[j]))+' 发';}
  }
- if(liveMode()&&!playing){const shots=liveDraw(now),pts=cameraShotPoints(shots);
-  if(syncReplay){const data=syncReplay.data,frames=data.frames,t=replayTime;let j=Math.min(frames.length-1,Math.floor(t*10));while(j>0&&frames[j][0]>t)j--;while(j+1<frames.length&&frames[j+1][0]<=t)j++;const a=frames[Math.max(0,j-1)],b=frames[Math.min(frames.length-1,j+1)];pts.push(...cameraWorldPoints(room.bodies.map(b=>[b.id,b.x,b.y,b.hp]),a[1],room.bodies,Math.max(.01,t-a[0]),data.motionStart+t),...cameraWorldPoints(b[1],a[1],room.bodies,Math.max(.01,b[0]-a[0]),data.motionStart+t));}
-  else if(shots.length&&livePrevious){const a=livePrevious.bodies.map(b=>[b.id,b.x,b.y,b.hp]),b=room.bodies.map(b=>[b.id,b.x,b.y,b.hp]);pts.push(...cameraWorldPoints(b,a,room.bodies,.1,room.motionTime||0));}
-  for(const s of shots){pts.push(...cameraBlastPoints(s.behaviorEvents,s.age));if(!s.p&&!s.fragments.length&&s.impact&&s.hitAt!=null&&s.age-s.hitAt<.65)pts.push([...s.impact,s.blastRadius||52])}
-  cameraGroup(pts,dt)
+ if(liveMode()&&!playing){
+  if(syncReplay){const data=syncReplay.data,raw=(now-syncReplay.start)/1000;syncReplay.cameraPlan??=cameraPlan(data,data.meta,true);
+   if(raw<0)cameraHandoff({from:syncReplay.cameraFrom,to:cameraPlanAt(syncReplay.cameraPlan,0)},1+raw/CAMERA_PREROLL);
+   else if(raw<=data.duration)cameraSnap(cameraPlanAt(syncReplay.cameraPlan,raw));
+   else{syncReplay.handoff??={from:{...camera,w:VIEW_W},to:home(room.seat)};cameraHandoff(syncReplay.handoff,(raw-data.duration)/HANDOFF)}
+  }else{const shots=liveDraw(now),pts=cameraShotPoints(shots);if(shots.length&&livePrevious){const a=livePrevious.bodies.map(b=>[b.id,b.x,b.y,b.hp]),b=room.bodies.map(b=>[b.id,b.x,b.y,b.hp]);pts.push(...cameraWorldPoints(b,a,room.bodies,.1,room.motionTime||0))}for(const s of shots)pts.push(...cameraBlastPoints(s.behaviorEvents,s.age));cameraGroup(pts,dt,cameraLiveForecast(shots,livePrevious?.liveShots))}
  }
- if(playing){const ev=playing.event;elapsed=(now-playing.start)/1000;const soundId=room.code+':'+ev.id+':'+ev.side;siegeAudio.shot(soundId,eventAttacks(ev),elapsed);payloadSounds(soundId,ev.behaviorEvents,elapsed);if(!ev.engineering&&!ev.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&ev.hitAt!=null&&elapsed>=ev.hitAt)siegeAudio.hit(soundId,elapsed-ev.hitAt);for(const b of ev.bounces||[])if(elapsed>=b[2])siegeAudio.bounce(soundId+':'+b.join(':'),elapsed-b[2]);for(const p of eventPickups(ev))if(elapsed>=p.at)siegeAudio.pickup(soundId+':'+p.id,elapsed-p.at,p.kind);for(const b of ev.fragmentHits||[])if(elapsed>=b[2])siegeAudio.hit(soundId+':fragment:'+b.join(':'),elapsed-b[2]);const frames=ev.frames;let i=0;while(i+1<frames.length&&frames[i+1][0]<=elapsed)i++;const a=frames[i],b=frames[Math.min(i+1,frames.length-1)],q=clamp((elapsed-a[0])/Math.max(.001,b[0]-a[0]),0,1);
+ if(playing){const ev=playing.event,rawElapsed=(now-playing.start)/1000;elapsed=Math.max(0,rawElapsed);const soundId=room.code+':'+ev.id+':'+ev.side;if(rawElapsed>=0)siegeAudio.shot(soundId,eventAttacks(ev),elapsed);payloadSounds(soundId,ev.behaviorEvents,elapsed);if(!ev.engineering&&!ev.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&ev.hitAt!=null&&elapsed>=ev.hitAt)siegeAudio.hit(soundId,elapsed-ev.hitAt);for(const b of ev.bounces||[])if(elapsed>=b[2])siegeAudio.bounce(soundId+':'+b.join(':'),elapsed-b[2]);for(const p of eventPickups(ev))if(elapsed>=p.at)siegeAudio.pickup(soundId+':'+p.id,elapsed-p.at,p.kind);for(const b of ev.fragmentHits||[])if(elapsed>=b[2])siegeAudio.hit(soundId+':fragment:'+b.join(':'),elapsed-b[2]);const frames=ev.frames;let i=0;while(i+1<frames.length&&frames[i+1][0]<=elapsed)i++;const a=frames[i],b=frames[Math.min(i+1,frames.length-1)],q=clamp((elapsed-a[0])/Math.max(.001,b[0]-a[0]),0,1);
  f=[elapsed,a[1]&&b[1]?[a[1][0]+(b[1][0]-a[1][0])*q,a[1][1]+(b[1][1]-a[1][1])*q]:a[1],a[2].map(p=>{const n=b[2].find(z=>z[0]===p[0])||p;return [p[0],p[1]+(n[1]-p[1])*q,p[2]+(n[2]-p[2])*q,p[3]]}),(a[3]||[]).map(p=>{const next=(b[3]||[]).find(z=>z[0]===p[0]);return next?[p[0],p[1]+(next[1]-p[1])*q,p[2]+(next[2]-p[2])*q]:p}),a[4]&&b[4]?a[4]+(b[4]-a[4])*q:(a[4]||ev.radius),a[5]];animFrame=f;
- if(ev.hitAt!==null&&elapsed>=ev.hitAt)f[1]=null;
+ if(rawElapsed<0){f[1]=null;f[3]=[]}else if(ev.hitAt!==null&&elapsed>=ev.hitAt)f[1]=null;
  if(!playing.handoff&&elapsed<ev.duration+.12){
-  const pts=cameraShotPoints([{p:f[1],fragments:f[3],radius:f[4]}]);
-  const prev=frames[Math.max(0,i-1)],next=frames[Math.min(frames.length-1,i+1)];
-  pts.push(...cameraWorldPoints(f[2],prev[2],room.bodies,Math.max(.01,elapsed-prev[0]),(ev.motionStart||0)+elapsed),...cameraWorldPoints(next[2],prev[2],room.bodies,Math.max(.01,next[0]-prev[0]),(ev.motionStart||0)+elapsed));
-  pts.push(...cameraBlastPoints(ev.behaviorEvents,elapsed));
-  for(const [x,y,t] of ev.fragmentHits||[])if(elapsed>=t&&elapsed-t<.55)pts.push([x,y,ev.blastRadius||52]);
-  if(ev.impact&&ev.hitAt!=null&&elapsed>=ev.hitAt&&elapsed-ev.hitAt<.65)pts.push([...ev.impact,ev.blastRadius||52]);
-  for(const z of ev.teleports||[])if(elapsed>=z[6]&&elapsed<=(z[8]??z[6])+.4)pts.push([z[4],Math.min(z[5],(z[7]??z[5])+230*(elapsed-z[6])**2),30]);
-  cameraGroup(pts,dt)
+  playing.cameraPlan??=cameraPlan(ev,room.bodies);
+  if(rawElapsed<0)cameraHandoff({from:playing.cameraFrom,to:cameraPlanAt(playing.cameraPlan,0)},1+rawElapsed/CAMERA_PREROLL);
+  else cameraSnap(cameraPlanAt(playing.cameraPlan,elapsed));
  }
  if(elapsed>=ev.duration+.12){
   if(!playing.handoff){playing.handoff={from:{...camera,w:VIEW_W},to:room.phase==='over'?{...camera,w:VIEW_W}:home(room.turn)};update()}
