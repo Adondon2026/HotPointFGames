@@ -393,10 +393,11 @@ def _siege_event_for(config,k):
 
 def _siege_config(config=None):
     if config is None:config={}
-    if not isinstance(config,dict) or set(config)-{'build','fuseMode','fuseTime','splitMode','splitTime','parentEnd','scopes','childFuseTime','diveTime','copyMode','childSplit','blackholeMode','simple','unified','triggers','splitPattern','burstMode'}:raise ValueError('炮弹配置无效')
-    out={'build':config.get('build','attack'),'fuseMode':config.get('fuseMode','strict'),'fuseTime':config.get('fuseTime',3),'splitMode':config.get('splitMode','air'),'splitTime':config.get('splitTime',1.5),'parentEnd':config.get('parentEnd','continue'),'scopes':config.get('scopes',{}),'childFuseTime':config.get('childFuseTime',0),'diveTime':config.get('diveTime',1.2),'copyMode':config.get('copyMode','bounce'),'childSplit':config.get('childSplit',False),'blackholeMode':config.get('blackholeMode','fixed'),'simple':config.get('simple',False),'unified':config.get('unified',False),'triggers':config.get('triggers',{}),'splitPattern':config.get('splitPattern','fan'),'burstMode':config.get('burstMode','serial')}
+    if not isinstance(config,dict) or set(config)-{'build','fuseMode','fuseTime','splitMode','splitTime','parentEnd','scopes','childFuseTime','diveTime','copyMode','childSplit','blackholeMode','simple','unified','triggers','splitPattern','burstMode','manual','delayedSplit'}:raise ValueError('炮弹配置无效')
+    out={'build':config.get('build','attack'),'fuseMode':config.get('fuseMode','strict'),'fuseTime':config.get('fuseTime',3),'splitMode':config.get('splitMode','air'),'splitTime':config.get('splitTime',1.5),'parentEnd':config.get('parentEnd','continue'),'scopes':config.get('scopes',{}),'childFuseTime':config.get('childFuseTime',0),'diveTime':config.get('diveTime',1.2),'copyMode':config.get('copyMode','bounce'),'childSplit':config.get('childSplit',False),'blackholeMode':config.get('blackholeMode','fixed'),'simple':config.get('simple',False),'unified':config.get('unified',False),'triggers':config.get('triggers',{}),'splitPattern':config.get('splitPattern','fan'),'burstMode':config.get('burstMode','serial'),'manual':config.get('manual',False),'delayedSplit':config.get('delayedSplit',False)}
     if out['build'] not in ('safe','attack') or out['fuseMode'] not in ('strict','either','delay') or out['splitMode'] not in ('air','hit','timer','bounce','expire') or out['parentEnd'] not in ('continue','vanish','explode'):raise ValueError('炮弹行为无效')
     if type(out['unified']) is not bool or not isinstance(out['triggers'],dict) or any(k not in _SIEGE_PAYLOADS or v not in _SIEGE_EVENT_KINDS for k,v in out['triggers'].items()) or out['splitPattern'] not in ('fan','down','radial') or out['burstMode'] not in ('serial','volley'):raise ValueError('触发设置无效')
+    if type(out['manual']) is not bool or type(out['delayedSplit']) is not bool:raise ValueError('操纵配置无效')
     if type(out['simple']) is not bool:raise ValueError('炮弹配置无效')
     if out['blackholeMode'] not in ('fixed','attached'):raise ValueError('引力场行为无效')
     if out['copyMode'] not in ('bounce','expire','trail','chaos','orbit') or type(out['childSplit']) is not bool:raise ValueError('复制行为无效')
@@ -497,7 +498,7 @@ def _siege_trial_reset(r,mode=None):
     finally:random.setstate(rng)
     _siege_trial_stock(r)
 
-def _siege_trial_fire(r,angle,power,selection,force=False,config=None):
+def _siege_trial_steps(r,angle,power,selection,force=False,config=None,control=None):
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
     selected={}
     for k,n in selection.items():
@@ -513,16 +514,19 @@ def _siege_trial_fire(r,angle,power,selection,force=False,config=None):
     # Target defense enables real damage-reduction comparisons without enemy fire.
     r['armed'][1]={k:selected[k] for k in _SIEGE_DEFENSE if k in selected}
     chosen={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
-    for _ in _siege_fire_steps(r,angle,power,chosen,force=force,config=config):pass
+    yield from _siege_fire_steps(r,angle,power,chosen,force=force,config=config,control=control)
     _siege_trial_stock(r)
     r['armed']=[{},{}]
     r['negativePending'][0]={}
+
+def _siege_trial_fire(r,angle,power,selection,force=False,config=None):
+    for _ in _siege_trial_steps(r,angle,power,selection,force,config):pass
 
 def _siege_fire(r,angle,power,selection=None,force=False,config=None):
     if r.get('trial'):return _siege_trial_fire(r,angle,power,selection or {},force,config)
     for _ in _siege_fire_steps(r,angle,power,selection,force=force,config=config):pass
 
-def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=False,config=None):
+def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=False,config=None,control=None):
     config=_siege_config(config)
     unified=config['unified'];trial=bool(r.get('trial'));trial_damage=0.
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
@@ -568,6 +572,15 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for k in attack_counts:r['buffs'][side][k]-=1
         for k in defense_counts:r['buffs'][1-side][k]-=1
     spec=_siege_compile_spec(attack_counts,config);root_counts=spec['root'];child_counts=spec['child']
+    manual=bool(config.get('manual') and not _siege_robot(r,side))
+    if control is not None:control.update(left={k:attack_counts[k] for k in _SIEGE_MANUAL_KEYS if attack_counts.get(k)},levels={k:attack_counts[k] for k in _SIEGE_MANUAL_KEYS if attack_counts.get(k)},pending=[])
+    motion_root={k:v for k,v in root_counts.items() if not manual or k not in _SIEGE_MANUAL_KEYS}
+    motion_child={k:v for k,v in child_counts.items() if not manual or k not in _SIEGE_MANUAL_KEYS}
+    def maneuver(k,vx,vy):
+        speed=max(280.,math.hypot(vx,vy))
+        if k=='pingpong':return (-math.copysign(max(300.,abs(vx)),vx if abs(vx)>1 else direction),vy*.4)
+        if k=='dive':return (0.,max(400.,speed))
+        return (vx*.45,-max(350.,speed))
     # A collision-triggered modifier also supplies the collision opportunity.
     # Extra bounce charges belong to source shells, never to their descendants.
     if config.get('simple') and not unified:
@@ -639,7 +652,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             sh.update(x=x,y=y,radius=radius+24+6*n)
         return [dict(sh) for sh in shields.values() if sh['left']>0]
     def sample(t,p):
-        return {'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']]}
+        return {'controls':dict(control['left']) if control is not None and ((p is not None and main_stop is None) or any(f['live'] and t>=f.get('bornAt',0) and not f.get('stop') for f in fragments)) else {},'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']]}
     clone_left=0 if unified else attack_counts.get('clone',0)
     def spawn_clone(x,y,shell_kind):
         nonlocal clone_left
@@ -828,7 +841,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     # Shared payload dispatch. Event counts are independent of the object budget;
     # a full budget never prevents a later valid event from contributing to refunds.
     event_counts={k:0 for k in _SIEGE_PAYLOADS};generated_counts={k:0 for k in _SIEGE_OBJECT_LIMITS}
-    triggered=set();main_apex=False;main_rising=False;main_launched=False
+    triggered=set();main_apex=False;main_rising=False;main_launched=False;main_split_at=None
     def generate_payload(k,n,x,y,target=None):
         nonlocal last_hit,settled
         event_counts[k]+=1
@@ -874,7 +887,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             generated_counts[k]+=1
         if k in ('wooddrop','stonedrop','mine','clone','blackhole') and generated_counts[k]:triggered.add(k)
     def dispatch_event(event,x,y,svx,svy,parent=None,target=None):
-        nonlocal split_done,impact,hit_at,last_hit,px,py,teleport_target
+        nonlocal split_done,impact,hit_at,last_hit,px,py,teleport_target,main_split_at
         if not unified:return False
         counts=root_counts if parent is None or parent.get('kind') in ('repeat','clone') else child_counts
         scale=parent.get('scale',1.) if parent else 1.
@@ -892,7 +905,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             elif k=='ignite':
                 event_counts[k]+=1;ignite_at(x,y,55+12*counts[k],counts[k]);triggered.add(k)
         n=counts.get('splitshot',0)
-        if not n or _siege_event_for(config,'splitshot')!=event or (split_done if parent is None else parent.get('splitDone',False)):return False
+        split_event=_siege_event_for(config,'splitshot')
+        if not n or (split_event!=event and not (event=='bounceRelease' and split_event=='bounce')) or (split_done if parent is None else parent.get('splitDone',False)):return False
+        if event=='bounce' and config['delayedSplit']:
+            if parent is None:
+                if main_split_at is None:main_split_at=t+.10
+            elif 'splitAt' not in parent:parent['splitAt']=t+.10
+            return False
+        if event=='bounceRelease':event='bounce'
         if len(fragments)+n>120:return False
         if parent is None:split_done=True
         else:parent['splitDone']=True
@@ -1022,13 +1042,21 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         _siege_gun_gravity(r,dt)
         active=max((abs(b['vx'])+abs(b['vy']) for b in bodies if b['hp']>0),default=0)
         settled=settled+1 if active<14 else 0
-    if live is not None:
-        live['physicsFns'][side]=integrate
+    if live is not None:live['physicsFns'][side]=integrate
+    if live is not None or control is not None:
         t=0.;yield sample(0,[round(px,1),round(py,1)])
     # Honor the upstream 20-bounce cap: high stack counts need longer than 10s flight.
     flight_limit=10+max(0,root_counts.get('bounce',0)-5)*.8
     for step in range(1,int((flight_limit+14)*60)+1):
         t=step*dt
+        if control is not None and control.get('pending'):
+            for k in control['pending']:
+                if impact is None and main_stop is None:
+                    vx,vy=maneuver(k,vx,vy);main_dived=k=='dive';behavior_events.append(['maneuver',round(t,3),round(px,1),round(py,1),k])
+                for f in fragments:
+                    if f['live'] and t>=f.get('bornAt',0) and not f.get('stop'):
+                        f['vx'],f['vy']=maneuver(k,f['vx'],f['vy']);f['dived']=k=='dive';behavior_events.append(['maneuver',round(t,3),round(f['x'],1),round(f['y'],1),k])
+            control['pending'].clear()
         _siege_motion(r,motion_start+t)
         if live is not None and not unified and shield_left and impact is None and main_stop is None:
             sh=live['shotShields'].setdefault(side,dict(left=shield_left));sh.update(x=px,y=py,radius=radius+24+6*attack_counts['shotshield'])
@@ -1054,8 +1082,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if split_now('timer',px,py,vx,vy) and config['parentEnd']!='continue':finish_main(px,py,explode=config['parentEnd']=='explode')
         if impact is None and main_stop is None and fuse and fuse_mode!='delay' and t>=fuse_time:finish_main(px,py)
         if unified and impact is None and main_stop is None:
-            if vy<0:main_rising=True
-            if main_rising and vy>=0 and not main_apex:
+            if main_split_at is not None and t>=main_split_at:
+                main_split_at=None;dispatch_event('bounceRelease',px,py,vx,vy)
+            if impact is None and vy<0:main_rising=True
+            if impact is None and main_rising and vy>=0 and not main_apex:
                 main_apex=True;dispatch_event('apex',px,py,vx,vy)
         if impact is None and main_stop is None:
             if arc_buddies_pending and t>=.15:
@@ -1071,12 +1101,12 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 split_done=True
                 for i,delta in enumerate([v for j in range(1,attack_counts['splitshot']+1) for v in (-100*j,100*j)]):
                     fragments.append(dict(id=i,x=px,y=py,vx=vx+direction*delta,vy=vy+delta*.35,live=True,groundLeft=child_counts.get('bounce',0),passed=set(),bornAt=t,scale=.42,kind='split',travel=0.,splitDone=True,fuseAt=child_deadline(t)))
-            was_dived=main_dived;vx,vy,main_dived=_siege_motion_delta(vx,vy,px,py,t,dt,root_counts,config,side,bodies,main_dived)
+            was_dived=main_dived;vx,vy,main_dived=_siege_motion_delta(vx,vy,px,py,t,dt,motion_root,config,side,bodies,main_dived)
             if main_dived and not was_dived:behavior_events.append(['dive',round(t,3),round(px,1),round(py,1),root_counts.get('dive',0)])
             oldx,oldy=px,py;px+=vx*dt;py+=vy*dt
             ox,oy=_siege_path_offset(t,root_counts,negatives);ex,ey=_siege_path_offset(t-dt,root_counts,negatives)
             px+=ox-ex;py+=oy-ey;px,py,vx,vy=deflect(px,py,vx,vy,radius);flight_distance+=math.hypot(px-oldx,py-oldy)
-            vy+=((_siege_gravity({},negatives) if main_dived and config.get('simple') else _siege_gravity(root_counts,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;vx+=wind*dt
+            vy+=((_siege_gravity({},negatives) if main_dived and config.get('simple') else _siege_gravity(motion_root,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;vx+=wind*dt
             if negatives.get('fart') and step%9==0:puffs.append([round(px,1),round(py,1),round(t,3)])
             rr=_siege_v20_radius(radius,flight_distance,negatives);draw_radius=rr;vanish_scale=_siege_v20_vanish(flight_distance,negatives)
             target=None
@@ -1141,14 +1171,17 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 continue
             if f.get('kind')=='repeat' and config['splitMode']=='timer' and t-f['bornAt']>=config['splitTime']:
                 if split_now('timer',f['x'],f['y'],f['vx'],f['vy'],f) and config['parentEnd']!='continue':finish_fragment(f,f['x'],f['y'],explode=config['parentEnd']=='explode');continue
+            if unified and f.get('splitAt') is not None and t>=f['splitAt']:
+                f.pop('splitAt')
+                if dispatch_event('bounceRelease',f['x'],f['y'],f['vx'],f['vy'],f):continue
             age=t-f.get('bornAt',0)
             if secondary_left and f.get('kind') in ('split','larpa') and not f.get('secondaryDone') and age>=.55:
                 f['secondaryDone']=True;secondary_left-=spawn_children(f['x'],f['y'],f['vx'],f['vy'],min(2,secondary_left),'fan',f,terminal=True)
-            f['vx'],f['vy'],f['dived']=_siege_motion_delta(f['vx'],f['vy'],f['x'],f['y'],age,dt,counts,config,side,bodies,f.get('dived',False))
+            f['vx'],f['vy'],f['dived']=_siege_motion_delta(f['vx'],f['vy'],f['x'],f['y'],age,dt,(motion_child if f.get('kind')=='split' else motion_root) if manual else counts,config,side,bodies,f.get('dived',False))
             ox,oy=f['x'],f['y'];f['x']+=f['vx']*dt;f['y']+=f['vy']*dt
             a1,b1=_siege_path_offset(age,counts,negatives);a0,b0=_siege_path_offset(age-dt,counts,negatives)
             f['x']+=a1-a0;f['y']+=b1-b0;f['travel']=f.get('travel',0)+math.hypot(f['x']-ox,f['y']-oy)
-            f['vy']+=((_siege_gravity({},negatives) if f.get('dived') and config.get('simple') else _siege_gravity(counts,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;f['vx']+=wind*dt
+            f['vy']+=((_siege_gravity({},negatives) if f.get('dived') and config.get('simple') else _siege_gravity((motion_child if f.get('kind')=='split' else motion_root) if manual else counts,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;f['vx']+=wind*dt
             if 'orbit' in f:
                 if impact is None and main_stop is None:
                     ang=f['orbit']+age*5;f['x']=px+math.cos(ang)*(radius+22);f['y']=py+math.sin(ang)*(radius+22);f['vx']=vx-math.sin(ang)*(radius+22)*5;f['vy']=vy+math.cos(ang)*(radius+22)*5
@@ -1236,8 +1269,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     b['vx']=max(-350,min(350,b['vx']));b['vy']=max(-350,min(350,b['vy']))
         if live is None and last_hit is not None:integrate()
         if live is None and step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
-        if live is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
+        if live is not None or control is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
         if impact is not None and not drop_queue and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=2.7):break
+    if control is not None:
+        for k,n in control['left'].items():r['buffs'][side][k]+=n
     if unified:
         for k in _SIEGE_PAYLOADS:
             n=attack_counts.get(k,0)
@@ -1275,7 +1310,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             else:core.update(x=x,y=y,vx=0.,vy=0.)
             record[5]=y;record[8]=round(t,3)
             if live is None and j%4==0:frames.append(snap(t,None))
-            if live is not None:yield sample(t,None)
+            if live is not None or control is not None:yield sample(t,None)
             if y>=support()-.01:break
         if kind=='coreteleport':
             core.pop('fixed',None);core.pop('teleportFall',None)
@@ -1286,6 +1321,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             for j in range(1,121):
                 t+=dt;integrate()
                 if j%4==0:frames.append(snap(t,None))
+                if control is not None:yield sample(t,None)
                 if j>=18 and settled>=18:break
         for b in bodies:b['vx']=b['vy']=0.
     frames.append(snap(t,None))
@@ -1303,8 +1339,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if r['turn']==0:r['windPair']=_siege_weather(r.get('windLevel','off'))
         r['wind']=r.get('windPair',0)*(1 if r['turn']==0 else -1)
     r['event']={'id':r['rev'],'side':side,'generatedCounts':generated_counts if unified else {},'payloadEvents':event_counts if unified else {},'trialDamage':round(trial_damage,1),'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':actual_angle,'requestedAngle':angle,'angleOffset':angle_offset,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'engineering':engineering,'behaviorEvents':behavior_events,'fireArcs':arc_events,'minesBefore':mines_before,'mineEvents':mine_events,'holePaths':hole_paths,'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(x) for x in r.get('launchers',[])],'gunMotion':r.get('gunMotion',[])}
-    r['until']=time.time()+t+.35
+    r['until']=time.time()+(.35 if control is not None else t+.35)
 
+_SIEGE_MANUAL_KEYS=('pingpong','dive','antigrav')
 _SIEGE_LIVE_DT=1/60
 
 def _siege_live_runtime(r,now=None):
