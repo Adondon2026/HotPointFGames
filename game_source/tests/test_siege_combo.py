@@ -217,6 +217,7 @@ try:
     assert not trial_api(dict(type='state',key=key,code=normal['code']))[1]['ok']
     assert q('leave')['ok'] and code not in g._SIEGE_ROOMS
     assert not q('state')['ok']
+    assert q('leave')['ok'] and code not in g._SIEGE_ROOMS
     assert http('/')[0]==200
 finally:
     server.shutdown();server.server_close()
