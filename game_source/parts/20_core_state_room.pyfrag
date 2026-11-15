@@ -7,7 +7,7 @@ def fresh_state():
         "players": [],
         "settings": {
             "cardLives": 3,
-            "siegeItemCount": 13,
+            "siegeItemCount": 13, "siegeRulesVersion": 23, "siegeTheme": "classic", "siegeRarities": {},
             "siegeCombatMode": "turn", "siegeReload": 15, "siegeBuffMode": "auto", "siegeAmmo": 0, "siegeMode": "random", "siegeWind": "medium", "siegeAllowedBuffs": None, "siegeStackCaps": {}, "siegeFortStrength": "normal",
             "diceStart": 5,
             "onesWild": True,
