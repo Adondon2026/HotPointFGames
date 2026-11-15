@@ -1984,7 +1984,7 @@ def _siege_sync_compute(r,rt,now):
     w['rev']+=1;w['reloadSeconds']=r.get('reloadSeconds',15);w['event']=None
     duration=frames[-1][0];w['until']=time.time()+duration+.35
     r.clear();r.update(w)
-    rt.update(replay={'id':r['rev'],'duration':duration,'frames':frames,'meta':list(meta.values()),'items':list(items.values()),'pickups':[{**p,'at':round(p['at']-max(0,now-w['motionEpoch']),3)} for p in engine.get('pickupEvents',[])],'motionStart':max(0,now-w['motionEpoch'])},until=r['until'],notice=notices)
+    rt.update(replay={'id':r['rev'],'duration':duration,'frames':frames,'meta':list(meta.values()),'items':list(items.values()),**({'pickups':[{**p,'at':round(p['at']-max(0,now-w['motionEpoch']),3)} for p in engine.get('pickupEvents',[])]} if _siege_v24(w) else {}),'motionStart':max(0,now-w['motionEpoch'])},until=r['until'],notice=notices)
 
 def _siege_sync_tick(r,rt,now=None):
     now=time.time() if now is None else now
