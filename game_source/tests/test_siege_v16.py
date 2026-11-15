@@ -17,7 +17,7 @@ except ValueError:pass
 else:raise AssertionError('blocked rear muzzle')
 assert r['buffs'][0]['big']==5 and r['shots']==[0,0]
 # Real inherited modifiers; split children do not recursively split.
-r=new();r['buffs'][0].update(big=2,power=2,splitshot=1,bounce=1,blackhole=1,wooddrop=1,through=1);g._siege_fire(r,42,43,{k:n for k,n in r['buffs'][0].items() if n});e=r['event'];assert e['fragmentRadius']==18 and any(len(f[3])==2 for f in e['frames']);assert len(e['holes'])>=2 and len(e['drops'])>=2,(e['holes'],e['drops']);assert e['duration']>=max(h[2]+2 for h in e['holes'])-.02
+r=new();r['buffs'][0].update(big=2,power=2,splitshot=1,bounce=1,blackhole=1,wooddrop=1,through=1);g._siege_fire(r,42,43,{k:n for k,n in r['buffs'][0].items() if n});e=r['event'];assert e['fragmentRadius']==18 and any(len(f[3])==2 for f in e['frames']);assert len(e['holes'])>=2 and len(e['drops'])==1,(e['holes'],e['drops']);assert e['duration']>=max(h[2]+2 for h in e['holes'])-.02
 # Separate teleports retain hp, target safe full-map column and legacy stacked charges normalize to one, then consume it.
 for kind in ('gunteleport','coreteleport'):
  r=new();r['buffs'][0][kind]=3;core=next(b for b in r['bodies'] if b['side']==0 and b['kind']=='core');core['hp']=73;old=g._siege_launcher(0,r) if kind=='gunteleport' else (core['x'],core['y']);g._siege_fire(r,42,30,{kind:1});e=r['event'];assert e['teleports'] and e['teleports'][0][0]==kind and 45<=e['teleports'][0][4]<=915;assert r['buffs'][0][kind]==0 and 0<core['hp']<=73;assert old!=(g._siege_launcher(0,r) if kind=='gunteleport' else (core['x'],core['y']))
@@ -27,4 +27,4 @@ for n in (0,1,3):
  q=copy.deepcopy(base);q['buffs'][0]['blackhole']=n;g._siege_fire(q,42,30,{'blackhole':n} if n else {});ev=q['event'];bb=next(c for c in q['bodies'] if c['id']==b['id']);assert bb['hp']>0;results.append(bb['x']);
  if n:assert len(ev['holes'])==1 and ev['duration']>=ev['holes'][0][2]+2-.02
 assert results[2]>results[1]>results[0],results
-print('v0.16: 22 giant launch checks, block/core bounce, safe blocked muzzle, inherited fragments, teleport, blackhole attraction PASS')
+print('v0.16: 22 giant launch checks, block/core bounce, safe blocked muzzle, inherited fragments, shared material budget, teleport, blackhole attraction PASS')

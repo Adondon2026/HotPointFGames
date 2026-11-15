@@ -50,5 +50,5 @@ const siegeAudio=(()=>{
  const musicSelect=document.getElementById('siegeMusic'),effectsToggle=document.getElementById('siegeEffects');musicSelect.value=mode;effectsToggle.checked=effects;
  musicSelect.addEventListener('change',()=>{mode=musicSelect.value;localStorage.setItem('siege_bgm',mode);started=ready();music()});effectsToggle.addEventListener('change',()=>{effects=effectsToggle.checked;localStorage.setItem('siege_sfx',effects?'on':'off');unlock()});
  for(const event of ['pointerdown','click','touchend'])document.addEventListener(event,()=>{if(document.body.classList.contains('in-battle'))unlock()},{passive:true});document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else if(started&&document.body.classList.contains('in-battle'))music()});window.addEventListener('pagehide',stop);
- return {shot,hit,bounce,pickup,stop:()=>{stop();started=false;seen.clear()}};
+ return {unlock,enterBattle:()=>{seen.clear();if(started)music()},shot,hit,bounce,pickup,stop:()=>{stop();started=false;seen.clear()}};
 })();

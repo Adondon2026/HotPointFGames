@@ -212,8 +212,8 @@ def _room_siege(data):
         if not live and (r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']):return {'ok':False,'error':'当前不能发射，请等待回合'}
         if type(a) not in (int,float) or type(power) not in (int,float) or not (5<=a<=175 and 15<=power<=100):return {'ok':False,'error':'角度或力度无效'}
         try:
-            if live:_siege_live_start(r,rt,seat,a,power,data.get('selection'),now)
-            else:_siege_fire(r,a,power,data.get('selection'),data.get('force') is True)
+            if live:_siege_live_start(r,rt,seat,a,power,data.get('selection'),now,config=data.get('config'))
+            else:_siege_fire(r,a,power,data.get('selection'),data.get('force') is True,data.get('config'))
         except ValueError as e:return {'ok':False,'error':str(e)}
         _settle_match();save_state()
     elif kind=='rematch':
@@ -244,15 +244,33 @@ def _room_route(self,post=False):
     self.connection.settimeout(8)
     parsed=urlparse(self.path);path=parsed.path;match=re.fullmatch(r'/r/([A-Fa-f0-9]{6})(/.*)?',path)
     if not post and path=='/':return self.reply(HUB_PAGE,200,'text/html; charset=utf-8')
-    if not post and path=='/api/rooms':
-        with LOCK:return self.reply({'rooms':_room_list()})
-    if post and path=='/api/rooms':
+    # Private trial routes share one handler; legacy trial links remain valid.
+    if not post and (path=='/trial/siege' or (path=='/siege' and parse_qs(parsed.query).get('trial')==['1'])):
+        return self.reply(SIEGE_PAGE,200,'text/html; charset=utf-8')
+    if post and path in ('/trial/api/siege','/api/siege-trial'):
         try:
             if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()
             data=self.read_json()
             if not isinstance(data,dict):raise ValueError()
-            with LOCK:return self.reply(_room_create(data))
-        except (ValueError,TypeError):return self.reply({'ok':False,'error':'请求无效'},400)
+            kind=data.get('type');key=str(data.get('key',''));code=str(data.get('code','')).upper()
+            if len(key)!=48 or any(c not in '0123456789abcdef' for c in key):return self.reply({'ok':False,'error':'会话无效，请刷新'},400)
+            with LOCK:
+                if kind=='create':
+                    # Re-enter an existing private arena rather than accumulating rooms.
+                    old=next((r for r in _SIEGE_ROOMS.values() if r.get('trial') and r['players'][0]['key']==key and time.time()-r['touched']<=86400),None)
+                    if old is not None:
+                        old['touched']=time.time();return self.reply(_siege_public(old,key,-1))
+                    data={**data,'trial':True}
+                elif kind in ('state','fire','trialPreview','trialReset','leave'):
+                    arena=_SIEGE_ROOMS.get(code)
+                    if not arena or not arena.get('trial') or arena['players'][0]['key']!=key:
+                        return self.reply({'ok':False,'error':'试验场不存在或会话已失效'},403)
+                    if kind=='leave':
+                        _SIEGE_ROOMS.pop(code,None);return self.reply({'ok':True})
+                else:return self.reply({'ok':False,'error':'试验场不支持此操作'},400)
+                return self.reply(siege_request(data))
+        except (ValueError,TypeError,KeyError,AttributeError):
+            return self.reply({'ok':False,'error':'请求无效'},400)
     if match:
         code=match[1].upper();sub=match[2] or '/'
         with LOCK:
