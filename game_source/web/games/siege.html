@@ -111,7 +111,7 @@ const roomPrefix=location.pathname.match(/^\/r\/[A-Fa-f0-9]{6}/)?.[0]||"";const 
 const fromRoom=new URLSearchParams(location.search).get('from')||'';
 const trialBack=/^\/r\/[A-Fa-f0-9]{6}\/?$/.test(fromRoom)?fromRoom.replace(/\/$/,'')+'/':'/';
 const $=id=>document.getElementById(id),canvas=$('field'),ctx=canvas.getContext('2d');let key=localStorage.getItem('gh_siege_key');if(!key){const a=new Uint8Array(24);crypto.getRandomValues(a);key=Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');localStorage.setItem('gh_siege_key',key)}let room=null,rev=-1,playing=null,requesting=false,polling=false,drag=null,angle=42,power=65,lastEvent=null,animFrame=null,notice='',overview=null,motionReceipt=0,selection={},stockOpen=false,stockKey="",pan=null,livePrevious=null;const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
-const defaultShotConfig=()=>({simple:true,build:'safe',fuseMode:'either',fuseTime:2.5,splitMode:'air',splitTime:1.5,parentEnd:'continue',scopes:{},childFuseTime:0,diveTime:1.2,copyMode:'bounce',childSplit:false,blackholeMode:'fixed'});let shotConfig=defaultShotConfig(),stockCat='全部',stockLastCat='';const buffCategories=Object.fromEntries([...new Set(Object.values(siegeCatalog).map(v=>v.group))].map(group=>[group,Object.keys(siegeCatalog).filter(k=>siegeCatalog[k].group===group)]));
+const defaultShotConfig=()=>({simple:true,unified:true,build:'safe',fuseMode:'either',triggers:{},splitPattern:'fan',burstMode:'serial',blackholeMode:'fixed'});let shotConfig=defaultShotConfig(),stockCat='全部',stockLastCat='';const buffCategories=Object.fromEntries([...new Set(Object.values(siegeCatalog).map(v=>v.group))].map(group=>[group,siegeActiveKeys.filter(k=>siegeCatalog[k].group===group)]));
 // Camera is a presentation-only world-to-screen transform; server physics remains 960×480.
 const WORLD_W=960, MAP_TOP=-100, MAP_BOTTOM=480;let VIEW_W=460,VIEW_H=359,ZOOM=1,HOME_Y=140;
 function resizeField(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;const center=room?{x:camera.x+VIEW_W/2,y:camera.y+VIEW_H/2}:null;const dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);const ratio=canvas.width/canvas.height;VIEW_W=clamp(ratio*345,360,700);VIEW_H=VIEW_W/ratio;ZOOM=canvas.width/VIEW_W;HOME_Y=416-VIEW_H*.83;if(playing&&animFrame?.[1])cameraSnap(cameraFocus(...animFrame[1]));else if(center&&room&&!overview)browse(center.x-VIEW_W/2,center.y-VIEW_H/2);else cameraSnap(home(room?.seat||0));if(playing?.handoff)playing.handoff={from:{...camera},to:home(room.turn)}}
@@ -163,7 +163,7 @@ function apply(d){const old=room;room=d;motionReceipt=performance.now();
  }
  livePrevious=null;if(!old||old.rev!==d.rev||old.turn!==d.turn){closePanels();if(!d.trial||!old||old.code!==d.code){selection={};shotConfig=defaultShotConfig();stockCat=d.trial?'弹道':'全部'}trialGhost=null;pan=null;stockOpen=false;stockKey="";}if(!d.trial&&!trialPage)localStorage.setItem('gh_siege_room',d.code);if(d.event&&d.event.id!==rev){overview=null;lastEvent=d.event;playing={event:d.event,start:performance.now(),handoff:null};animFrame=null;cameraSnap(home(d.event.side));drag=null}else if(old&&d.rev!==rev){playing=null;lastEvent=null;animFrame=null}if(!old||old.code!==d.code||(!playing&&d.rev!==rev))cameraSnap(home(playing?playing.event.side:d.seat));if(d.mode!=='classic'&&d.shots.every(n=>n===0)&&d.phase==='play'&&(!old||d.rev!==rev||old.phase==='wait'))overview={start:performance.now(),side:d.turn};rev=d.rev;$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}if(!old||old.code!==d.code){resizeField();cameraSnap(home(playing?playing.event.side:d.seat))}update()}
 async function enter(type,extra={}){if(requesting)return;if(type!=='state')try{siegeAudio.unlock?.()}catch(e){console.warn('audio unavailable',e)}requesting=true;$('err').textContent='';try{room=null;rev=-1;playing=null;lastEvent=null;apply(await req(type,extra));poll()}catch(e){$('err').textContent=e.message}finally{requesting=false;update()}}
-const siegeBuffOptions=Object.entries(siegeCatalog).map(([k,v])=>[k,v.label]);
+const siegeBuffOptions=siegeActiveKeys.map(k=>[k,siegeCatalog[k].label]);
 $('siegeStandaloneBuffChoices').innerHTML=siegeBuffOptions.map(([k,n])=>'<label><input type="checkbox" data-siege-buff="'+k+'" checked> '+siegeIcon(k,18)+' '+n+'</label>').join('');
 $('siegeStandaloneAll').onclick=()=>document.querySelectorAll('#siegeStandaloneBuffChoices input').forEach(x=>x.checked=true);
 $('siegeStandaloneNone').onclick=()=>document.querySelectorAll('#siegeStandaloneBuffChoices input').forEach(x=>x.checked=false);
@@ -221,25 +221,25 @@ bindGesture(canvas,beginField,moveField,endField,cancelField);bindGesture(mapCan
 function effectText(k,n,c=shotConfig){
  n=Math.max(1,n||0);
  const fmt=v=>Number(v.toFixed(2));
- const splitWhen={air:'升空后',hit:'首次命中',timer:'飞行途中',bounce:'首次反弹',expire:'结束时'}[c.splitMode];
+ const splitWhen=triggerLabel(eventFor(c,'splitshot'));
  const copyWhen={bounce:'反弹时',expire:'结束时散射',trail:'沿途留下',chaos:'随机方向',orbit:'环绕母弹'}[c.copyMode];
  const effects={
   big:'弹体 '+fmt((6+6*n)/6)+' 倍 · 爆炸范围 '+fmt((52+36*n)/52)+' 倍',
   power:'伤害 '+fmt(1+.7*n)+' 倍',shock:'冲击推力 '+fmt(1+2.2*n)+' 倍',
   pierce:'直击建筑额外伤害 '+150*n+'%（不强化核心直击）',
   shield:'核心承伤 '+fmt(100*.35**n)+'%',armor:'建筑承伤 '+fmt(100*.65**n)+'%',buffer:'爆炸推力剩 '+fmt(100*.25**n)+'%',
-  heal:'立即恢复核心 18 点（单份）',splitshot:splitWhen+'分出 '+2*n+' 枚小弹 · '+(c.splitMode==='air'||c.parentEnd==='continue'?'母弹继续':c.parentEnd==='vanish'?'母弹消失':'母弹也爆炸')+(c.childSplit?' · 额外二次分裂 '+2*n+' 枚':''),
+  heal:'立即恢复核心 18 点（单份）',splitshot:splitWhen+'变成 '+n+' 枚子弹 · 各 '+fmt(100/n)+'% 攻击力',
   through:'每枚穿过 '+n+' 块建筑 · 核心和平台不可穿',bounce:'每枚最多 '+n+' 次普通反弹',
-  wooddrop:'投放 '+n+' 块木材 · '+(c.build==='safe'?'安全建造':'保留爆炸'),stonedrop:'投放 '+n+' 块石材 · '+(c.build==='safe'?'安全建造':'保留爆炸'),
+  wooddrop:'每次 '+n+' 块木材 · 本炮最多24',stonedrop:'每次 '+n+' 块石材 · 本炮最多24',
   blackhole:'吸引范围 '+(120+22*n)+' · 持续 2 秒 · '+(c.blackholeMode==='attached'?'随命中物移动':'固定在落点'),
   gunteleport:'炮台移到落点上方 · 单次',coreteleport:'核心移到落点上方 · 单次',
-  spiral:'螺旋摆幅 '+(10+3*n)+' · 旋转随层数加快',repeat:'连续 '+(1+n)+' 发 · 总基础威力 '+fmt(1+.35*n)+' 倍',
-  push:'推动命中建筑 '+2*n+' 秒 · 基础伤害仅 14%',clone:'生成 '+n+' 座克隆炮台 · 各协射 2 炮',
+  spiral:'螺旋摆幅 '+(10+3*n)+' · 旋转随层数加快',repeat:(c.burstMode==='volley'?'齐射 ':'连射 ')+(1+n)+' 枚完整母弹',
+  push:'推动命中建筑 '+2*n+' 秒 · 基础伤害仅 14%',clone:'每次生成 '+n+' 座 · 各协射2炮',
   heavy:'重力 6.5 倍 · 强制下一发',vanish:'飞得越远越小越弱 · 最低 22%',wobble:'出膛角度随机偏移 14–24°',fart:'脉冲式向上推力 · 弹道变飘',
   fuse:({either:'碰撞或引信到期即爆',strict:'飞行计时到期引爆',delay:'命中停留后延时爆炸'})[c.fuseMode]+' · 单份',
-  larpa:copyWhen+'生成最多 '+2*n+' 枚复制弹'+(c.copyMode==='bounce'?' · 附带 '+n+' 次反弹':['trail','chaos'].includes(c.copyMode)?' · 释放密度 '+fmt(1+.25*(n-1))+' 倍':''),bounceblast:'附带 '+n+' 次反弹 · 小爆炸最多 '+2*n+' 次',
+  larpa:copyWhen+'生成最多 '+2*n+' 枚复制弹'+(c.copyMode==='bounce'?' · 附带 '+n+' 次反弹':['trail','chaos'].includes(c.copyMode)?' · 释放密度 '+fmt(1+.25*(n-1))+' 倍':''),bounceblast:'每次触发爆破 · 层数提高范围与威力',
   downpour:'向下投放最多 '+2*n+' 枚 · 释放密度 '+fmt(1+.25*(n-1))+' 倍',
-  ignite:'爆炸点燃木材 · 每轮 '+(5+2*(n-1))+' 点，持续 2 轮',
+  ignite:'触发时点燃木材 · 每轮 '+(5+2*(n-1))+' 点，持续 2 轮',
   firetrail:'沿途点燃 · 每轮 '+(5+2*(n-1))+' 点 · 路径更宽',
   snake:'蛇形摆幅 '+(7+5*n)+' · 真实弹道',
   dive:'到顶点自动俯冲 · 下落速度 '+(n===1?'基础':'+'+20*(n-1)+'%')+' · 直击部分伤害 +'+20*n+'%',
@@ -248,7 +248,7 @@ function effectText(k,n,c=shotConfig){
   pingpong:'每隔片刻水平折返 · 最多 '+n+' 次',
   firearc:'最多 '+2*n+' 条火线 · 叠加扩大连接范围及燃烧伤害',
   shotshield:'同步炮击偏转最多 '+2*n+' 次 · 普通回合不消耗',
-  mine:'留下 '+n+' 枚地雷 · 后续炮击触发，存续 8 炮'
+  mine:'每次部署 '+n+' 枚 · 同侧最多12'
  };
  return effects[k]||'';
 }
@@ -257,22 +257,27 @@ function inlineChoices(parent,key,choices){
  for(const [v,label] of choices){const b=document.createElement('button');b.type='button';b.textContent=label;b.classList.toggle('active',shotConfig[key]===v);b.onclick=()=>{shotConfig[key]=v;shotConfig.simple=true;trialGhost=null;stockKey='';update()};row.append(b)}
  parent.append(row)
 }
+const payloadKinds=['splitshot','bounceblast','wooddrop','stonedrop','mine','blackhole','ignite','clone'];
+const triggerOptions=[['launch','出膛'],['apex','顶点'],['bounce','反弹'],['through','穿透'],['end','终点']];
+const eventFor=(c,k)=>c.triggers?.[k]||(k==='splitshot'?'apex':k==='bounceblast'?'bounce':'end');
+const triggerLabel=v=>triggerOptions.find(x=>x[0]===v)?.[1]||'终点';
 function renderBuffDetail(row,k,n,selected){
- const old=row.querySelectorAll('.buff-effect,.buff-inline');old.forEach(x=>x.remove());
- const detail=document.createElement('div');detail.className='buff-effect'+(n?' selected':'');detail.textContent=(n?'本炮 · ':'每层示例 · ')+effectText(k,n||1);row.append(detail);
+ row.querySelectorAll('.buff-effect,.buff-inline').forEach(x=>x.remove());
+ const detail=document.createElement('div');detail.className='buff-effect'+(n?' selected':'');detail.textContent=effectText(k,n||1);row.append(detail);
  if(!n)return;
- if(k==='splitshot'){
-  inlineChoices(row,'splitMode',[['air','空中'],['hit','命中'],['timer','延后'],['bounce','反弹'],['expire','结束']]);
-  if(shotConfig.splitMode!=='air')inlineChoices(row,'parentEnd',[['continue','母弹继续'],['vanish','母弹消失'],['explode','母弹也爆炸']]);
-  const sub=document.createElement('div');sub.className='buff-inline';const toggle=document.createElement('button');toggle.type='button';toggle.textContent=shotConfig.childSplit?'二次分裂 · 开':'二次分裂 · 关';toggle.classList.toggle('active',shotConfig.childSplit);toggle.onclick=()=>{shotConfig.childSplit=!shotConfig.childSplit;stockKey='';update()};sub.append(toggle);row.append(sub);
+ if(payloadKinds.includes(k)){
+  const controls=document.createElement('div');controls.className='buff-inline';
+  for(const [v,label] of triggerOptions){
+   const b=document.createElement('button');b.type='button';b.textContent=label;b.classList.toggle('active',eventFor(shotConfig,k)===v);
+   b.onclick=()=>{shotConfig.triggers={...shotConfig.triggers,[k]:v};trialGhost=null;stockKey='';update()};controls.append(b)
+  }
+  row.append(controls)
  }
- if(k==='larpa')inlineChoices(row,'copyMode',[['bounce','反弹'],['expire','散射'],['trail','拖尾'],['chaos','混沌'],['orbit','环绕']]);
+ if(k==='splitshot')inlineChoices(row,'splitPattern',[['fan','扇形'],['down','向下'],['radial','散射']]);
+ if(k==='repeat')inlineChoices(row,'burstMode',[['serial','连射'],['volley','齐射']]);
  if(k==='fuse')inlineChoices(row,'fuseMode',[['either','碰撞优先'],['strict','定时爆'],['delay','附着引爆']]);
  if(k==='blackhole')inlineChoices(row,'blackholeMode',[['fixed','固定'],['attached','附着']]);
  if(k==='wooddrop'||k==='stonedrop')inlineChoices(row,'build',[['safe','安全建造'],['attack','攻击投放']]);
- if((selected.splitshot||selected.larpa||selected.downpour)&&['bounce','through','spiral','power','shock','pierce','push','blackhole','ignite','firetrail','snake','dive','antigrav','homing','pingpong','fuse'].includes(k)){
-  const scope=document.createElement('div');scope.className='buff-inline';const btn=document.createElement('button');btn.type='button';const opts=['both','mother','child'],cur=shotConfig.scopes?.[k]||'both';btn.textContent='作用于 · '+({both:'全弹',mother:'母弹',child:'子弹'})[cur];btn.classList.toggle('active',cur!=='both');btn.onclick=()=>{shotConfig.scopes={...shotConfig.scopes,[k]:opts[(opts.indexOf(cur)+1)%3]};stockKey='';update()};scope.append(btn);row.append(scope)
- }
 }
 function updateShotOptions(selected){
  const box=$('stockOptions');box.replaceChildren();
@@ -280,8 +285,10 @@ function updateShotOptions(selected){
  if(!keys.length){box.classList.add('hidden');return}
  const note=document.createElement('p');const n=keys.map(k=>itemNames[k]+' ×'+selected[k]).join(' · ');
  let lines=[];
- if((selected.wooddrop||selected.stonedrop)&&shotConfig.build==='safe'&&keys.some(k=>['power','shock','pierce','push','blackhole','clone','gunteleport','coreteleport','bounceblast','ignite','firetrail','firearc','mine'].includes(k)))lines.push('安全建造：暂停攻击增益');
+ if((selected.wooddrop||selected.stonedrop)&&shotConfig.build==='safe'&&keys.some(k=>['power','shock','pierce','push','blackhole','gunteleport','coreteleport','bounceblast','ignite','firetrail','firearc'].includes(k)))lines.push('安全建造：暂停攻击增益');
  if(selected.shotshield&&!syncMode())lines.push('弹体护盾仅同步对射生效');
+ if(keys.some(k=>payloadKinds.includes(k)&&eventFor(shotConfig,k)==='bounce')&&!selected.bounce)lines.push('反弹效果需要实际反弹');
+ if(keys.some(k=>payloadKinds.includes(k)&&eventFor(shotConfig,k)==='through')&&!selected.through)lines.push('穿透效果需要穿透弹');
  note.textContent=lines.join(' · ');note.title=note.textContent;if(lines.length)box.append(note);box.classList.toggle('hidden',!lines.length)
 }
 async function resetTrial(mode){
@@ -297,8 +304,8 @@ function drawTrialGhost(c){
  if(!room?.trial||!trialGhost||trialGhost.key!==forceKey())return;
  c.save();c.globalAlpha=.8;c.lineWidth=2;c.setLineDash([6,5]);for(const [i,path] of trialGhost.paths.entries()){if(path.length<2)continue;c.strokeStyle=i?'#d4b8ee':'#f9e5a3';c.beginPath();c.moveTo(...path[0]);for(const p of path.slice(1))c.lineTo(...p);c.stroke()}c.setLineDash([]);if(trialGhost.impact){c.strokeStyle='#f9e5a3';c.beginPath();c.arc(...trialGhost.impact,8,0,Math.PI*2);c.stroke()}c.restore()
 }
-function updateStock(){const active=canAim(),readonly=room.buffMode!=='stock';$('stockPanel').classList.toggle('readonly',readonly);$('stockHelp').textContent=room.trial?'库存无限 · 组合保留':readonly?'自动使用库存，每种每炮1层':syncMode()?'选好增益后准备发射':'选择增益 · 瞄准后开炮';$('stockClear').classList.toggle('hidden',readonly);if(readonly&&stockCat==='已选')stockCat='全部';$('stockBtn').classList.toggle('hidden',!active);$('stockPanel').classList.toggle('hidden',!active||!stockOpen);if(!active)return;const inv=room.buffs[room.seat]||{},keys=Object.keys(itemNames).filter(k=>(room.trial||k!=='heal')&&inv[k]>0);$('stockBtn').textContent='增益 '+Object.values(readonly?inv:selection).reduce((a,b)=>a+b,0);if(!stockOpen)return;const currentKey=()=>JSON.stringify([inv,selection,room.armed?.[room.seat],readonly,room.stackCaps,stockCat,shotConfig]);const key=currentKey();if(key===stockKey)return;stockKey=key;const cats=$('stockCats');cats.replaceChildren();for(const c of ['全部',...(!readonly?['已选']:[]),...Object.keys(buffCategories).filter(c=>buffCategories[c].some(k=>keys.includes(k)))]){const b=document.createElement('button');b.type='button';b.textContent=c;b.classList.toggle('active',stockCat===c);b.onclick=()=>{stockCat=c;stockKey='';update()};cats.append(b)}if(stockCat!=='全部'&&stockCat!=='已选'&&!buffCategories[stockCat]?.some(k=>keys.includes(k)))stockCat='全部';const rows=$('stockRows'),previousScroll=stockLastCat===stockCat?rows.scrollTop:0;stockLastCat=stockCat;rows.replaceChildren();for(const k of keys.filter(k=>stockCat==='全部'||(stockCat==='已选'?selection[k]>0:buffCategories[stockCat]?.includes(k)))){const r=document.createElement('div');r.className='stock-row';const n=selection[k]||0,limit=Math.min(inv[k],['gunteleport','coreteleport','fuse'].includes(k)?1:Math.max(0,(room.stackCaps?.[k]??room.stackMax??5)-(liveMode()&&['shield','armor','buffer'].includes(k)?room.armed?.[room.seat]?.[k]||0:0)));r.innerHTML=`<div class="buff-label">${siegeIcon(k,20)}<span>${itemNames[k]} · ${room.trial?'∞':inv[k]}</span></div><button aria-label="减少${itemNames[k]}">−</button><input type="number" inputmode="numeric" min="0" max="${limit}" step="1" value="${n}" aria-label="${itemNames[k]}使用数量"><button aria-label="增加${itemNames[k]}">+</button><button aria-label="${itemNames[k]}选满">满</button>`;if(readonly){r.replaceChildren(r.firstElementChild);renderBuffDetail(r,k,1,inv);rows.append(r);continue}const [minus,plus,full]=r.querySelectorAll('button'),input=r.querySelector('input');const set=(v,editing=false)=>{v=clamp(Math.trunc(Number(v)||0),0,limit);if(v)selection[k]=v;else delete selection[k];if(editing){stockKey=currentKey();minus.disabled=!v;plus.disabled=v>=limit;renderBuffDetail(r,k,v,selection);updateShotOptions(readonly?Object.fromEntries(keys.map(k=>[k,1])):selection);$('stockBtn').textContent='增益 '+Object.values(selection).reduce((a,b)=>a+b,0);$('stockSummary').textContent=keys.filter(k=>selection[k]).map(k=>itemNames[k]+' ×'+selection[k]).join(' + ')||'普通弹 · 不消耗增益';}else{input.value=v;stockKey='';update()}};minus.disabled=!n;plus.disabled=n>=limit;input.disabled=!limit;input.onfocus=()=>input.select();input.oninput=()=>set(input.value,true);input.onchange=()=>{input.value=selection[k]||0};input.onblur=()=>{input.value=selection[k]||0};input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();input.blur()}};minus.onclick=()=>set((selection[k]||0)-1);plus.onclick=()=>set((selection[k]||0)+1);full.disabled=!limit;full.onclick=()=>set(limit);renderBuffDetail(r,k,n,selection);rows.append(r)}rows.scrollTop=previousScroll;if(!keys.length)rows.textContent='暂无库存，拾取道具后可在这里选择。';$('stockSummary').textContent=readonly?'自动模式 · 本轮自动使用可用增益':keys.filter(k=>selection[k]).map(k=>itemNames[k]+' ×'+selection[k]).join(' + ')||'普通弹 · 不消耗增益';updateShotOptions(readonly?Object.fromEntries(keys.map(k=>[k,1])):selection);}
-const presetKey='gh_siege_combo_v1';$('stockSave').onclick=()=>{try{localStorage.setItem(presetKey,JSON.stringify({selection,config:shotConfig}));$('stockPresetStatus').textContent='已保存在本机'}catch{$('stockPresetStatus').textContent='本机保存失败'}};$('stockLoad').onclick=()=>{try{const saved=JSON.parse(localStorage.getItem(presetKey)||'null');if(!saved){$('stockPresetStatus').textContent='尚未保存组合';return}shotConfig={...defaultShotConfig(),...saved.config,simple:true,diveTime:1.2,scopes:saved.config?.scopes||{},childFuseTime:0};selection={};const inv=room.buffs[room.seat]||{};for(const [k,n] of Object.entries(saved.selection||{})){if(!itemNames[k]||(!room.trial&&(k==='heal'||['heavy','vanish','wobble','fart'].includes(k))))continue;const count=clamp(Math.trunc(Number(n)||0),0,Math.min(inv[k]||0,room.stackCaps?.[k]??room.stackMax??5));if(count)selection[k]=count}stockKey='';openPanel='stock';stockOpen=true;update();$('stockPresetStatus').textContent='已读取 · 数量按本局库存调整'}catch{$('stockPresetStatus').textContent='无法读取保存的组合'}};$('stockBtn').onclick=()=>panel('stock');$('stockClear').onclick=()=>{selection={};update()};
+function updateStock(){const active=canAim(),readonly=room.buffMode!=='stock';$('stockPanel').classList.toggle('readonly',readonly);$('stockHelp').textContent=room.trial?'库存无限 · 组合保留':readonly?'自动使用库存，每种每炮1层':syncMode()?'选好增益后准备发射':'选择增益 · 瞄准后开炮';$('stockClear').classList.toggle('hidden',readonly);if(readonly&&stockCat==='已选')stockCat='全部';$('stockBtn').classList.toggle('hidden',!active);$('stockPanel').classList.toggle('hidden',!active||!stockOpen);if(!active)return;const inv=room.buffs[room.seat]||{},keys=siegeActiveKeys.filter(k=>(room.trial||k!=='heal')&&inv[k]>0);$('stockBtn').textContent='增益 '+Object.values(readonly?inv:selection).reduce((a,b)=>a+b,0);if(!stockOpen)return;const currentKey=()=>JSON.stringify([inv,selection,room.armed?.[room.seat],readonly,room.stackCaps,stockCat,shotConfig]);const key=currentKey();if(key===stockKey)return;stockKey=key;const cats=$('stockCats');cats.replaceChildren();for(const c of ['全部',...(!readonly?['已选']:[]),...Object.keys(buffCategories).filter(c=>buffCategories[c].some(k=>keys.includes(k)))]){const b=document.createElement('button');b.type='button';b.textContent=c;b.classList.toggle('active',stockCat===c);b.onclick=()=>{stockCat=c;stockKey='';update()};cats.append(b)}if(stockCat!=='全部'&&stockCat!=='已选'&&!buffCategories[stockCat]?.some(k=>keys.includes(k)))stockCat='全部';const rows=$('stockRows'),previousScroll=stockLastCat===stockCat?rows.scrollTop:0;stockLastCat=stockCat;rows.replaceChildren();for(const k of keys.filter(k=>stockCat==='全部'||(stockCat==='已选'?selection[k]>0:buffCategories[stockCat]?.includes(k)))){const r=document.createElement('div');r.className='stock-row';const n=selection[k]||0,limit=Math.min(inv[k],['gunteleport','coreteleport','fuse'].includes(k)?1:Math.max(0,(room.stackCaps?.[k]??room.stackMax??5)-(liveMode()&&['shield','armor','buffer'].includes(k)?room.armed?.[room.seat]?.[k]||0:0)));r.innerHTML=`<div class="buff-label">${siegeIcon(k,20)}<span>${itemNames[k]} · ${room.trial?'∞':inv[k]}</span></div><button aria-label="减少${itemNames[k]}">−</button><input type="number" inputmode="numeric" min="0" max="${limit}" step="1" value="${n}" aria-label="${itemNames[k]}使用数量"><button aria-label="增加${itemNames[k]}">+</button><button aria-label="${itemNames[k]}选满">满</button>`;if(readonly){r.replaceChildren(r.firstElementChild);renderBuffDetail(r,k,1,inv);rows.append(r);continue}const [minus,plus,full]=r.querySelectorAll('button'),input=r.querySelector('input');const set=(v,editing=false)=>{v=clamp(Math.trunc(Number(v)||0),0,limit);if(v)selection[k]=v;else delete selection[k];if(editing){stockKey=currentKey();minus.disabled=!v;plus.disabled=v>=limit;renderBuffDetail(r,k,v,selection);updateShotOptions(readonly?Object.fromEntries(keys.map(k=>[k,1])):selection);$('stockBtn').textContent='增益 '+Object.values(selection).reduce((a,b)=>a+b,0);$('stockSummary').textContent=keys.filter(k=>selection[k]).map(k=>itemNames[k]+' ×'+selection[k]).join(' + ')||'普通弹 · 不消耗增益';}else{input.value=v;stockKey='';update()}};minus.disabled=!n;plus.disabled=n>=limit;input.disabled=!limit;input.onfocus=()=>input.select();input.oninput=()=>set(input.value,true);input.onchange=()=>{input.value=selection[k]||0};input.onblur=()=>{input.value=selection[k]||0};input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();input.blur()}};minus.onclick=()=>set((selection[k]||0)-1);plus.onclick=()=>set((selection[k]||0)+1);full.disabled=!limit;full.onclick=()=>set(limit);renderBuffDetail(r,k,n,selection);rows.append(r)}rows.scrollTop=previousScroll;if(!keys.length)rows.textContent='暂无库存，拾取道具后可在这里选择。';$('stockSummary').textContent=readonly?'自动模式 · 本轮自动使用可用增益':keys.filter(k=>selection[k]).map(k=>itemNames[k]+' ×'+selection[k]).join(' + ')||'普通弹 · 不消耗增益';updateShotOptions(readonly?Object.fromEntries(keys.map(k=>[k,1])):selection);}
+const presetKey='gh_siege_combo_v1';$('stockSave').onclick=()=>{try{localStorage.setItem(presetKey,JSON.stringify({selection,config:shotConfig}));$('stockPresetStatus').textContent='已保存在本机'}catch{$('stockPresetStatus').textContent='本机保存失败'}};$('stockLoad').onclick=()=>{try{const saved=JSON.parse(localStorage.getItem(presetKey)||'null');if(!saved){$('stockPresetStatus').textContent='尚未保存组合';return}shotConfig={...defaultShotConfig(),...Object.fromEntries(Object.entries(saved.config||{}).filter(([k])=>Object.hasOwn(defaultShotConfig(),k))),unified:true,simple:true};selection={};const inv=room.buffs[room.seat]||{};for(const [k,n] of Object.entries(saved.selection||{})){if(!siegeActiveKeys.includes(k)||(!room.trial&&(k==='heal'||['heavy','vanish','wobble','fart'].includes(k))))continue;const count=clamp(Math.trunc(Number(n)||0),0,Math.min(inv[k]||0,room.stackCaps?.[k]??room.stackMax??5));if(count)selection[k]=count}stockKey='';openPanel='stock';stockOpen=true;update();$('stockPresetStatus').textContent='已读取 · 数量按本局库存调整'}catch{$('stockPresetStatus').textContent='无法读取保存的组合'}};$('stockBtn').onclick=()=>panel('stock');$('stockClear').onclick=()=>{selection={};update()};
 const negativeShort={heavy:'重重弹',vanish:'湮灭弹',wobble:'不稳定弹',fart:'屁屁弹'};
 function shortNegative(keys){return (negativeShort[keys[0]]||itemNames[keys[0]])+(keys.length>1?' +'+(keys.length-1):'')}
 function negativeState(side){
