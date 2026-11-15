@@ -1343,6 +1343,57 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
 
 _SIEGE_MANUAL_KEYS=('pingpong','dive','antigrav')
 _SIEGE_LIVE_DT=1/60
+_SIEGE_MANUAL_ROUNDS={}
+_SIEGE_SLOW=(.9,.8,.7,.6,.5)
+def _siege_has_controls(r,selection,side,config):
+    return bool(config and config.get('manual') and not _siege_robot(r,side) and any((selection or {}).get(k) if r.get('buffMode')=='stock' else r['buffs'][side].get(k) for k in _SIEGE_MANUAL_KEYS))
+
+def _siege_control_clock(rt,now):
+    # Fixed simulation ticks; bullet time affects the authoritative whole world.
+    old=rt.get('wall',now);rt['wall']=now
+    elapsed=max(0.,min(1.,now-old))
+    slow=max(0.,min(elapsed,rt.get('slowUntil',0)-old))
+    rt['credit']=rt.get('credit',0.)+elapsed-slow*(1-rt.get('slowRate',1.))
+    steps=min(60,int((rt['credit']+1e-9)/_SIEGE_LIVE_DT))
+    rt['credit']-=steps*_SIEGE_LIVE_DT
+    return steps
+
+def _siege_command(rt,side,k,shot,now):
+    entry=rt['active'].get(side);c=entry and entry.get('control');sample=entry and entry['sample']
+    if not c or not sample or shot!=sample['shotNo'] or k not in _SIEGE_MANUAL_KEYS or not sample.get('controls',{}).get(k) or not c['left'].get(k):
+        raise ValueError('当前没有可用操纵次数')
+    if c.get('pending'):raise ValueError('上一项操纵正在执行')
+    c['left'][k]-=1;c['pending'].append(k)
+    rate=_SIEGE_SLOW[min(5,c['levels'][k])-1]
+    rt['slowRate']=min(rate,rt.get('slowRate',1.) if now<rt.get('slowUntil',0.) else 1.)
+    rt['slowUntil']=now+1.2
+    sample['controls'][k]=c['left'][k]
+
+def _siege_manual_start(r,side,a,p,selection,force,config,now):
+    if id(r) in _SIEGE_MANUAL_ROUNDS:raise ValueError('上一炮尚未结束')
+    control={}
+    gen=_siege_trial_steps(r,a,p,selection or {},force,config,control) if r.get('trial') else _siege_fire_steps(r,a,p,selection,side=side,force=force,config=config,control=control)
+    sample=next(gen)
+    _SIEGE_MANUAL_ROUNDS[id(r)]={'room':r,'wall':now,'credit':0.,'active':{side:{'gen':gen,'sample':sample,'control':control}},'side':side,'slowUntil':0.,'slowRate':1.}
+    r['event']=None
+
+def _siege_manual_tick(r,now):
+    rt=_SIEGE_MANUAL_ROUNDS.get(id(r))
+    if not rt:return False
+    entry=rt['active'][rt['side']]
+    for _ in range(_siege_control_clock(rt,now)):
+        try:entry['sample']=next(entry['gen'])
+        except StopIteration:
+            _SIEGE_MANUAL_ROUNDS.pop(id(r),None)
+            r['event']=None;r['until']=now+.35
+            return True
+    return False
+
+def _siege_manual_view(r,v,now):
+    rt=_SIEGE_MANUAL_ROUNDS.get(id(r))
+    if rt:
+        v.update(busy=True,event=None,manualFlight=True,liveShots=[e['sample'] for e in rt['active'].values()],slowRate=rt['slowRate'] if now<rt['slowUntil'] else 1.)
+    return v
 
 def _siege_live_runtime(r,now=None):
     now=time.time() if now is None else now
@@ -1358,10 +1409,11 @@ def _siege_live_can_fire(r,rt,side,now):
 def _siege_live_start(r,rt,side,angle,power,selection=None,now=None,force=False,config=None):
     now=time.time() if now is None else now
     if not _siege_live_can_fire(r,rt,side,now):raise ValueError('上一发尚未结束、正在装填或弹药耗尽')
-    gen=_siege_fire_steps(r,angle,power,selection,side,rt,force,config)
+    control={} if rt.get('interactive') and _siege_has_controls(r,selection,side,config) else None
+    gen=_siege_fire_steps(r,angle,power,selection,side,rt,force,config,control)
     sample=next(gen) # validates and reserves buffs before exposing shot
     r['shots'][side]+=1;r['rev']+=1
-    rt['active'][side]={'gen':gen,'sample':sample};rt['ready'][side]=float('inf')
+    rt['active'][side]={'gen':gen,'sample':sample,'control':control};rt['ready'][side]=float('inf')
 
 def _siege_live_tick(r,rt,now=None):
     now=time.time() if now is None else now;changed=False
@@ -1369,10 +1421,13 @@ def _siege_live_tick(r,rt,now=None):
     # Limit catch-up after a device sleeps; no huge CPU burst under the room lock.
     if not rt['active']:rt['clock']=now;_siege_motion(r,max(0,now-r['motionEpoch']))
     else:
-        steps=min(180,max(0,int((now-rt['clock'])/_SIEGE_LIVE_DT)))
+        steps=_siege_control_clock(rt,now) if rt.get('interactive') else min(180,max(0,int((now-rt['clock'])/_SIEGE_LIVE_DT)))
         for _ in range(steps):
             rt['clock']+=_SIEGE_LIVE_DT
-            sides=list(rt['active'])
+            sides=list(rt['active']);
+            if rt.get('interactive'):
+                rt['step']=rt.get('step',0)+1
+                if rt['step']%2:sides.reverse()
             for side in sides:
                 entry=rt['active'][side]
                 try:entry['sample']=next(entry['gen'])
@@ -1402,7 +1457,7 @@ def _siege_prep_deadline(r,now):
     return now+seconds if seconds else None
 
 def _siege_sync_plan(r,rt,side,data,lock=False):
-    if r['phase']!='play' or rt['replay'] or rt['locked'][side]:raise ValueError('当前不能调整炮击')
+    if r['phase']!='play' or rt['replay'] or rt.get('activeEngine') or rt['locked'][side]:raise ValueError('当前不能调整炮击')
     if data.get('round')!=rt['round']:raise ValueError('准备阶段已切换')
     a,p=data.get('angle'),data.get('power')
     if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):raise ValueError('角度或力度无效')
@@ -1417,6 +1472,8 @@ def _siege_sync_compute(r,rt,now):
     # Atomic round: validate/compute on a copy; the two generators share the same world.
     import copy
     w=copy.deepcopy(r);engine=_siege_live_runtime(w,now);w['reloadSeconds']=0
+    interactive=any(_siege_has_controls(w,(rt['plans'][side] or (42,65,{}))[2],side,rt.get('configs',[None,None])[side]) for side in (0,1))
+    if interactive:engine.update(interactive=True,wall=now,credit=0.,slowUntil=0.,slowRate=1.)
     plans=[x or (42,65,{}) for x in rt['plans']];notices=['','']
     # Both stock defenses are armed before either shot consumes the opposing defense.
     if w.get('buffMode')=='stock':
@@ -1438,6 +1495,8 @@ def _siege_sync_compute(r,rt,now):
                 try:_siege_live_start(w,engine,side,a,p,None,now,config=rt.get('configs',[None,None])[side])
                 finally:w['buffs'][side]['big']+=n
             notices[side]='巨型弹炮口受阻，本轮未消耗巨型弹'
+    if interactive:
+        rt.update(activeEngine=engine,notice=notices,settleFn=next(iter(engine['physicsFns'].values()),None));r['event']=None;return
     frames=[];meta={};items={};step=0
     def capture():
         t=step*_SIEGE_LIVE_DT
@@ -1474,6 +1533,18 @@ def _siege_sync_compute(r,rt,now):
 
 def _siege_sync_tick(r,rt,now=None):
     now=time.time() if now is None else now
+    engine=rt.get('activeEngine')
+    if engine:
+        w=engine['room'];_siege_live_tick(w,engine,now)
+        if engine['active']:return False
+        if _siege_burn_round(w) and rt.get('settleFn'):
+            for _ in range(120):rt['settleFn']()
+        for b in w['bodies']:b['vx']=b['vy']=0.
+        w['reloadSeconds']=r.get('reloadSeconds',15);w['until']=now+.35;w['event']=None;w['rev']+=1
+        r.clear();r.update(w);rt.pop('activeEngine');rt.pop('settleFn',None)
+        rt.update(round=rt['round']+1,deadline=_siege_prep_deadline(r,now),plans=[None,None],configs=[None,None],force=[False,False],locked=[False,False],replay=None,notice=['',''])
+        if r['phase']=='play':r['windPair']=_siege_weather(r.get('windLevel','off'))
+        return True
     if rt['replay']:
         if now<rt['until']:return False
         rt.update(round=rt['round']+1,deadline=_siege_prep_deadline(r,now),plans=[None,None],configs=[None,None],force=[False,False],locked=[False,False],replay=None,notice=['',''])
@@ -1487,8 +1558,10 @@ def _siege_sync_tick(r,rt,now=None):
     return False
 
 def _siege_sync_public(r,rt,key,last=-1):
-    v=_siege_public(r,key,r['rev']);seat=v['seat'];replay=rt['replay'];busy=bool(replay)
+    engine=rt.get('activeEngine');world=engine['room'] if engine else r
+    v=_siege_public(world,key,world['rev']);seat=v['seat'];replay=rt['replay'];busy=bool(replay or engine)
     v.update(combatMode='sync',event=None,busy=busy,round=rt['round'],ready=list(rt['locked']),remaining=(None if rt['deadline'] is None else max(0,round(rt['deadline']-time.time(),2))) if not busy else 0,canFire=r['phase']=='play' and not busy,liveShots=[],wind=r.get('windPair',0)*(1 if seat==0 else -1),syncNotice=rt['notice'][seat],myPlan=rt['plans'][seat],myConfig=rt.get('configs',[None,None])[seat],replayId=replay['id'] if replay else None)
+    if engine:v.update(manualFlight=True,liveShots=[e['sample'] for e in engine['active'].values()],slowRate=engine['slowRate'] if time.time()<engine['slowUntil'] else 1.,motionTime=max(0,engine['clock']-world['motionEpoch']))
     if replay and last!=replay['id']:v['replay']=replay;v['replayElapsed']=max(0,replay['duration']+.35-(rt['until']-time.time()))
     return v
 
@@ -1554,13 +1627,15 @@ def _siege_bot(r,live=None):
 def _siege_public(r,key,last):
     _siege_migrate_catalog(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
-    return {'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
+    v={'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
+    return _siege_manual_view(r,v,time.time())
 
 def siege_request(data):
     key=str(data.get('key',''));kind=data.get('type');code=str(data.get('code','')).upper();now=time.time()
     if len(key)!=48 or any(c not in '0123456789abcdef' for c in key):return {'ok':False,'error':'会话无效，请刷新'}
     for k in list(_SIEGE_ROOMS):
-        if now-_SIEGE_ROOMS[k]['touched']>86400:del _SIEGE_ROOMS[k]
+        if now-_SIEGE_ROOMS[k]['touched']>86400:
+            _SIEGE_MANUAL_ROUNDS.pop(id(_SIEGE_ROOMS[k]),None);del _SIEGE_ROOMS[k]
     if kind=='create':
         if len(_SIEGE_ROOMS)>=64:return {'ok':False,'error':'房间已满'}
         code=secrets.token_hex(3).upper()
@@ -1581,12 +1656,19 @@ def siege_request(data):
         if r['phase']!='wait' or len(r['players'])>=2:return {'ok':False,'error':'房间已满'}
         r['players'].append({'name':str(data.get('name','玩家')).strip()[:12] or '玩家','key':key});r['phase']='play';seat=1
     if seat is None:return {'ok':False,'error':'不在这个房间'}
-    r['touched']=now;_siege_migrate_catalog(r)
-    if kind=='fire':
+    r['touched']=now;_siege_migrate_catalog(r);_siege_manual_tick(r,now)
+    if kind=='maneuver':
+        try:_siege_command(_SIEGE_MANUAL_ROUNDS.get(id(r),{'active':{}}),seat,data.get('action'),data.get('shotNo'),now)
+        except ValueError as e:return {'ok':False,'error':str(e)}
+    elif id(r) in _SIEGE_MANUAL_ROUNDS and kind!='state':return {'ok':False,'error':'请等待本炮结束'}
+    elif kind=='fire':
         if r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']:return {'ok':False,'error':'当前不能发射，请等待回合'}
         a,p=data.get('angle'),data.get('power')
         if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
-        try:_siege_fire(r,a,p,data.get("selection"),data.get("force") is True,_siege_public_config(data.get('config')))
+        try:
+            cfg=_siege_public_config(data.get('config'));sel=data.get('selection');force=data.get('force') is True
+            if _siege_has_controls(r,sel,seat,cfg):_siege_manual_start(r,seat,a,p,sel,force,cfg,now)
+            else:_siege_fire(r,a,p,sel,force,cfg)
         except ValueError as e:return {"ok":False,"error":str(e)}
     elif kind=='trialPreview' and r.get('trial') and seat==0:
         if now<r['until']:return {'ok':False,'error':'请等待本炮结束'}
@@ -1611,7 +1693,7 @@ def siege_request(data):
         if r['phase']!='over' or now<r['until']:return {'ok':False,'error':'本局尚未结束'}
         _siege_rematch(r)
     elif kind not in ('state','join'):return {'ok':False,'error':'未知操作'}
-    if r['bot'] and not r.get('trial') and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:_siege_bot(r)
+    if id(r) not in _SIEGE_MANUAL_ROUNDS and r['bot'] and not r.get('trial') and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:_siege_bot(r)
     return _siege_public(r,key,data.get('last',-1))
 
 _siege_get_base=Handler.do_GET
