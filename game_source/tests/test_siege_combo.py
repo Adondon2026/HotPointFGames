@@ -368,6 +368,15 @@ assert not e['bounces'] and e['payloadEvents']['bounceblast']>0
 # Giant effect changes only collision radius.
 r=v24();r['buffs'][0]['big']=3;g._siege_fire(r,75,55,{'big':3},config=g._siege_public_config({}))
 assert r['event']['radius']==24 and r['event']['blastRadius']==52
+# Empty inventory must accept every positive pickup, and expose it in public state.
+for k in g._SIEGE_V24_KEYS:
+    if k in g._SIEGE_NEGATIVE:continue
+    r=v24();x,y=g._siege_muzzle(0,r,75)
+    r['items']=[dict(id=999,kind=k,x=x,y=y,r=20,amount=1,zone='center',slot=999)]
+    g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
+    assert r['buffs'][0][k]==1 and any(i['id']==999 for i in r['event']['pickups']),k
+    assert g._siege_public(r,'a',-1)['buffs'][0][k]==1,k
+print('Siege v0.24 positive pickup inventory and public state PASS')
 # Full inventory leaves the pickup at its position, including independent skills.
 for k in ('shield','homing','splitshot','heal'):
     r=v24();r['buffs'][0][k]=g._SIEGE_V24_CAPS[k];x,y=g._siege_muzzle(0,r,75)

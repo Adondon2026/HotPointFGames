@@ -354,7 +354,8 @@ function drawTrialGhost(c){
 const v24Groups=['弹药','机制','效果','技能','负面'];
 function v24StockSummary(){
  const n=(1+(selection.repeat||0))*2**(selection.splitshot||0),pct=(100/2**(selection.splitshot||0)).toFixed(1).replace(/\.0$/,'');
- $('stockBtn').textContent='增益 '+Object.values(selection).reduce((a,b)=>a+b,0);
+ const inv=room.buffs[room.seat]||{},total=siegeV24Keys.filter(k=>room.trial||!siegeV24Negatives.includes(k)).reduce((a,k)=>a+(inv[k]||0),0),selected=Object.values(selection).reduce((a,b)=>a+b,0);
+ $('stockBtn').textContent='增益 '+total+(selected?' · 已选'+selected:'');
  $('stockSummary').textContent=Object.keys(selection).length?n+' 枚炮弹'+(selection.splitshot?' · 单枚 '+pct+'% 基础攻击':'')+(selection.repeat?' · 连发 '+(1+selection.repeat)+' 次':'')+((selection.tntdrop||selection.tntwait)?' · TNT ≤'+Math.min(8,n*((selection.tntdrop||0)+(selection.tntwait||0))):''):'普通炮弹 · 不消耗增益';
 }
 function v24EffectHint(k,n){
@@ -365,7 +366,7 @@ function updateV24Stock(){
  $('stockPanel').classList.toggle('readonly',false);$('stockPanel').classList.toggle('hidden',!active||!stockOpen);$('stockBtn').classList.toggle('hidden',!active);v24StockSummary();
  if(!active||!stockOpen)return;
  $('stockHelp').textContent='统一选择数量 · 开炮时生效 · 可随时归零';$('stockClear').classList.remove('hidden');$('stockPanel').querySelector('h3').textContent='增益';
- const groups=v24Groups.filter(c=>keys.some(k=>siegeV24Group(k)===c)),cats=['全部','已选',...groups];if(!cats.includes(stockCat))stockCat='全部';
+ const groups=v24Groups.filter(c=>keys.some(k=>siegeV24Group(k)===c)),cats=['全部','已选',...groups];if(!cats.includes(stockCat)||(stockCat==='已选'&&!keys.some(k=>selection[k]>0)))stockCat='全部';
  const keyOf=()=>JSON.stringify(['v24',inv,selection,room.armed?.[room.seat],stockCat,room.trial]);const key=keyOf();if(key===stockKey)return;stockKey=key;
  const catBox=$('stockCats'),catScroll=catBox.scrollLeft;catBox.replaceChildren();
  for(const c of cats){const b=document.createElement('button');b.type='button';b.textContent=c;b.classList.toggle('active',stockCat===c);b.setAttribute('aria-pressed',String(stockCat===c));b.onclick=()=>{stockCat=c;stockKey='';update()};catBox.append(b)}catBox.scrollLeft=catScroll;
