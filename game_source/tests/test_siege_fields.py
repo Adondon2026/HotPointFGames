@@ -13,7 +13,7 @@ for name,field in g._SIEGE_FIELDS.items():
     random.seed(13);r=g._siege_new('A','a',True,25,name,'high',0)
     assert r['field']==name and r['layout']==field['layout'] and len(r['items'])==25
     assert len(set(i['kind'] for i in r['items']))==13 and set(i['kind'] for i in r['items'])<=set(g._SIEGE_ITEMS)
-    assert set(field['pool'])<=set(i['kind'] for i in r['items'][:6])
+    assert set(field['pool'])|{'bounce'}<=set(i['kind'] for i in r['items'][:2*(len(set(field['pool'])|{'bounce'}))])
     for l,rr in zip(r['items'][:24:2],r['items'][1:24:2]):
         for t in (0,1,2):
             x,y=g._siege_item_pos(l,t);xx,yy=g._siege_item_pos(rr,t);assert abs(x+xx-960)<1e-6 and abs(y-yy)<1e-6
@@ -45,5 +45,5 @@ r['items']=[dict(id=0,kind='power',x=x-60*math.sin(t*1.35),y=y,r=15,mx=60,my=0,p
 r=g._siege_new('A','a',True,0);q=copy.deepcopy(r);q['buffs'][0].update(through=1,splitshot=1);g._siege_fire(r,42,65);g._siege_fire(q,42,65);assert q['event']['passed'] and len(q['event']['extraBlasts'])==2 and q['buffs'][0]['through']==0
 r=g._siege_new('A','a',True,0);q=copy.deepcopy(r);r['buffs'][0]['shock']=1;q['buffs'][0]['shock']=1;q['buffs'][1]['buffer']=1;g._siege_fire(r,42,65);g._siege_fire(q,42,65);assert q['event']['defenses']==['buffer'] and q['buffs'][1]['buffer']==0 and q['event']['frames']!=r['event']['frames']
 r=g._siege_new('A','a',True,0,'obstacle');assert any(b['side']==-1 for b in r['bodies']);r['wind']=0
-p=aim(r,0,480,365,20);assert p;g._siege_fire(r,20,p);assert r['event']['hitId']==16
+target=next(b for b in r['bodies'] if b['side']==-1);p=aim(r,0,target['x'],target['y'],20);assert p;g._siege_fire(r,20,p);assert r['event']['hitId']==target['id']
 print('Six fields:',checks,'actual trajectory checks; random, motion, migration, penetration, fragments, buffer, obstacle PASS')

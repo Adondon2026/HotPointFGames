@@ -37,6 +37,7 @@ jobs:
         run: |
           python tests/test_game_update_manifest.py
           python game_source/tests/smoke_test.py
+          python game_source/tests/test_siege_combo.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py
           python game_source/tests/test_table.py
@@ -63,7 +64,6 @@ jobs:
           python game_source/tests/test_siege_map_pools.py
           python game_source/tests/test_siege_zmz_v20.py
           python game_source/tests/test_siege_zmz_v202.py
-          python game_source/tests/test_siege_combo.py
           python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
       - name: Generate update manifest

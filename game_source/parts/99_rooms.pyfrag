@@ -190,13 +190,14 @@ def _room_siege(data):
     touch_player(p);kind=data.get('type');now=time.time();seat=next((i for i,x in enumerate(r['players']) if x['key']==pid),None)
     if seat is None:return {'ok':False,'error':'不在对局中'}
     _siege_migrate_catalog(r)
+    if _siege_manual_tick(r,now):_settle_match();save_state()
     if r.get('combatMode')=='live':
         r.update(combatMode='sync',reloadSeconds=15);STATE['settings'].update(siegeCombatMode='sync',siegeReload=15);save_state()
     sync=r.get('combatMode')=='sync';sr=_room_siege_sync(r) if sync else None
     if sync:
         sr['configs']=[_siege_public_config(c) for c in sr['configs']]
         # Accept the current draft before the deadline, never a stale previous-round action.
-        if kind in ('draft','ready','unready') and r['phase']=='play' and not sr['replay'] and (sr['deadline'] is None or now<sr['deadline']):
+        if kind in ('draft','ready','unready') and r['phase']=='play' and not sr['replay'] and not sr.get('activeEngine') and (sr['deadline'] is None or now<sr['deadline']):
             try:
                 if kind=='unready':
                     if data.get('round')!=sr['round']:raise ValueError('准备阶段已切换')
@@ -209,13 +210,20 @@ def _room_siege(data):
         if kind=='fire':return {'ok':False,'error':'同步开炮请先确认准备'}
     live=r.get('combatMode','turn')=='live';rt=_room_siege_live(r) if live else None
     if live and _siege_live_tick(r,rt,now):_settle_match();save_state()
-    if kind=='fire':
+    if kind=='maneuver':
+        try:_siege_command(sr.get('activeEngine',{'active':{}}) if sync else _SIEGE_MANUAL_ROUNDS.get(id(r),{'active':{}}),seat,data.get('action'),data.get('shotNo'),now)
+        except ValueError as e:return {'ok':False,'error':str(e)}
+    elif id(r) in _SIEGE_MANUAL_ROUNDS and kind!='state':return {'ok':False,'error':'请等待炮击结束'}
+    elif kind=='fire':
         a,power=data.get('angle'),data.get('power')
         if not live and (r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']):return {'ok':False,'error':'当前不能发射，请等待回合'}
         if type(a) not in (int,float) or type(power) not in (int,float) or not (5<=a<=175 and 15<=power<=100):return {'ok':False,'error':'角度或力度无效'}
         try:
             if live:_siege_live_start(r,rt,seat,a,power,data.get('selection'),now,force=data.get('force') is True,config=_siege_public_config(data.get('config')))
-            else:_siege_fire(r,a,power,data.get('selection'),data.get('force') is True,_siege_public_config(data.get('config')))
+            else:
+                cfg=_siege_public_config(data.get('config'));sel=data.get('selection');force=data.get('force') is True
+                if _siege_has_controls(r,sel,seat,cfg):_siege_manual_start(r,seat,a,power,sel,force,cfg,now)
+                else:_siege_fire(r,a,power,sel,force,cfg)
         except ValueError as e:return {'ok':False,'error':str(e)}
         _settle_match();save_state()
     elif kind=='rematch':
@@ -226,12 +234,12 @@ def _room_siege(data):
         _settle_match();_siege_rematch(r);_ROOM_ACTIVE['runtime'].pop('siegeLive',None);_ROOM_ACTIVE['runtime'].pop('siegeSync',None);live=r['combatMode']=='live';rt=_room_siege_live(r) if live else None;sync=r['combatMode']=='sync';sr=_room_siege_sync(r) if sync else None;STATE['matchId']=secrets.token_hex(16);save_state()
     elif kind=='return':
         if pid!=STATE['hostPlayerId']:return {'ok':False,'error':'请等待房主返回房间'}
-        if (live and rt['active']) or now<r['until']:return {'ok':False,'error':'请等待炮击结束'}
+        if (live and rt['active']) or (sync and sr.get('activeEngine')) or id(r) in _SIEGE_MANUAL_ROUNDS or now<r['until']:return {'ok':False,'error':'请等待炮击结束'}
         _settle_match();STATE.pop('siege',None);_ROOM_ACTIVE['runtime'].pop('siegeLive',None);_ROOM_ACTIVE['runtime'].pop('siegeSync',None);STATE.update(phase='lobby',turnPlayerId=None,roundNo=0);bump();return {'ok':True,'returned':True}
     elif kind!='state':return {'ok':False,'error':'未知操作'}
     if live:
         if r['bot'] and _siege_live_can_fire(r,rt,1,now):_siege_bot(r,rt);save_state()
-    elif not sync and r['bot'] and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:_siege_bot(r);_settle_match();save_state()
+    elif not sync and id(r) not in _SIEGE_MANUAL_ROUNDS and r['bot'] and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:_siege_bot(r);_settle_match();save_state()
     _settle_match()
     v=_siege_sync_public(r,sr,pid,data.get('last',-1)) if sync else _siege_live_public(r,rt,pid) if live else _siege_public(r,pid,data.get('last',-1));v['host']=pid==STATE['hostPlayerId']
     if r['phase']=='over' and p.get('accountId'):
@@ -263,12 +271,12 @@ def _room_route(self,post=False):
                     if old is not None:
                         old['touched']=time.time();return self.reply(_siege_public(old,key,-1))
                     data={**data,'trial':True}
-                elif kind in ('state','fire','trialPreview','trialReset','leave'):
+                elif kind in ('state','fire','maneuver','trialPreview','trialReset','leave'):
                     arena=_SIEGE_ROOMS.get(code)
                     if not arena or not arena.get('trial') or arena['players'][0]['key']!=key:
                         return self.reply({'ok':False,'error':'试验场不存在或会话已失效'},403)
                     if kind=='leave':
-                        _SIEGE_ROOMS.pop(code,None);return self.reply({'ok':True})
+                        _SIEGE_MANUAL_ROUNDS.pop(id(arena),None);_SIEGE_ROOMS.pop(code,None);return self.reply({'ok':True})
                 else:return self.reply({'ok':False,'error':'试验场不支持此操作'},400)
                 return self.reply(siege_request(data))
         except (ValueError,TypeError,KeyError,AttributeError):
