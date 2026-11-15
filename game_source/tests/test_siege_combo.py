@@ -374,6 +374,27 @@ for k in ('shield','homing','splitshot','heal'):
     r['items']=[dict(id=999,kind=k,x=x,y=y,r=20,amount=1,zone='center',slot=999)]
     g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
     assert any(i['id']==999 for i in r['items']) and not any(i['id']==999 for i in r['event']['pickups'])
+# Real v24 pickup -> public inventory -> next shot's reversible selection.
+for k in ('splitshot','heal','shield','armor','homing','coreteleport','gunteleport','tntdrop','tntwait'):
+    r=v24();x,y=g._siege_muzzle(0,r,75)
+    r['items']=[dict(id=999,kind=k,x=x,y=y,r=20,amount=1,zone='air',slot=999)]
+    g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
+    public=g._siege_public(r,'a',-1)
+    assert public['buffs'][0][k]==1 and r['event']['pickups'][0]['gained']==1,(k,public['buffs'][0],r['event']['pickups'])
+    assert g._siege_selection(r,{k:1},0)=={k:1}
+    assert g._siege_selection(r,{k:0},0)=={}
+    assert public['buffs'][0][k]==1
+# Same data path in simultaneous combat, including exact partial pickup amounts.
+r=v24();r['buffs'][0]['bounce']=4;x,y=g._siege_muzzle(0,r,75)
+r['items']=[dict(id=999,kind='bounce',x=x,y=y,r=20,amount=3,zone='air',slot=999)]
+now=time.time();rt=g._siege_sync_runtime(r,now);rt['plans']=[(75,40,{}),(75,40,{})]
+rt['configs']=[g._siege_public_config({}),g._siege_public_config({})]
+g._siege_sync_compute(r,rt,now)
+pub=g._siege_sync_public(r,rt,'a',-1)
+assert pub['buffs'][0]['bounce']==5 and any(i['id']==999 and i['amount']==2 for i in r['items'])
+assert any(p['id']==999 and p['side']==0 and p['gained']==1 for p in pub['replay']['pickups']),pub['replay']['pickups']
+assert any([999,2] in f[7] for f in pub['replay']['frames'])
+print('Siege v0.24 pickup: authoritative inventory, every skill, partial pickup and sync replay PASS')
 # Partial acceptance leaves remaining layers in place.
 r=v24();r['buffs'][0]['bounce']=4;x,y=g._siege_muzzle(0,r,75)
 r['items']=[dict(id=999,kind='bounce',x=x,y=y,r=20,amount=3,zone='center',slot=999)]

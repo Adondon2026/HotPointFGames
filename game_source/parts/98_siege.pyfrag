@@ -1355,7 +1355,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     k=item['kind'];inv=r['buffs'][side];space=_SIEGE_V24_CAPS.get(k,0)-inv.get(k,0)-r.get('armed',[{},{}])[side].get(k,0)
                     gain=min(space,item.get('amount',1))
                     if gain<=0:continue
-                    inv[k]+=gain;pickups.append({**item,'x':ix,'y':iy,'at':round(t,3),'side':side,'gained':gain})
+                    inv[k]+=gain;record={**item,'x':ix,'y':iy,'at':round(t,3),'side':side,'gained':gain};pickups.append(record)
+                    if live is not None:live.setdefault('pickupEvents',[]).append({**record,'at':round(motion_start+t,3)})
                     if gain<item.get('amount',1):item['amount']-=gain;continue
                     r['items'].remove(item)
                     if 'slot' in item:r.setdefault('respawns',[]).append({**item,'readyAt':sum(r['shots'])+4})
@@ -1956,7 +1957,7 @@ def _siege_sync_compute(r,rt,now):
         t=step*_SIEGE_LIVE_DT
         for b in w['bodies']:meta[b['id']]={k:v for k,v in b.items() if k not in ('vx','vy','motionY','baseY','phase')}
         for it in w['items']:items[it['id']]=dict(it)
-        frames.append([round(t,3),[_siege_pos(b) for b in w['bodies']],copy.deepcopy([e['sample'] for e in engine['active'].values()]),[list(_siege_launcher(i,w,max(0,now-w['motionEpoch'])+t)) for i in (0,1)],[it['id'] for it in w['items']],[dict(m) for m in w.get('mines',[])],[b['id'] for b in w['bodies'] if b.get('burnRounds',0)>0 and b['hp']>0]])
+        frames.append([round(t,3),[_siege_pos(b) for b in w['bodies']],copy.deepcopy([e['sample'] for e in engine['active'].values()]),[list(_siege_launcher(i,w,max(0,now-w['motionEpoch'])+t)) for i in (0,1)],[it['id'] for it in w['items']],[dict(m) for m in w.get('mines',[])],[b['id'] for b in w['bodies'] if b.get('burnRounds',0)>0 and b['hp']>0],[[it['id'],it.get('amount',1)] for it in w['items']]])
     capture()
     settle_fn=next(iter(engine['physicsFns'].values()),None)
     while engine['active']:
@@ -1983,7 +1984,7 @@ def _siege_sync_compute(r,rt,now):
     w['rev']+=1;w['reloadSeconds']=r.get('reloadSeconds',15);w['event']=None
     duration=frames[-1][0];w['until']=time.time()+duration+.35
     r.clear();r.update(w)
-    rt.update(replay={'id':r['rev'],'duration':duration,'frames':frames,'meta':list(meta.values()),'items':list(items.values()),'motionStart':max(0,now-w['motionEpoch'])},until=r['until'],notice=notices)
+    rt.update(replay={'id':r['rev'],'duration':duration,'frames':frames,'meta':list(meta.values()),'items':list(items.values()),'pickups':[{**p,'at':round(p['at']-max(0,now-w['motionEpoch']),3)} for p in engine.get('pickupEvents',[])],'motionStart':max(0,now-w['motionEpoch'])},until=r['until'],notice=notices)
 
 def _siege_sync_tick(r,rt,now=None):
     now=time.time() if now is None else now
