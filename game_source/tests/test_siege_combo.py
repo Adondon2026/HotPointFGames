@@ -184,17 +184,22 @@ def http(path,data=None):
     except urllib.error.HTTPError as e:res=e
     with res:return res.status,res.read()
 def trial_api(data):
-    status,raw=http('/api/siege-trial',data)
+    status,raw=http('/trial/api/siege',data)
     return status,json.loads(raw)
 try:
-    status,page=http('/siege?trial=1')
-    assert status==200 and b'/api/siege-trial' in page
+    status,page=http('/trial/siege')
+    assert status==200 and b'/trial/api/siege' in page
+    assert http('/siege?trial=1')[0]==200
+    assert http('/trial/siege?from=%2Fr%2FABCDEF%2F')[0]==200
     assert http('/siege')[0]==404
     assert http('/api/siege',{'type':'create','key':'e'*48})[0]==404
     key='e'*48
-    status,v=trial_api({'type':'create','key':key})
+    assert not trial_api({'type':'create','key':key,'trial':False})[1]['ok']
+    status,v=trial_api({'type':'create','key':key,'trial':True})
     assert status==200 and v['ok'] and v['trial'] and v['cores']==[100,100]
     code=v['code']
+    assert trial_api({'type':'create','key':key,'trial':True})[1]['code']==code
+    assert json.loads(http('/api/siege-trial',{'type':'state','key':key,'code':code})[1])['trial']
     def q(kind,**kw):return trial_api(dict(type=kind,key=key,code=code,**kw))[1]
     assert q('state')['trial']
     assert not trial_api(dict(type='state',key='f'*48,code=code))[1]['ok']
@@ -210,6 +215,8 @@ try:
     normal=g.siege_request(dict(type='create',key=key,bot=True))
     assert normal['ok'] and not normal['trial']
     assert not trial_api(dict(type='state',key=key,code=normal['code']))[1]['ok']
+    assert q('leave')['ok'] and code not in g._SIEGE_ROOMS
+    assert not q('state')['ok']
     assert http('/')[0]==200
 finally:
     server.shutdown();server.server_close()
