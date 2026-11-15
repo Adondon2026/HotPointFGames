@@ -476,7 +476,12 @@ assert len([e for e in r['event']['behaviorEvents'] if e[0]=='bounceBlast'])==3
 assert g._siege_wall_damage(120)==0 and 80<g._siege_wall_damage(650)<=85
 assert g._siege_wall_damage(200)<g._siege_wall_damage(400)<g._siege_wall_damage(650)
 r=v24();core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==1)
-core.update(x=938,y=250,vx=650.,vy=0.)
+core.update(x=940,y=394,vx=650.,vy=0.)
 g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
 assert 0<core['hp']<100,core
+# At an already damaged core, a high-speed boundary strike can finish the game.
+r=v24();core=next(b for b in r['bodies'] if b['kind']=='core' and b['side']==1)
+core.update(x=940,y=394,vx=650.,vy=0.,hp=20)
+g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
+assert core['hp']==0 and r['winner']==0,core
 print('Siege dual TNT: shared allocation, terminal support, fuse, persistent trap, chain and wall collision PASS')
