@@ -243,6 +243,36 @@ def _room_route(self,post=False):
     # Bound a stalled client so it cannot indefinitely retain the shared room lock.
     self.connection.settimeout(8)
     parsed=urlparse(self.path);path=parsed.path;match=re.fullmatch(r'/r/([A-Fa-f0-9]{6})(/.*)?',path)
+    # The private practice arena has its own URL and never enters public room scope.
+    # Keep the old trial link working without reopening the legacy standalone lobby.
+    if not post and (path=='/trial/siege' or (path=='/siege' and parsed.query.split('&').count('trial=1')==1)):
+        return self.reply(SIEGE_PAGE,200,'text/html; charset=utf-8')
+    if post and path=='/trial/api/siege':
+        try:
+            if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()
+            data=self.read_json()
+            if not isinstance(data,dict):raise ValueError()
+            with LOCK:
+                kind=data.get('type');key=str(data.get('key',''));code=str(data.get('code','')).upper()
+                if kind=='create':
+                    if data.get('trial') is not True:return self.reply({'ok':False,'error':'仅支持炮击试验场'},403)
+                    # Reuse the visitor's own arena on re-entry rather than accumulating rooms.
+                    old=next((r for r in _SIEGE_ROOMS.values() if r.get('trial') and r['players'][0]['key']==key and time.time()-r['touched']<=86400),None)
+                    if old is not None:
+                        old['touched']=time.time()
+                        return self.reply(_siege_public(old,key,-1))
+                elif kind not in ('state','fire','trialPreview','trialReset','leave'):
+                    return self.reply({'ok':False,'error':'试验场操作无效'},403)
+                else:
+                    arena=_SIEGE_ROOMS.get(code)
+                    if not arena or not arena.get('trial') or arena['players'][0]['key']!=key:
+                        return self.reply({'ok':False,'error':'试验场不存在或会话已失效'},403)
+                    if kind=='leave':
+                        _SIEGE_ROOMS.pop(code,None)
+                        return self.reply({'ok':True})
+                return self.reply(siege_request(data))
+        except (ValueError,TypeError,KeyError,AttributeError):
+            return self.reply({'ok':False,'error':'请求无效'},400)
     if not post and path=='/':return self.reply(HUB_PAGE,200,'text/html; charset=utf-8')
     # The free-fire arena is isolated from public rooms and match scoring.
     # Do not reopen the legacy standalone multiplayer endpoints.
