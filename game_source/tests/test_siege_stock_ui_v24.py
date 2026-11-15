@@ -48,7 +48,7 @@ try:
         page.get_by_role('button',name='减少巨型弹').tap()
         expect(page.get_by_role('spinbutton',name='巨型弹使用数量')).to_have_value('0')
         page.get_by_role('button',name='技能',exact=True).tap()
-        expect(rows).to_have_count(9)
+        expect(rows).to_have_count(10)
         page.get_by_role('button',name='防御加固选满').tap()
         expect(page.get_by_role('spinbutton',name='防御加固使用数量')).to_have_value('2')
         expect(page.get_by_role('spinbutton',name='核心修复使用数量')).to_have_value('0')
@@ -95,7 +95,7 @@ try:
             return {ok:true,count,max,maxZoomRate,maxPan}
         }""",event)
         assert result['ok'] and result['count']>5 and result['max']>=8,result
-        assert result['maxZoomRate']<850,result
+        assert result['maxZoomRate']<.001,result # fixed focal length
         # Exercise the actual requestAnimationFrame renderer, not just the planner.
         # During preroll no projectile is visible; once playback starts every
         # rendered projectile stays inside the camera and the map stays bounded.
@@ -117,12 +117,12 @@ try:
             }
             playing=null;animFrame=null;cameraSnap(home(0));return {count,pre,fail,maxJump}
         }""",event)
-        assert not real['fail'] and real['count']>10 and real['pre']>0,real
+        assert not real['fail'] and real['count']>10 and real['pre']>0 and real['maxJump']<.001,real
         print('Siege camera rendered playback:',real)
         assert not errors,errors
         print('Siege camera actual replay coverage:',result)
         print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')
-        print('Siege v24 real browser: all 19 inventory rows rendered; uniform controls, filter, selection and cancel PASS')
+        print('Siege v24 real browser: all 22 inventory rows rendered; uniform controls, filter, selection and cancel PASS')
         browser.close()
 finally:
     s.shutdown()
