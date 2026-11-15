@@ -29,7 +29,11 @@ try:
         page = browser.new_page(viewport={'width':390,'height':844},has_touch=True,is_mobile=True)
         errors = []
         page.on('pageerror',lambda err:errors.append(str(err)))
-        page.goto(url+'/siege')
+        # Standalone /siege may redirect to the lobby; serve the exact built page
+        # at a test-only URL on the same HTTP origin, keeping localStorage enabled.
+        page.route(url+'/siege-stock-test',lambda route:route.fulfill(status=200,content_type='text/html; charset=utf-8',body=g.SIEGE_PAGE))
+        page.goto(url+'/siege-stock-test')
+        page.wait_for_function('typeof apply === "function"')
         page.evaluate('d=>{apply(d);overview=null;update()}',data)
         page.locator('#stockBtn').tap()
         rows = page.locator('#stockRows .stock-row')
