@@ -61,7 +61,7 @@ def _siege_allowed(r):
     """Room-authoritative whitelist. None means all (including legacy saved rooms)."""
     allowed=r.get('allowedBuffs')
     if allowed is None:return _SIEGE_ACTIVE_ITEMS
-    return tuple(k for k in _SIEGE_ACTIVE_ITEMS if k in allowed or (k=='splitshot' and any(old in allowed for old in _SIEGE_RETIRED)))
+    return tuple(k for k in _SIEGE_ACTIVE_ITEMS if k in allowed or any(old in allowed and replacement==k for old,replacement in _SIEGE_REPLACEMENT.items()))
 
 def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None,allowed=None):
     count=max(0,min(_SIEGE_MAX_ITEMS,int(count)))
@@ -386,7 +386,8 @@ def _siege_gun_gravity(r,dt):
 _SIEGE_SCOPEABLE=('bounce','through','spiral','power','shock','pierce','push','blackhole','ignite','firetrail','snake','dive','antigrav','homing','pingpong','fuse')
 _SIEGE_EVENT_KINDS=('launch','apex','bounce','through','end')
 _SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','mine','blackhole','ignite','clone')
-_SIEGE_RETIRED=('larpa','downpour')
+_SIEGE_RETIRED=('larpa','downpour','fuse')
+_SIEGE_REPLACEMENT={'larpa':'splitshot','downpour':'splitshot','fuse':'bounceblast'}
 _SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in _SIEGE_RETIRED)
 _SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'mine':12,'clone':12,'blackhole':12}
 def _siege_migrate_catalog(r):
@@ -394,15 +395,15 @@ def _siege_migrate_catalog(r):
     _siege_normalize_buffs(r)
     for b in r['buffs']:
         for k in _SIEGE_RETIRED:
-            b['splitshot']+=b.get(k,0);b[k]=0
+            b[_SIEGE_REPLACEMENT[k]]+=b.get(k,0);b[k]=0
     for it in (*r.get('items',[]),*r.get('respawns',[])):
-        if it.get('kind') in _SIEGE_RETIRED:it['kind']='splitshot'
+        if it.get('kind') in _SIEGE_RETIRED:it['kind']=_SIEGE_REPLACEMENT[it['kind']]
     r['allowedBuffs']=list(_siege_allowed(r))
 
 def _siege_public_config(config=None):
     if config is None:config={}
     if not isinstance(config,dict):raise ValueError('炮弹配置无效')
-    out=dict(config);out['unified']=True
+    out=dict(config);out.update(unified=True,manual=True,delayedSplit=True)
     if 'triggers' not in out and 'splitMode' in out:
         old={'air':'apex','hit':'end','timer':'apex','bounce':'bounce','expire':'end'}.get(out['splitMode'])
         if old:out['triggers']={'splitshot':old}
@@ -675,7 +676,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             sh.update(x=x,y=y,radius=radius+24+6*n)
         return [dict(sh) for sh in shields.values() if sh['left']>0]
     def sample(t,p):
-        return {'embers':[[round(e['x'],1),round(e['y'],1)] for e in embers],'controls':dict(control['left']) if control is not None and ((p is not None and main_stop is None) or any(f['live'] and t>=f.get('bornAt',0) and not f.get('stop') for f in fragments)) else {},'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']]}
+        return {'motionTime':motion_start+t,'embers':[[round(e['x'],1),round(e['y'],1)] for e in embers],'controls':dict(control['left']) if control is not None and ((p is not None and main_stop is None) or any(f['live'] and t>=f.get('bornAt',0) and not f.get('stop') for f in fragments)) else {},'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']]}
     clone_left=0 if unified else attack_counts.get('clone',0)
     def spawn_clone(x,y,shell_kind):
         nonlocal clone_left
@@ -1428,7 +1429,7 @@ def _siege_manual_tick(r,now):
 def _siege_manual_view(r,v,now):
     rt=_SIEGE_MANUAL_ROUNDS.get(id(r))
     if rt:
-        v.update(busy=True,event=None,manualFlight=True,liveShots=[e['sample'] for e in rt['active'].values()],slowRate=rt['slowRate'] if now<rt['slowUntil'] else 1.)
+        v.update(busy=True,event=None,manualFlight=True,liveShots=[e['sample'] for e in rt['active'].values()],slowRate=rt['slowRate'] if now<rt['slowUntil'] else 1.,motionTime=rt['active'][rt['side']]['sample']['motionTime'])
     return v
 
 def _siege_live_runtime(r,now=None):
@@ -1588,7 +1589,7 @@ def _siege_sync_tick(r,rt,now=None):
         return False
     if r['phase']!='play':return False
     if r['bot'] and not rt['locked'][1]:
-        plan={'planOnly':True};_siege_bot(r,plan);rt['plans'][1]=plan['plan'];rt['configs'][1]=_siege_config({'simple':True,'unified':True});rt['locked'][1]=True
+        plan={'planOnly':True};_siege_bot(r,plan);rt['plans'][1]=plan['plan'];rt['configs'][1]=_siege_config({'simple':True,'unified':True,'delayedSplit':True});rt['locked'][1]=True
     if all(rt['locked']) or (rt['deadline'] is not None and now>=rt['deadline']):
         _siege_sync_compute(r,rt,now);return True
     return False
@@ -1611,8 +1612,8 @@ def _siege_bot_fire(r,a,p,live=None):
                 selection[k]=min(selection[k],max(0,_siege_cap(r,k)-r.get('armed',[{},{}])[1].get(k,0)))
                 if not selection[k]:selection.pop(k)
     def shoot(angle,selection):
-        if live is not None:_siege_live_start(r,live,1,angle,p,selection,config={'simple':True,'unified':True})
-        else:_siege_fire(r,angle,p,selection,config={'simple':True,'unified':True})
+        if live is not None:_siege_live_start(r,live,1,angle,p,selection,config={'simple':True,'unified':True,'delayedSplit':True})
+        else:_siege_fire(r,angle,p,selection,config={'simple':True,'unified':True,'delayedSplit':True})
     for angle in ((a,135,155,175,105,90,75,45,5) if a>90 else (a,45,25,5,75,90,115,145,175)):
         try:shoot(angle,selection);return
         except ValueError:continue
