@@ -415,5 +415,18 @@ for theme in ('classic','art'):
     r['respawns']=[{**it,'readyAt':0}];r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
     g._siege_refill(r);refill=next(i for i in r['items'] if i['slot']==it['slot'])
     assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y'])
-assert 'siegeRarityModal' in g.HTML_PAGE and 'ammo-tile' in g.SIEGE_PAGE and 'skillDock' in g.SIEGE_PAGE
+assert 'siegeRarityModal' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'skillDock' in g.SIEGE_PAGE
 print('Siege v0.24: 32 conserved projectiles, giant radius, capped pickups, skill charges, point guidance, barrel chains, theme and persistent rarity PASS')
+
+# Negative effects are independent of rarity configuration and protected slots.
+r=v24('classic',['heavy','splitshot'])
+g._siege_v24_setup(r,'classic',{'heavy':'precious','splitshot':'rare'})
+assert 'heavy' not in r['rarities']
+for zone in ('side','center'):
+    assert all(g._siege_v24_draw(r,zone)=='splitshot' for _ in range(30))
+r=v24('classic',['heavy'])
+assert g._siege_v24_draw(r,'air')=='heavy' and g._siege_v24_draw(r,'center') is None
+r.update(mode='random',itemCount=13);g._siege_field(r)
+assert len(r['items'])==13 and all(i['zone']=='air' and i['kind']=='heavy' for i in r['items'])
+assert 'siege-theme-switch' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'stock-group-label' in g.SIEGE_PAGE
+print('Siege UI polish: fixed negative resource pool and grouped stock controls PASS')

@@ -156,7 +156,7 @@ def _room_action(self,player,action,data):
             if data.get('rulesVersion')==24:
                 theme=data.get('theme','classic');rarities=data.get('rarities',{})
                 if theme not in ('classic','art') or not isinstance(rarities,dict) or any(k not in _SIEGE_V24_KEYS or not isinstance(v,str) or v not in _SIEGE_V24_WEIGHTS for k,v in rarities.items()):return {'error':'稀有度设置无效'},400
-                STATE['settings'].update(siegeRulesVersion=24,siegeTheme=theme,siegeRarities=rarities)
+                STATE['settings'].update(siegeRulesVersion=24,siegeTheme=theme,siegeRarities={k:v for k,v in rarities.items() if k not in _SIEGE_NEGATIVE})
             STATE['settings'].update(siegeAllowedBuffs=allowed,siegeStackCaps=caps,siegeFortStrength=fort,siegeItemCount=count,siegeAmmo=ammo,siegeMode=mode,siegeWind=wind,siegeBuffMode=buff_mode,siegeCombatMode=combat,siegeReload=reload);_room_save_settings(player);bump();return {},200
         if action in ('start','solo_start'):return _room_start_siege(player,action=='solo_start')
         if action=='reset':
