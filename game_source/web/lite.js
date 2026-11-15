@@ -29,7 +29,28 @@ const siegeIds=['siegeItemCount','siegeAmmo','siegeMode','siegeWind','siegeBuffM
 let siegePending=null,siegeSaving=false;
 function siegeChoices(){return [...document.querySelectorAll('#siegeBuffChoices input[data-kind]')]}
 const siegeLastFinite={siegeAmmo:20,siegeReload:15};
-function siegeMapPreview(){const selected=$('siegeMode').value,pool={pool_small:['close','3 张随机'],pool_medium:['standard','4 张随机'],pool_large:['far','4 张随机']}[selected],mode=pool?pool[0]:selected,air=['sky','floating','floatingcenter'].includes(mode),close=mode==='close',far=mode==='far',middle=['overtop','floatingcenter'].includes(mode);let left=middle?70:close?45:far?10:23,right=220-left;let top=air?20:45;const walls=[left,right].map((x,i)=>`<rect x="${x-10}" y="${top}" width="20" height="${64-top-(air?22:0)}" rx="2" fill="${i?'#91b6c7':'#c8aa71'}"/><circle cx="${x}" cy="${top+9}" r="4" fill="${i?'#d4f1ff':'#ffe2a5'}"/>${air?`<rect x="${x-16}" y="${top+22}" width="32" height="4" fill="#536b61"/>`:''}`).join('');$('siegeMapPreview').innerHTML=`<svg viewBox="0 0 220 78" width="100%" xmlns="http://www.w3.org/2000/svg"><rect width="220" height="78" rx="6" fill="#b6cdd0"/><path d="M0 52L50 35L96 51L157 31L220 52V78H0Z" fill="#99b3a4"/><rect y="64" width="220" height="14" fill="#728773"/>${walls}${mode==='obstacle'||mode==='movingwall'?'<rect x="105" y="33" width="10" height="31" fill="#738b8d"/>':''}${mode==='peaks'?'<path d="M0 64V47H65V64M155 64V47H220V64" fill="#728773"/>':''}<path d="M${middle?17:57} 61l7 -10M${middle?203:163} 61l-7 -10" stroke="#425b54" stroke-width="5" stroke-linecap="round"/>${pool?`<text x="110" y="25" font-size="12" font-weight="600" fill="#395b54" text-anchor="middle">${pool[1]}</text>`:mode==='random'?'<text x="110" y="31" font-size="20" fill="#395b54" text-anchor="middle">?</text>':''}</svg>`;}
+function siegeMapPreview(){
+ const selected=$('siegeMode').value,pool={pool_small:['close','3 张随机'],pool_medium:['standard','4 张随机'],pool_large:['far','4 张随机']}[selected],mode=pool?pool[0]:selected;
+ const name=siegeMapOptions.find(o=>o[0]===selected)?.[1]||'随机战场';
+ const stone='#819c98',wood='#ab8057',core='#efd298',ground='#718976';
+ const block=(x,y,w,h,fill)=>'<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="1" fill="'+fill+'" stroke="#536e65" stroke-width=".7"/>';
+ const fort=(x,mirror=false)=>{
+  const pieces=[];const add=(dx,y,w,h,c)=>pieces.push(block(x+(mirror?-dx-w:dx),y,w,h,c));
+  if(mode==='fragments'){
+   add(-13,44,5,20,wood);add(8,44,5,20,wood);add(-16,38,32,6,stone);add(-10,31,20,7,stone);add(-5,24,10,7,stone);
+  }else if(mode==='peaks'||mode==='overtop'){const base=mode==='peaks'?48:64;add(7,base-28,7,28,stone);add(-14,base-14,7,14,stone);}
+  else if(mode==='obstacle'){add(8,43,5,21,stone);add(18,37,5,27,stone);add(-14,51,5,13,stone);}
+  else if(['sky','floating','floatingcenter'].includes(mode)){add(-17,42,34,5,stone);add(-12,23,7,19,stone);add(5,23,7,19,wood);add(-12,19,24,4,stone);}
+  else{add(-13,48,6,16,stone);add(7,48,6,16,wood);add(-13,44,26,4,stone);add(-6,32,12,12,stone);}
+  const cy=mode==='peaks'?43:['sky','floating','floatingcenter'].includes(mode)?38:59;
+  return pieces.join('')+'<circle cx="'+x+'" cy="'+cy+'" r="4" fill="'+core+'" stroke="#735c42"/>';
+ };
+ const middle=['overtop','floatingcenter'].includes(mode),left=middle?76:mode==='close'?42:mode==='far'?17:28,right=220-left;
+ const extra=mode==='overtop'?'<rect x="63" y="19" width="94" height="4" fill="#6095ac"/>':mode==='movingwall'?block(105,27,10,29,stone):mode==='obstacle'?block(105,55,10,9,stone):'';
+ const terrain=mode==='peaks'?'<path d="M0 64V48H68V64H152V48H220V78H0Z" fill="'+ground+'"/>':'<rect y="64" width="220" height="14" fill="'+ground+'"/>';
+ const detail={fragments:'木柱承重 · 点燃坍塌',peaks:'顶部入口 · 主动俯冲',obstacle:'双层石墙 · 穿透爆破',overtop:'反弹板 · 反射攻击',sky:'浮空堡垒 · 空中效果',close:'近距对轰',far:'远距高抛'}[mode]||'堡垒对射';
+ $('siegeMapPreview').innerHTML='<svg viewBox="0 0 220 78" width="100%" xmlns="http://www.w3.org/2000/svg"><rect width="220" height="78" rx="6" fill="#b6cdd0"/><path d="M0 52L50 35L96 51L157 31L220 52V78H0Z" fill="#99b3a4"/>'+terrain+fort(left)+fort(right,true)+extra+'<path d="M'+(middle?17:55)+' 61l7 -10M'+(middle?203:165)+' 61l-7 -10" stroke="#425b54" stroke-width="5" stroke-linecap="round"/><text x="110" y="11" font-size="9" fill="#34584e" text-anchor="middle">'+(pool?pool[1]:selected==='random'?'全部随机':detail)+'</text></svg>';
+}
 const siegeMapGroups={small:['pool_small','close','floating','fragments'],medium:['pool_medium','standard','peaks','obstacle','movingwall'],large:['pool_large','far','overtop','sky','floatingcenter'],all:['random','classic']};
 const siegeMapOptions=[...$('siegeMode').options].map(o=>[o.value,o.textContent]);
 const mapSizeRow=document.createElement('div');mapSizeRow.className='siege-choice-row';mapSizeRow.id='siegeMapSize';$('siegeMode').before(mapSizeRow);
