@@ -391,6 +391,13 @@ def _siege_compile_spec(counts,config):
     if counts.get('downpour'):rules.append(dict(event='interval',effect='down',count=2*counts['downpour'],interval=.35))
     return dict(root=root,child=child,events=rules)
 
+def _siege_release_interval(level,base):
+    # Higher stacks release more promptly in ordinary, short artillery flights.
+    return base/(1+.25*max(0,level-1))
+
+def _siege_dive_strike(level):
+    return 1+.2*max(0,level)
+
 def _siege_motion_delta(vx,vy,x,y,age,dt,counts,config,side,bodies,dived=False):
     """A real velocity transform, shared by the mother and every child."""
     if counts.get('dive') and not dived and (age>=config['diveTime'] if not config.get('simple') else age>=.18 and (vy>=0 or age>=2.5)):
@@ -524,7 +531,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     attacks=list(attack_counts);defenses=list(defense_counts)
     pickups=[];passed=set();extra_blasts=[];fragments=[];fragment_hits=[];split_done=False;last_hit=None;bounces=[];ground_left=root_counts.get('bounce',0);drop_queue=[];drop_events=[];holes=[];teleports=[];teleport_target=None;puffs=[]
     fuse=bool(root_counts.get('fuse'));fuse_mode=config['fuseMode'];fuse_time=config['fuseTime'];main_stop=None;main_dived=False
-    larpa_left=2*attack_counts.get('larpa',0);down_left=2*attack_counts.get('downpour',0);bounce_blast_left=2*attack_counts.get('bounceblast',0);next_child=20000;next_down=.35;next_copy=.3;copy_mode=config['copyMode'];secondary_left=2*attack_counts.get('splitshot',0) if config['childSplit'] else 0;behavior_events=[];arc_events=[];mine_events=[];hole_anchors={};hole_paths=[];mine_left=attack_counts.get('mine',0);shield_left=2*attack_counts.get('shotshield',0)
+    larpa_left=2*attack_counts.get('larpa',0);down_left=2*attack_counts.get('downpour',0);bounce_blast_left=2*attack_counts.get('bounceblast',0);next_child=20000;down_interval=_siege_release_interval(attack_counts.get('downpour',0),.35) if config.get('simple') else .35;copy_interval=_siege_release_interval(attack_counts.get('larpa',0),.3) if config.get('simple') else .3;next_down=down_interval;next_copy=copy_interval;copy_mode=config['copyMode'];secondary_left=2*attack_counts.get('splitshot',0) if config['childSplit'] else 0;behavior_events=[];arc_events=[];mine_events=[];hole_anchors={};hole_paths=[];mine_left=attack_counts.get('mine',0);shield_left=2*attack_counts.get('shotshield',0)
     repeat_n=attack_counts.get('repeat',0);shell_scale=(1+.35*repeat_n)/(1+repeat_n)
     spiral_n=attack_counts.get('spiral',0);flight_distance=0.
     if live is not None:
@@ -588,7 +595,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if not b.get('burnRounds'):behavior_events.append(['ignite',round(t,3),b['id']])
                 old_damage=b.get('burnDamage',0) if b.get('burnRounds') else 0
                 b['burnRounds']=max(2,b.get('burnRounds',0));b['burnDamage']=max(5+2*(level-1),old_damage);b.pop('burnSpent',None)
-    def blast(x,y,target,scale=1.,br=None,impact_v=None,shell_kind='main',extras=True):
+    def blast(x,y,target,scale=1.,br=None,impact_v=None,shell_kind='main',extras=True,dive_strike=False):
         nonlocal hit_id
         counts=child_counts if shell_kind in ('split','larpa','terminal') else root_counts
         ds=damage_for(counts);ins=1+2.2*counts.get('shock',0)
@@ -605,6 +612,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             dx=b['x']-x;dy=b['y']-y;dist=math.hypot(max(0,abs(dx)-b['w']/2),max(0,abs(dy)-b['h']/2))
             if dist>br:continue
             direct=24 if b is target else 0
+            if dive_strike and counts.get('dive'):direct*=_siege_dive_strike(counts['dive'])
             if counts.get('pierce') and b['kind']!='core':direct*=1+1.5*counts['pierce']
             damage=((1-dist/br)*18+direct)*ds*scale
             if b['kind']=='core':damage*=.83
@@ -743,7 +751,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if larpa_left and copy_mode=='expire':larpa_left-=spawn_children(x,y,vx,vy,larpa_left,'radial')
         if split_now('expire',x,y,vx,vy) and config['parentEnd']=='vanish':explode=False
         px,py=x,y;impact=[round(x,1),round(y,1)];hit_at=t;last_hit=t;teleport_target=(x,y)
-        if explode:blast(x,y,target,_siege_v20_vanish(flight_distance,negatives))
+        if explode:blast(x,y,target,_siege_v20_vanish(flight_distance,negatives),dive_strike=bool(config.get('simple') and main_dived and (vy>0 or main_stop is not None)))
         schedule_drops(x,y,t,True)
         deploy_mines(x,y)
         if live is not None:live.get('shotShields',{}).pop(side,None)
@@ -756,7 +764,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         f['live']=False;last_hit=t
         if explode:
             dmg=f.get('scale',.42)*_siege_v20_vanish(f.get('travel',0),negatives)
-            blast(x,y,target,dmg,blast_radius,(f['vx'],f['vy']),f.get('kind','split'),extras=True)
+            blast(x,y,target,dmg,blast_radius,(f['vx'],f['vy']),f.get('kind','split'),extras=True,dive_strike=bool(config.get('simple') and f.get('dived') and (f['vy']>0 or f.get('stop'))))
             extra_blasts.append([round(x,1),round(y,1)]);fragment_hits.append([round(x,1),round(y,1),round(t,3)])
         schedule_drops(x,y,t)
     def attach(x,y,target):
@@ -873,15 +881,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if larpa_left and copy_mode=='orbit' and t>=.15:
                 larpa_left-=spawn_children(px,py,vx,vy,larpa_left,'orbit')
             if larpa_left and copy_mode in ('trail','chaos') and t>=next_copy:
-                larpa_left-=spawn_children(px,py,vx,vy,1,copy_mode);next_copy+=.3
+                larpa_left-=spawn_children(px,py,vx,vy,1,copy_mode);next_copy+=copy_interval
             if down_left and t>=next_down:
-                down_left-=spawn_children(px,py,vx,vy,1,'down');next_down+=.35
+                down_left-=spawn_children(px,py,vx,vy,1,'down');next_down+=down_interval
             # The two child shells branch in the air, not at an invented impact point.
             if config['splitMode']=='air' and 'splitshot' in attacks and not split_done and (t>=.45 or (t>=.20 and vy>=0)):
                 split_done=True
                 for i,delta in enumerate([v for j in range(1,attack_counts['splitshot']+1) for v in (-100*j,100*j)]):
                     fragments.append(dict(id=i,x=px,y=py,vx=vx+direction*delta,vy=vy+delta*.35,live=True,groundLeft=child_counts.get('bounce',0),passed=set(),bornAt=t,scale=.42,kind='split',travel=0.,splitDone=True,fuseAt=child_deadline(t)))
-            vx,vy,main_dived=_siege_motion_delta(vx,vy,px,py,t,dt,root_counts,config,side,bodies,main_dived)
+            was_dived=main_dived;vx,vy,main_dived=_siege_motion_delta(vx,vy,px,py,t,dt,root_counts,config,side,bodies,main_dived)
+            if main_dived and not was_dived:behavior_events.append(['dive',round(t,3),round(px,1),round(py,1),root_counts.get('dive',0)])
             oldx,oldy=px,py;px+=vx*dt;py+=vy*dt
             ox,oy=_siege_path_offset(t,root_counts,negatives);ex,ey=_siege_path_offset(t-dt,root_counts,negatives)
             px+=ox-ex;py+=oy-ey;px,py,vx,vy=deflect(px,py,vx,vy,radius);flight_distance+=math.hypot(px-oldx,py-oldy)
