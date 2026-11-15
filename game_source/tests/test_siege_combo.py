@@ -88,3 +88,28 @@ r=new();r['bodies'].append(dict(id=90,side=1,x=430,y=350,w=40,h=70,kind='stone',
 r['buffs'][0]['blackhole']=1;g._siege_fire(r,5,55,{'blackhole':1},config={'blackholeMode':'attached'})
 assert r['event']['holePaths'],r['event']['holes']
 print('Siege combo: all projectile patterns, triggers, resource budgets, material fire, deflection, persistent mines and sync PASS')
+
+# Catalog and lifecycle regressions: the browser must be able to enter and poll,
+# and every UI must use exactly the same set of item kinds as the server.
+import json
+for page in (g.SIEGE_PAGE,g.HTML_PAGE):
+    raw=page.split('const siegeCatalog=',1)[1]
+    catalog=json.JSONDecoder().raw_decode(raw)[0]
+    assert set(catalog)==set(g._SIEGE_ITEMS)
+    assert len({v['path'] for v in catalog.values()})==len(catalog)
+    assert len({v['color'] for v in catalog.values()})==6
+    assert all(catalog[k]['color']=='#b4b7bc' for k in g._SIEGE_NEGATIVE)
+assert "siegeBuffList.length" in g.HTML_PAGE
+assert "n+'/16'" not in g.HTML_PAGE
+assert 'return {unlock,enterBattle:' in g.SIEGE_PAGE
+assert 'Object.entries(siegeCatalog).map' in g.SIEGE_PAGE
+key='b'*48
+created=g.siege_request({'type':'create','key':key,'bot':True,'allowedBuffs':list(g._SIEGE_ITEMS)})
+assert created['ok'] and created['bot']
+code=created['code'];r=g._SIEGE_ROOMS[code]
+first=g.siege_request({'type':'fire','key':key,'code':code,'rev':r['rev'],'angle':42,'power':65})
+assert first['ok'] and first['shots']==[1,0]
+r['until']=time.time()-1
+second=g.siege_request({'type':'state','key':key,'code':code,'last':first['rev']})
+assert second['ok'] and second['shots']==[1,1] and second['event']['side']==1
+print('Siege catalog and bot handoff PASS')
