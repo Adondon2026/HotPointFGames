@@ -57,7 +57,17 @@ try:
         assert page.evaluate('room.buffs[0].armor')==2
         page.get_by_role('button',name='全部',exact=True).tap()
         expect(rows).to_have_count(len(keys))
+        # Wide and tall distributions must remain visible in the same frame.
+        result=page.evaluate("""()=>{const pts=[[8,360,6],[952,-220,12],[480,20,8],...Array.from({length:29},(_,i)=>[25+i*31,100-i*5,8])];cameraGroup(pts,.016);
+            const visible=pts.every(([x,y,r])=>x-r>=camera.x-1e-6&&x+r<=camera.x+VIEW_W+1e-6&&y-r>=camera.y-1e-6&&y+r<=camera.y+VIEW_H+1e-6);
+            const wide=VIEW_W;for(let i=0;i<180;i++)cameraGroup([[440,100,8]],1/60);
+            const near=VIEW_W;cameraHandoff({from:{...camera,w:VIEW_W},to:home(0)},1);
+            return {visible,wide,near,home:VIEW_W,base:BASE_W}}""")
+        assert result['visible'] and result['wide']>960 and result['near']<result['wide'] and result['home']==result['base'],result
+        assert page.evaluate("""()=>cameraShotPoints([{p:[10,20],radius:6,fragments:[[1,300,100]]},{p:[900,10],fragments:[[2,810,90]]}]).length""")==4
+        assert page.evaluate("""()=>cameraWorldPoints([[1,800,300,90],[2,100,300,18]],[[1,780,300,100],[2,100,300,18]],[{id:1,kind:'core',w:44,h:44},{id:2,kind:'tnt',w:24,h:24,tntFuseStart:1}],.1,1.5).length""")==2
         assert not errors,errors
+        print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')
         print('Siege v24 real browser: all 19 inventory rows rendered; uniform controls, filter, selection and cancel PASS')
         browser.close()
 finally:
