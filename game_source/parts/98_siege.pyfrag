@@ -51,7 +51,7 @@ _SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield') else 1 if k in ('ho
 _SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport')
 _SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport') else 'rare' if k in ('repeat','blackhole','shield') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor') else 'common') for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_WEIGHTS={'common':8,'uncommon':4,'rare':2,'precious':1}
-_SIEGE_V24_ART={'splitshot':12,'repeat':8,'bounce':12,'bounceblast':16,'through':5,'big':5,'homing':1,'blackhole':2,'push':3,'pierce':3,'shield':2,'armor':2}
+_SIEGE_V24_ART={'splitshot':16,'repeat':24,'bounce':16,'bounceblast':22,'through':5,'big':5,'homing':1,'blackhole':2,'push':3,'pierce':3,'shield':2,'armor':2}
 _SIEGE_V24_LOCATION={'air':{'common':1.5,'uncommon':1.,'rare':.4,'precious':.15},'side':{'common':.7,'uncommon':1.3,'rare':2.,'precious':2.5},'center':{'common':.25,'uncommon':1.,'rare':3.,'precious':6.}}
 def _siege_v24(r):return r.get('rulesVersion')==24
 def _siege_v24_setup(r,theme='classic',levels=None):
@@ -63,6 +63,10 @@ def _siege_v24_draw(r,zone='air'):
     levels={**_SIEGE_V24_LEVELS,**r.get('rarities',{})}
     weights=[(_SIEGE_V24_ART.get(k,0) if r.get('theme')=='art' else _SIEGE_V24_WEIGHTS[levels[k]])*_SIEGE_V24_LOCATION.get(zone,_SIEGE_V24_LOCATION['air'])[levels[k]] for k in keys]
     return random.choices(keys,weights=weights,k=1)[0] if sum(weights)>0 else None
+def _siege_v24_amount(r,k):
+    cap=_SIEGE_V24_CAPS[k]
+    if cap==1:return 1
+    return min(cap,random.choices((1,2,3),weights=(40,40,20) if r.get('theme')=='art' and k in ('splitshot','repeat','bounce','bounceblast') else (75,20,5))[0])
 def _siege_caps(r):
     if _siege_v24(r):return {k:_SIEGE_V24_CAPS.get(k,0) for k in _SIEGE_ITEMS}
     raw=r.get('stackCaps') or {}
@@ -154,7 +158,7 @@ def _siege_refill(r):
         if _siege_v24(r):
             k=_siege_v24_draw(r,it.get('zone','air'))
             if k is None:continue
-            it.update(kind=k,amount=1,id=r.get('nextItemId',1000));r['nextItemId']=it['id']+1;r['items'].append(it);new.append(it);continue
+            it.update(kind=k,amount=_siege_v24_amount(r,k),id=r.get('nextItemId',1000));r['nextItemId']=it['id']+1;r['items'].append(it);new.append(it);continue
         field=(_SIEGE_FIELDS|_SIEGE_NEW_FIELDS).get(r.get('field'),{})
         featured=[k for k in field.get('pool',()) if k in allowed]
         if 'bounce' in allowed and not any(i['kind']=='bounce' for i in r['items']) and not any(b.get('bounce',0) for b in r['buffs']):it['kind']='bounce'
@@ -279,6 +283,7 @@ def _siege_field(r):
 def _siege_v24_world(r):
     # Stable mirrored templates, randomized within each selected map size.
     art=r.get('theme')=='art';bodies=r['bodies'];count=r['itemCount']
+    if art:r['fieldLabel']='艺术就是爆炸'
     if art or (r.get('mode') in ('random',*_SIEGE_MAP_POOLS) and r.get('field') not in _SIEGE_NEW_FIELDS):
         layout=random.choice(('suspended','layers','tower','opentop','wall'))
         size=next((k for k,v in _SIEGE_MAP_POOLS.items() if r.get('field') in v),'pool_medium')
@@ -339,10 +344,12 @@ def _siege_v24_world(r):
         if not free(x,y,30,30) or not free(960-x,y,30,30):continue
         if any(math.hypot(xx-a,y-b)<30 for xx in (x,960-x) for a,b,_ in positions):continue
         positions.extend([(x,y,'air'),(960-x,y,'air')])
-    r['items']=[];pair_kind={}
+    r['items']=[];pair_kind={};pair_amount={}
     for x,y,zone in positions[:count]:
         key=(round(min(x,960-x),1),round(y,1),zone);k=pair_kind.get(key) or _siege_v24_draw(r,zone);pair_kind[key]=k
-        if k:r['items'].append(dict(id=len(r['items']),slot=len(r['items']),kind=k,x=x,y=y,r=15,amount=1,zone=zone))
+        if k:
+            amount=pair_amount.get(key) or _siege_v24_amount(r,k);pair_amount[key]=amount
+            r['items'].append(dict(id=len(r['items']),slot=len(r['items']),kind=k,x=x,y=y,r=15,amount=amount,zone=zone))
 
 def _siege_new(name,identity,bot=False,item_count=_SIEGE_DEFAULT_ITEMS,mode='classic',wind_level='off',ammo=0,buff_mode='auto',allowed_buffs=None,stack_caps=None,fort_strength='normal'):
     r={'code':'','players':[{'name':name,'key':identity}]+([{'name':'练习炮手','key':'bot'}] if bot else []),'bot':bot,'turn':0,'shots':[0,0],'phase':'play' if bot else 'wait','winner':None,'rev':0,'event':None,'until':0.,'touched':time.time(),'itemCount':item_count,'mode':mode,'windLevel':wind_level,'ammo':ammo,'buffMode':buff_mode,'allowedBuffs':list(_siege_allowed({'allowedBuffs':allowed_buffs})),'stackCaps':stack_caps or {},'fortStrength':fort_strength}
