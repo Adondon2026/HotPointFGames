@@ -229,14 +229,17 @@ const siegeCatalog={
     "path": "M5 15Q1 12 5 9Q4 3 10 5Q15 1 18 7Q25 8 20 14Q23 20 15 19H6 M3 20H9"
   }
 };
+siegeCatalog.tntdrop={group:'防御与建造',color:'#ed8b74',label:'TNT生成',path:'M4 6H20V21H4Z M4 11H20 M4 16H20 M12 6V3 M12 3L15 1'};
+siegeCatalog.tntwait={group:'防御与建造',color:'#dfb66e',label:'待爆TNT生成',path:'M4 6H20V21H4Z M4 11H20 M4 16H20 M12 6V3 M10 2H14 M12 12V15 M12 18H12.1'};
 const siegeIcon=(k,size=22)=>{const i=siegeCatalog[k];return i?'<svg class="siege-item-icon" aria-hidden="true" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" style="color:'+i.color+';vertical-align:middle;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+i.path+'"/></svg>':''};
 
-const siegeActiveKeys=Object.keys(siegeCatalog).filter(k=>!['larpa','downpour','fuse'].includes(k));
+const siegeActiveKeys=Object.keys(siegeCatalog).filter(k=>!['larpa','downpour','fuse','tntdrop','tntwait'].includes(k));
 
-const siegeV24Keys=['splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push','heavy','vanish','wobble','fart'];
+const siegeV24Keys=['splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push','tntdrop','tntwait','heavy','vanish','wobble','fart'];
 const siegeV24Skills=['shield','armor','heal','coreteleport','gunteleport'];
+const siegeV24Support=['wooddrop','stonedrop','tntdrop','tntwait'];
 const siegeV24Negatives=['heavy','vanish','wobble','fart'];
 const siegeV24Cap=k=>['splitshot','repeat','shield'].includes(k)?3:['homing','heal','coreteleport','gunteleport'].includes(k)?1:5;
-const siegeRarity=k=>['homing','heal','coreteleport','gunteleport'].includes(k)?'precious':['repeat','blackhole','shield'].includes(k)?'rare':['splitshot','through','bounceblast','pierce','armor'].includes(k)?'uncommon':'common';
-const siegeV24Names={splitshot:'分裂弹',repeat:'连发',bounce:'弹跳效果',through:'穿透效果',homing:'制导效果',shield:'核心护盾',armor:'防御加固',heal:'核心修复',wooddrop:'木块生成',stonedrop:'石块生成',coreteleport:'核心瞬移',gunteleport:'炮台瞬移',blackhole:'黑洞效果',bounceblast:'爆炸效果',pierce:'破甲效果',big:'增大效果',push:'推进效果',heavy:'重重效果',vanish:'湮灭效果',wobble:'不稳定效果',fart:'屁屁效果'};
-const siegeV24Group=k=>siegeV24Skills.includes(k)?'技能':siegeV24Negatives.includes(k)?'负面':k==='splitshot'?'弹药':k==='repeat'?'机制':'效果';
+const siegeRarity=k=>['homing','heal','coreteleport','gunteleport'].includes(k)?'precious':['repeat','blackhole','shield'].includes(k)?'rare':['splitshot','through','bounceblast','pierce','armor','tntdrop','tntwait'].includes(k)?'uncommon':'common';
+const siegeV24Names={splitshot:'分裂',repeat:'连发',bounce:'弹跳',through:'穿透',homing:'制导',shield:'核心护盾',armor:'防御加固',heal:'核心修复',wooddrop:'木块生成',stonedrop:'石块生成',tntdrop:'TNT生成',tntwait:'待爆TNT生成',coreteleport:'核心瞬移',gunteleport:'炮台瞬移',blackhole:'黑洞',bounceblast:'爆炸',pierce:'破甲弹',big:'巨型弹',push:'推进',heavy:'重重效果',vanish:'湮灭效果',wobble:'不稳定效果',fart:'屁屁效果'};
+const siegeV24Group=k=>siegeV24Negatives.includes(k)?'负面':siegeV24Skills.includes(k)||siegeV24Support.includes(k)?'技能':['big','pierce'].includes(k)?'弹药':['splitshot','repeat','bounce','through','homing'].includes(k)?'机制':'效果';
