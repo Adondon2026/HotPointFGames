@@ -603,8 +603,24 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     def snap(t,p):return [round(t,3),p,[_siege_pos(b) for b in bodies],[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)],round(draw_radius,2),[b['id'] for b in bodies if b.get('burnRounds',0)>0 and b['hp']>0]]
     frames.append(snap(0,[round(px,1),round(py,1)]))
     shot_no=r['shots'][side]+1
+    def refresh_shell_shields(t):
+        if not unified or live is None:return []
+        shields=live.setdefault('shellShields',{}).setdefault(side,{})
+        active={}
+        if impact is None and main_stop is None and root_counts.get('shotshield'):
+            active[-1]=(px,py,root_counts['shotshield'])
+        for f in fragments:
+            counts=child_counts if f.get('kind')=='split' else root_counts
+            if f['live'] and t>=f.get('bornAt',0) and not f.get('stop') and counts.get('shotshield'):
+                active[f['id']]=(f['x'],f['y'],counts['shotshield'])
+        for ident in list(shields):
+            if ident not in active:del shields[ident]
+        for ident,(x,y,n) in active.items():
+            sh=shields.setdefault(ident,dict(left=2*n))
+            sh.update(x=x,y=y,radius=radius+24+6*n)
+        return [dict(sh) for sh in shields.values() if sh['left']>0]
     def sample(t,p):
-        return {'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'mines':[dict(m) for m in r['mines']]}
+        return {'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']]}
     clone_left=0 if unified else attack_counts.get('clone',0)
     def spawn_clone(x,y,shell_kind):
         nonlocal clone_left
@@ -649,7 +665,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if b is target and b['hp']>0 and counts.get('push'):
                 _siege_v20_push(b,*(impact_v or (vx,vy)),counts['push'])
                 if unified and scale<1 and b.get('pushTime',0)>0:
-                    b['pushVX']*=scale;b['pushVY']*=scale
+                    b['pushVX']*=scale;b['pushVY']*=scale;b['vx']=b['pushVX'];b['vy']=b['pushVY']
             if b['hp']>0 and not b.get('fixed'):
                 mag=(1-dist/br)*75*ins*scale
                 if b['side']==1-side and ((b['kind']=='core' and 'shield' in defenses) or (b['kind']!='core' and 'armor' in defenses)):mag*=.6
@@ -777,8 +793,12 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             fragment_hits.append([m['x'],m['y'],round(t,3)]);last_hit=t
     def deflect(x,y,svx,svy,rr):
         if live is None:return x,y,svx,svy
-        sh=live.get('shotShields',{}).get(1-side)
-        if not sh or sh['left']<=0:return x,y,svx,svy
+        fields=list(live.get('shellShields',{}).get(1-side,{}).values())
+        legacy=live.get('shotShields',{}).get(1-side)
+        if legacy:fields.append(legacy)
+        fields=[sh for sh in fields if sh['left']>0 and math.hypot(x-sh['x'],y-sh['y'])<sh['radius']+rr]
+        if not fields:return x,y,svx,svy
+        sh=min(fields,key=lambda sh:math.hypot(x-sh['x'],y-sh['y']))
         dx=x-sh['x'];dy=y-sh['y'];d=math.hypot(dx,dy);reach=sh['radius']+rr
         if d>=reach:return x,y,svx,svy
         if d<.01:dx,dy=-direction,0.;d=1.
@@ -991,7 +1011,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     for step in range(1,int((flight_limit+14)*60)+1):
         t=step*dt
         _siege_motion(r,motion_start+t)
-        if live is not None and shield_left and impact is None and main_stop is None:
+        if live is not None and not unified and shield_left and impact is None and main_stop is None:
             sh=live['shotShields'].setdefault(side,dict(left=shield_left));sh.update(x=px,y=py,radius=radius+24+6*attack_counts['shotshield'])
         elif live is not None:live['shotShields'].pop(side,None)
         if impact is None and t>=flight_limit:
@@ -1301,7 +1321,7 @@ def _siege_live_tick(r,rt,now=None):
                 entry=rt['active'][side]
                 try:entry['sample']=next(entry['gen'])
                 except StopIteration:
-                    del rt['active'][side];rt['physicsFns'].pop(side,None);rt['dropQueues'].pop(side,None);rt['ready'][side]=max(rt['clock'],now)+r.get('reloadSeconds',5);r['rev']+=1;changed=True
+                    del rt['active'][side];rt['physicsFns'].pop(side,None);rt['dropQueues'].pop(side,None);rt.get('shellShields',{}).pop(side,None);rt.get('shotShields',{}).pop(side,None);rt['ready'][side]=max(rt['clock'],now)+r.get('reloadSeconds',5);r['rev']+=1;changed=True
             if not rt['active']:break
             # Shared rigid-body world advances once, even if a shot is in teleport descent.
             rt['physicsFns'][next(iter(rt['active']))]()
@@ -1377,7 +1397,7 @@ def _siege_sync_compute(r,rt,now):
             entry=engine['active'][side]
             try:entry['sample']=next(entry['gen'])
             except StopIteration:
-                del engine['active'][side];engine['physicsFns'].pop(side,None);engine['dropQueues'].pop(side,None);engine.get('shotShields',{}).pop(side,None)
+                del engine['active'][side];engine['physicsFns'].pop(side,None);engine['dropQueues'].pop(side,None);engine.get('shotShields',{}).pop(side,None);engine.get('shellShields',{}).pop(side,None)
         if engine['active']:engine['physicsFns'][next(iter(engine['active']))]()
         if step%6==0 or not engine['active']:capture()
     if _siege_burn_round(w) and settle_fn:
