@@ -1428,8 +1428,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if b['hp']>0 and not b.get('fixed') and abs(b['y']+b['h']/2-_siege_floor(r,b['x']))<1.5:
                     b['vx']=math.copysign(max(0.,abs(b['vx'])-105.*dt),b['vx'])
             tick_tnt();tick_barrels();_siege_gun_gravity(r,dt)
-            active=max((abs(b['vx'])+abs(b['vy']) for b in bodies if b['hp']>0),default=0)
-            settled=settled+1 if active<14 else 0
+            # Supported stacks can retain tiny solver velocities from gravity.
+            # Only meaningful displacement/unsupported falling keeps the turn busy.
+            active=any(b['hp']>0 and not b.get('fixed') and (math.hypot(b['vx'],b['vy'])>24. or not _siege_body_supported(b,bodies,_siege_floor(r,b['x']))) for b in bodies)
+            settled=0 if active else settled+1
             return
         for b in bodies:
             if b['hp']<=0 or b.get('fixed'):continue
@@ -1686,7 +1688,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if live is None and last_hit is not None:integrate()
         if live is None and step%4==0:frames.append(snap(t,[round(px,1),round(py,1)] if impact is None else None))
         if live is not None or control is not None:yield sample(t,[round(px,1),round(py,1)] if impact is None else None)
-        if impact is not None and not drop_queue and not embers and not barrel_queue and not (v24 and (tnt_pending() or any('barrelDeadline' in b for b in bodies))) and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>1.1 and (settled>=18 or t-last_hit>=(6.0 if v24 else 2.7)):break
+        if impact is not None and not drop_queue and not embers and not barrel_queue and not (v24 and (tnt_pending() or any('barrelDeadline' in b for b in bodies))) and not any(b.get('falling') and b['hp']>0 for b in bodies) and not any(b.get('pushTime',0)>.01 for b in bodies if b['hp']>0) and not any(f['live'] for f in fragments) and not any(t<h[2]+2 for h in holes) and t-last_hit>(.62 if v24 else 1.1) and (settled>=(12 if v24 else 18) or t-last_hit>=(6.0 if v24 else 2.7)):break
     if control is not None:
         for k,n in control['left'].items():r['buffs'][side][k]+=n
     if unified:

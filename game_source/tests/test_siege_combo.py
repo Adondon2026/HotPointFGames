@@ -532,6 +532,9 @@ g._siege_fire(r,90,40,{'tntdrop':1},config=g._siege_public_config({}))
 e=r['event'];auto=[b for b in r['bodies'] if b['kind']=='tnt']
 assert len(auto)==1 and auto[0]['hp']==0 and auto[0].get('detonated'),(auto,e['duration'])
 assert e['generatedCounts']['tntdrop']==1 and any(x[0]=='bounceBlast' for x in e['behaviorEvents'])
+last_blast=max(x[1] for x in e['behaviorEvents'] if x[0]=='bounceBlast')
+assert .60<=e['duration']-last_blast<2.0,(e['duration'],last_blast)
+print('Siege TNT quiet settle tail:',round(e['duration']-last_blast,3))
 # Waiting TNT survives a shot without a fuse.
 r=v24();r['buffs'][0]['tntwait']=1
 g._siege_fire(r,90,40,{'tntwait':1},config=g._siege_public_config({}))

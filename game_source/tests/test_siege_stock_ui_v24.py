@@ -57,7 +57,32 @@ try:
         assert page.evaluate('room.buffs[0].armor')==2
         page.get_by_role('button',name='全部',exact=True).tap()
         expect(rows).to_have_count(len(keys))
+        # Wide and tall distributions must remain visible in the same frame.
+        result=page.evaluate("""()=>{const pts=[[8,360,6],[952,-220,12],[480,20,8],...Array.from({length:29},(_,i)=>[25+i*31,100-i*5,8])];cameraGroup(pts,.016);
+            const visible=pts.every(([x,y,r])=>x-r>=camera.x-1e-6&&x+r<=camera.x+VIEW_W+1e-6&&y-r>=camera.y-1e-6&&y+r<=camera.y+VIEW_H+1e-6);
+            const wide=VIEW_W;for(let i=0;i<180;i++)cameraGroup([[440,100,8]],1/60);
+            const near=VIEW_W;cameraHandoff({from:{...camera,w:VIEW_W},to:home(0)},1);
+            return {visible,wide,near,home:VIEW_W,base:BASE_W}}""")
+        assert result['visible'] and result['wide']>960 and result['near']<result['wide'] and result['home']==result['base'],result
+        assert page.evaluate("""()=>cameraShotPoints([{p:[10,20],radius:6,fragments:[[1,300,100]]},{p:[900,10],fragments:[[2,810,90]]}]).length""")==4
+        assert page.evaluate("""()=>cameraWorldPoints([[1,800,300,90],[2,100,300,18]],[[1,780,300,100],[2,100,300,18]],[{id:1,kind:'core',w:44,h:44},{id:2,kind:'tnt',w:24,h:24,tntFuseStart:1}],.1,1.5).length""")==2
+        # Replay the real generated 32-shell trajectory with the same camera helpers
+        # used by frame(), including individual body motion, at a phone viewport.
+        r2=g._siege_new('A','a',True,0,'classic','off',0,'stock')
+        g._siege_v24_setup(r2)
+        r2.update(mode='classic',phase='play',turn=0,until=0.)
+        r2['bodies']=[b for b in r2['bodies'] if b['kind']=='core']
+        r2['launchers']=[[235,368],[725,368]]
+        r2['items']=[]
+        sel={'splitshot':3,'repeat':3,'bounce':2,'tntdrop':2}
+        r2['buffs'][0].update(sel)
+        g._siege_fire(r2,75,55,sel,config=g._siege_public_config({}))
+        event=r2['event']
+        result=page.evaluate("""ev=>{let count=0,max=0;for(const f of ev.frames){const pts=cameraShotPoints([{p:f[1],fragments:f[3],radius:f[4]}]);if(!pts.length)continue;count++;max=Math.max(max,pts.length);cameraGroup(pts,1/60);if(!pts.every(([x,y,r])=>x-r>=camera.x-1e-6&&x+r<=camera.x+VIEW_W+1e-6&&y-r>=camera.y-1e-6&&y+r<=camera.y+VIEW_H+1e-6))return {ok:false,count,max};}cameraSnap(home(0));return {ok:true,count,max}}""",event)
+        assert result['ok'] and result['count']>5 and result['max']>=8,result
         assert not errors,errors
+        print('Siege camera actual replay coverage:',result)
+        print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')
         print('Siege v24 real browser: all 19 inventory rows rendered; uniform controls, filter, selection and cancel PASS')
         browser.close()
 finally:

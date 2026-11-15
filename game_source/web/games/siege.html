@@ -132,22 +132,48 @@ const trialBack=/^\/r\/[A-Fa-f0-9]{6}\/?$/.test(fromRoom)?fromRoom.replace(/\/$/
 const $=id=>document.getElementById(id),canvas=$('field'),ctx=canvas.getContext('2d');let key=localStorage.getItem('gh_siege_key');if(!key){const a=new Uint8Array(24);crypto.getRandomValues(a);key=Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');localStorage.setItem('gh_siege_key',key)}let room=null,rev=-1,playing=null,requesting=false,polling=false,drag=null,angle=42,power=65,lastEvent=null,animFrame=null,notice='',overview=null,motionReceipt=0,selection={},stockOpen=false,stockKey="",pan=null,livePrevious=null;const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const defaultShotConfig=()=>({simple:true,unified:true,manual:true,delayedSplit:true,build:'safe',fuseMode:'either',triggers:{},splitPattern:'fan',burstMode:'serial',blackholeMode:'fixed'});let shotConfig=defaultShotConfig(),stockCat='全部',stockLastCat='';const buffCategories=Object.fromEntries([...new Set(Object.values(siegeCatalog).map(v=>v.group))].map(group=>[group,siegeActiveKeys.filter(k=>siegeCatalog[k].group===group)]));
 // Camera is a presentation-only world-to-screen transform; server physics remains 960×480.
-const WORLD_W=960, MAP_TOP=-100, MAP_BOTTOM=480;let VIEW_W=460,VIEW_H=359,ZOOM=1,HOME_Y=140;
-function resizeField(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;const center=room?{x:camera.x+VIEW_W/2,y:camera.y+VIEW_H/2}:null;const dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);const ratio=canvas.width/canvas.height;VIEW_W=clamp(ratio*345,360,700);VIEW_H=VIEW_W/ratio;ZOOM=canvas.width/VIEW_W;HOME_Y=416-VIEW_H*.83;if(playing&&animFrame?.[1])cameraSnap(cameraFocus(...animFrame[1]));else if(center&&room&&!overview)browse(center.x-VIEW_W/2,center.y-VIEW_H/2);else cameraSnap(home(room?.seat||0));if(playing?.handoff)playing.handoff={from:{...camera},to:home(room.turn)}}
+const WORLD_W=960, MAP_TOP=-100, MAP_BOTTOM=480;let VIEW_W=460,VIEW_H=359,ZOOM=1,HOME_Y=140,BASE_W=460,ASPECT=460/359;
+function cameraWidth(w){VIEW_W=w;VIEW_H=w/ASPECT;ZOOM=canvas.width/w;HOME_Y=416-VIEW_H*.83}
+function resizeField(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;const center={x:camera.x+VIEW_W/2,y:camera.y+VIEW_H/2},old=VIEW_W;const dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ASPECT=canvas.width/canvas.height;BASE_W=clamp(ASPECT*345,360,700);cameraWidth(playing||syncReplay?Math.max(BASE_W,old):BASE_W);if(playing||syncReplay){cameraSnap({x:center.x-VIEW_W/2,y:center.y-VIEW_H/2});if(playing?.handoff)playing.handoff={from:{...camera,w:VIEW_W},to:home(room.turn)}}else if(room&&!overview)browse(center.x-VIEW_W/2,center.y-VIEW_H/2);else cameraSnap(home(room?.seat||0))}
 window.addEventListener('resize',resizeField);
 if(typeof ResizeObserver!=='undefined'){const fieldObserver=new ResizeObserver(()=>resizeField());fieldObserver.observe($('stage'))}
-const camera={x:0,y:HOME_Y}, HANDOFF=.65;let cameraTime=0;
-function viewBounds(){const low=Math.min(MAP_TOP,(MAP_TOP+MAP_BOTTOM-VIEW_H)/2),high=Math.max(low,MAP_BOTTOM-VIEW_H);return [low,high]}
-function browse(x,y){const [lo,hi]=viewBounds();cameraSnap({x:clamp(x,0,WORLD_W-VIEW_W),y:clamp(y,lo,hi)})}
-const home=s=>{const [x,y]=launcher(s),[lo,hi]=viewBounds();return {x:clamp(x-VIEW_W*.5,0,WORLD_W-VIEW_W),y:clamp(y-VIEW_H*.73,lo,hi)}};
-function cameraFocus(x,y){return {x:clamp(x-VIEW_W*.5,0,WORLD_W-VIEW_W),y:clamp(y-VIEW_H*.45,Math.min(-420,HOME_Y-100),HOME_Y)}}
-function cameraSnap(p){camera.x=p.x;camera.y=p.y}
+const camera={x:0,y:HOME_Y}, HANDOFF=.42;let cameraTime=0;
+function viewBounds(h=VIEW_H){const low=Math.min(MAP_TOP,(MAP_TOP+MAP_BOTTOM-h)/2),high=Math.max(low,MAP_BOTTOM-h);return [low,high]}
+function browse(x,y){const [lo,hi]=viewBounds();cameraSnap({x:clamp(x,0,Math.max(0,WORLD_W-VIEW_W)),y:clamp(y,lo,hi)})}
+const home=s=>{const [x,y]=launcher(s),h=BASE_W/ASPECT,[lo,hi]=viewBounds(h);return {x:clamp(x-BASE_W*.5,0,Math.max(0,WORLD_W-BASE_W)),y:clamp(y-h*.73,lo,hi),w:BASE_W}};
+function cameraSnap(p){if(p.w!=null)cameraWidth(p.w);camera.x=p.x;camera.y=p.y}
 function cameraLerp(p,dt){const q=1-Math.exp(-dt*10);camera.x+=(p.x-camera.x)*q;camera.y+=(p.y-camera.y)*q}
-function cameraFlight(p,dt){cameraLerp(cameraFocus(p[0],p[1]),dt); // keep projectile within a safe margin, even on fast/high shots
- camera.x=clamp(clamp(camera.x,p[0]-VIEW_W+40,p[0]-40),0,WORLD_W-VIEW_W);
- camera.y=clamp(clamp(camera.y,p[1]-VIEW_H+45,p[1]-45),Math.min(-420,HOME_Y-100),HOME_Y);
+// Points are [world x, world y, radius]. Fit all active targets with screen-relative
+// safe margins; expansion is immediate, contraction is eased to avoid zoom pumping.
+function cameraGroup(points,dt){
+ const valid=points.filter(p=>p&&Number.isFinite(p[0])&&Number.isFinite(p[1]));if(!valid.length)return;
+ let l=Infinity,r=-Infinity,t=Infinity,b=-Infinity;
+ for(const [x,y,rad=0] of valid){l=Math.min(l,x-rad);r=Math.max(r,x+rad);t=Math.min(t,y-rad);b=Math.max(b,y+rad)}
+ const need=Math.max(BASE_W,(r-l)/.84,(b-t)*ASPECT/.72),old=VIEW_W,q=1-Math.exp(-dt*4);
+ const cx=camera.x+old/2,cy=camera.y+VIEW_H/2;
+ cameraWidth(Math.max(need,old+(need-old)*q));
+ const w=VIEW_W,h=VIEW_H,mx=w*.08,my=h*.14,tx=(l+r-w)/2,ty=(t+b-h)/2;
+ // Prefer the world edges, but allow margins beyond the map when required
+ // to keep a shell at a wall or in very high flight fully visible.
+ const preferX=w<=WORLD_W?clamp(tx,0,WORLD_W-w):(WORLD_W-w)/2;
+ const xlo=r+mx-w,xhi=l-mx,ylo=b+my-h,yhi=t-my;
+ camera.x=clamp(cx-w/2+(preferX-(cx-w/2))*(1-Math.exp(-dt*10)),xlo,Math.max(xlo,xhi));
+ camera.y=clamp(cy-h/2+(ty-(cy-h/2))*(1-Math.exp(-dt*10)),ylo,Math.max(ylo,yhi));
 }
-function cameraHandoff(p,q){const t=clamp(q,0,1),e=t*t*(3-2*t);cameraSnap({x:p.from.x+(p.to.x-p.from.x)*e,y:p.from.y+(p.to.y-p.from.y)*e})}
+function cameraFlight(p,dt){cameraGroup([[p[0],p[1],8]],dt)}
+function cameraHandoff(p,q){const t=clamp(q,0,1),e=t*t*(3-2*t),w0=p.from.w??BASE_W,w1=p.to.w??BASE_W;cameraSnap({x:p.from.x+(p.to.x-p.from.x)*e,y:p.from.y+(p.to.y-p.from.y)*e,w:w0+(w1-w0)*e})}
+function cameraShotPoints(shots){const pts=[];for(const s of shots){const r=Math.max(8,(s.radius||6)+5);if(s.p)pts.push([...s.p,r]);for(const f of s.fragments||[])pts.push([f[1],f[2],r])}return pts}
+// Compare actual replay snapshots, not final world state. Ignore scripted
+// ambient platforms; include moving/damaged bodies, newly dropped and lit TNT.
+function cameraWorldPoints(current,previous,meta,seconds,clock){
+ const old=new Map((previous||[]).map(p=>[p[0],p])),byId=new Map(meta.map(b=>[b.id,b])),pts=[];
+ for(const p of current||[]){const [id,x,y,hp]=p,b=byId.get(id),a=old.get(id);if(!b||b.platform||b.motionY)continue;
+ const moved=a&&!b.fixed&&Math.hypot(x-a[1],y-a[2])>Math.max(.65,seconds*12),damaged=a&&a[3]>hp;
+ const lit=hp>0&&['tnt','tnt_wait'].includes(b.kind)&&Number.isFinite(b.tntFuseStart)&&clock>=b.tntFuseStart&&clock<(b.tntTriggerAt??b.tntDeadline??b.tntFuseStart+1)+.15;
+ if((hp>0&&(moved||!a||lit))||damaged)pts.push([x,y,Math.hypot(b.w||24,b.h||24)/2]);
+ }return pts
+}
+function cameraBlastPoints(events,time){return (events||[]).filter(e=>e[0]==='bounceBlast'&&time>=e[1]&&time-e[1]<.58).map(e=>[e[2],e[3],Math.min(100,e[4]||52)])}
 $('name').value=localStorage.getItem('gh_name')||'';$('code').value=new URLSearchParams(location.search).get('room')||'';const saved=trialPage?null:localStorage.getItem('gh_siege_room');if(saved)$('resume').classList.remove('hidden');
 async function req(type,extra={}){const r=await fetch(trialPage?'/trial/api/siege':roomPrefix+'/api/siege',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,key,rulesVersion:24,token:roomToken,code:room?.code||$('code').value.trim(),name:$('name').value.trim()||'玩家',last:rev,...extra})});const d=await r.json();if(!d.ok){if(d.roomEnded&&roomPrefix){location.replace(roomPrefix+"/");throw Error(d.error)}throw Error(d.error)}return d}
 let syncReplay=null,forceOffer=null,openPanel="",mapOpen=false,trialGhost=null,manualTouch=null,manualEpoch=0;
@@ -163,7 +189,7 @@ function apply(d){const old=room;room=d;motionReceipt=performance.now();
   const changed=fresh||old.round!==d.round;
   if(changed){closePanels();selection={};shotConfig=defaultShotConfig();stockOpen=false;stockKey='';drag=null;pan=null;syncReplay=null;notice=''}
   if(d.replay&&(!syncReplay||syncReplay.data.id!==d.replay.id)){syncReplay={data:d.replay,pickups:replayPickups(d.replay),start:performance.now()-Math.min(d.replay.duration,Math.max(0,d.replayElapsed||0))*1000};drag=null;pan=null;stockOpen=false;selection={};shotConfig=defaultShotConfig();cameraSnap(home(d.seat))}
-  if(!d.busy)syncReplay=null;
+  if(!d.busy){if(syncReplay)cameraSnap(home(d.seat));syncReplay=null;}
   if(fresh&&d.myPlan){[angle,power,selection]=d.myPlan;selection={...selection};shotConfig={...defaultShotConfig(),...(d.myConfig||{}),unified:true,simple:true}}
   livePrevious=d.manualFlight&&old?.manualFlight?old:null;playing=null;overview=null;animFrame=null;rev=d.rev;
   if(!trialPage)localStorage.setItem('gh_siege_room',d.code);$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}
@@ -183,7 +209,7 @@ function apply(d){const old=room;room=d;motionReceipt=performance.now();
   if(fresh||d.shots[d.seat]!==old.shots[d.seat]){selection={};shotConfig=defaultShotConfig();stockOpen=false;stockKey='';drag=null;pan=null}
   for(const k of Object.keys(selection)){selection[k]=Math.min(selection[k],d.buffs[d.seat]?.[k]||0);if(!selection[k])delete selection[k]}
   rev=d.rev;if(!trialPage)localStorage.setItem('gh_siege_room',d.code);$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}
-  if(fresh){resizeField();cameraSnap(home(d.seat))}else if(old.busy&&!d.busy){cameraSnap(home(d.seat));notice=''}
+  if(fresh){resizeField();cameraSnap(home(d.seat))}else if((old.busy&&!d.busy)||(old.liveShots?.length&&!d.liveShots?.length)){cameraSnap(home(d.seat));notice=''}
   update();return;
  }
  livePrevious=null;if(!old||old.rev!==d.rev||old.turn!==d.turn){closePanels();if(!d.trial||!old||old.code!==d.code){selection={};shotConfig=defaultShotConfig();stockCat=d.trial?'弹道':'全部'}trialGhost=null;pan=null;stockOpen=false;stockKey="";}if(!d.trial&&!trialPage)localStorage.setItem('gh_siege_room',d.code);if(d.event&&d.event.id!==rev){overview=null;lastEvent=d.event;playing={event:d.event,start:performance.now(),handoff:null};animFrame=null;cameraSnap(home(d.event.side));drag=null}else if(old&&d.rev!==rev){playing=null;lastEvent=null;animFrame=null}if(!old||old.code!==d.code||(!playing&&d.rev!==rev))cameraSnap(home(playing?playing.event.side:d.seat));if(d.mode!=='classic'&&d.shots.every(n=>n===0)&&d.phase==='play'&&(!old||d.rev!==rev||old.phase==='wait'))overview={start:performance.now(),side:d.turn};rev=d.rev;$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}if(!old||old.code!==d.code){resizeField();cameraSnap(home(playing?playing.event.side:d.seat))}update()}
@@ -457,19 +483,34 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(
   actualRoom=room;room={...room,bodies,items:data.items.filter(x=>a[4].includes(x.id)),launchers:a[3].map((v,j)=>v.map((x,k)=>lerp(x,b[3][j][k]))),gunMotion:[],liveShots:shots,mines:a[5]||[],motionTime:data.motionStart+t};motionReceipt=now;
   for(let j=0;j<2;j++){const hp=bodies.find(x=>x.side===j&&x.kind==='core')?.hp||0;$('hp'+j).style.width=clamp(hp,0,100)+'%';$('n'+j).textContent=(room.seat===j?'你':room.players[j]||'对手')+' · '+Math.round(hp);$('s'+j).textContent=(room.ammo===0?'∞':Math.max(0,(room.ammo??6)-room.shots[j]))+' 发';}
  }
- if(liveMode()){const mine=liveDraw(now).find(s=>s.side===room.seat);if(mine){const tele=mine.teleports?.at(-1),pt=mine.p||mine.fragments[0]?.slice(1)||(tele?[tele[4],tele[5]]:mine.impact);if(pt)cameraFlight(pt,dt)}}
+ if(liveMode()&&!playing){const shots=liveDraw(now),pts=cameraShotPoints(shots);
+  if(syncReplay){const data=syncReplay.data,frames=data.frames,t=replayTime;let j=Math.min(frames.length-1,Math.floor(t*10));while(j>0&&frames[j][0]>t)j--;while(j+1<frames.length&&frames[j+1][0]<=t)j++;const a=frames[Math.max(0,j-1)],b=frames[Math.min(frames.length-1,j+1)];pts.push(...cameraWorldPoints(room.bodies.map(b=>[b.id,b.x,b.y,b.hp]),a[1],room.bodies,Math.max(.01,t-a[0]),data.motionStart+t),...cameraWorldPoints(b[1],a[1],room.bodies,Math.max(.01,b[0]-a[0]),data.motionStart+t));}
+  else if(shots.length&&livePrevious){const a=livePrevious.bodies.map(b=>[b.id,b.x,b.y,b.hp]),b=room.bodies.map(b=>[b.id,b.x,b.y,b.hp]);pts.push(...cameraWorldPoints(b,a,room.bodies,.1,room.motionTime||0));}
+  for(const s of shots){pts.push(...cameraBlastPoints(s.behaviorEvents,s.age));if(!s.p&&!s.fragments.length&&s.impact&&s.hitAt!=null&&s.age-s.hitAt<.65)pts.push([...s.impact,s.blastRadius||52])}
+  cameraGroup(pts,dt)
+ }
  if(playing){const ev=playing.event;elapsed=(now-playing.start)/1000;const soundId=room.code+':'+ev.id+':'+ev.side;siegeAudio.shot(soundId,eventAttacks(ev),elapsed);payloadSounds(soundId,ev.behaviorEvents,elapsed);if(!ev.engineering&&!ev.behaviorEvents?.some(e=>e[0]==='finish'&&e[4]===false)&&ev.hitAt!=null&&elapsed>=ev.hitAt)siegeAudio.hit(soundId,elapsed-ev.hitAt);for(const b of ev.bounces||[])if(elapsed>=b[2])siegeAudio.bounce(soundId+':'+b.join(':'),elapsed-b[2]);for(const p of eventPickups(ev))if(elapsed>=p.at)siegeAudio.pickup(soundId+':'+p.id,elapsed-p.at,p.kind);for(const b of ev.fragmentHits||[])if(elapsed>=b[2])siegeAudio.hit(soundId+':fragment:'+b.join(':'),elapsed-b[2]);const frames=ev.frames;let i=0;while(i+1<frames.length&&frames[i+1][0]<=elapsed)i++;const a=frames[i],b=frames[Math.min(i+1,frames.length-1)],q=clamp((elapsed-a[0])/Math.max(.001,b[0]-a[0]),0,1);
  f=[elapsed,a[1]&&b[1]?[a[1][0]+(b[1][0]-a[1][0])*q,a[1][1]+(b[1][1]-a[1][1])*q]:a[1],a[2].map(p=>{const n=b[2].find(z=>z[0]===p[0])||p;return [p[0],p[1]+(n[1]-p[1])*q,p[2]+(n[2]-p[2])*q,p[3]]}),(a[3]||[]).map(p=>{const next=(b[3]||[]).find(z=>z[0]===p[0]);return next?[p[0],p[1]+(next[1]-p[1])*q,p[2]+(next[2]-p[2])*q]:p}),a[4]&&b[4]?a[4]+(b[4]-a[4])*q:(a[4]||ev.radius),a[5]];animFrame=f;
- if(ev.hitAt!==null&&elapsed>=ev.hitAt){f[1]=null;if(f[3]?.length){cameraFlight(f[3][0].slice(1),dt)}else{const target=ev.hitId!==null?room.bodies.find(b=>b.id===ev.hitId):null;const drop=(ev.drops||[]).filter(p=>p[3]<=elapsed).at(-1),pos=drop&&f[2].find(p=>p[0]===drop[0]);const tele=(ev.teleports||[]).find(z=>elapsed>=z[6]&&elapsed<=(z[8]??z[6])+.4);const focus=tele?cameraFocus(tele[4],Math.min(tele[5],(tele[7]??tele[5])+230*(elapsed-tele[6])**2)):pos&&elapsed-drop[3]<1.2?cameraFocus(pos[1],pos[2]):cameraFocus(ev.impact[0],ev.impact[1]);cameraLerp(focus,dt)}}else if(f[1])cameraFlight(f[1],dt);
- if(elapsed>=ev.duration+.25){
-  if(!playing.handoff){playing.handoff={from:{...camera},to:room.phase==='over'?{...camera}:home(room.turn)};update()}
-  cameraHandoff(playing.handoff,(elapsed-ev.duration-.25)/HANDOFF);
-  if(elapsed>=ev.duration+.25+HANDOFF){cameraSnap(playing.handoff.to);playing=null;animFrame=null;f=null;update()}
+ if(ev.hitAt!==null&&elapsed>=ev.hitAt)f[1]=null;
+ if(!playing.handoff&&elapsed<ev.duration+.12){
+  const pts=cameraShotPoints([{p:f[1],fragments:f[3],radius:f[4]}]);
+  const prev=frames[Math.max(0,i-1)],next=frames[Math.min(frames.length-1,i+1)];
+  pts.push(...cameraWorldPoints(f[2],prev[2],room.bodies,Math.max(.01,elapsed-prev[0]),(ev.motionStart||0)+elapsed),...cameraWorldPoints(next[2],prev[2],room.bodies,Math.max(.01,next[0]-prev[0]),(ev.motionStart||0)+elapsed));
+  pts.push(...cameraBlastPoints(ev.behaviorEvents,elapsed));
+  for(const [x,y,t] of ev.fragmentHits||[])if(elapsed>=t&&elapsed-t<.55)pts.push([x,y,ev.blastRadius||52]);
+  if(ev.impact&&ev.hitAt!=null&&elapsed>=ev.hitAt&&elapsed-ev.hitAt<.65)pts.push([...ev.impact,ev.blastRadius||52]);
+  for(const z of ev.teleports||[])if(elapsed>=z[6]&&elapsed<=(z[8]??z[6])+.4)pts.push([z[4],Math.min(z[5],(z[7]??z[5])+230*(elapsed-z[6])**2),30]);
+  cameraGroup(pts,dt)
+ }
+ if(elapsed>=ev.duration+.12){
+  if(!playing.handoff){playing.handoff={from:{...camera,w:VIEW_W},to:room.phase==='over'?{...camera,w:VIEW_W}:home(room.turn)};update()}
+  cameraHandoff(playing.handoff,(elapsed-ev.duration-.12)/HANDOFF);
+  if(elapsed>=ev.duration+.12+HANDOFF){cameraSnap(playing.handoff.to);playing=null;animFrame=null;f=null;update()}
  }else if(Math.floor(elapsed*10)!==Math.floor((elapsed-.017)*10))update();
  }
  if(overview&&!playing){const elapsed=(now-overview.start)/1000;const q=elapsed<1.2?elapsed/1.2:1-(elapsed-1.2)/1.2;cameraHandoff({from:home(overview.side),to:home(1-overview.side)},q);if(elapsed>=2.4){cameraSnap(home(overview.side));overview=null;update()}}
  const full=false; // Opening overview is a camera pan, not a squeezed full-world thumbnail.
- ctx.setTransform(ZOOM,0,0,ZOOM,-camera.x*ZOOM,-camera.y*ZOOM);
+ ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#abc8cf';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.setTransform(ZOOM,0,0,ZOOM,-camera.x*ZOOM,-camera.y*ZOOM);
  scene(now);for(const rail of room.reflectors||[]){rect(rail.x1,rail.y-15,rail.x2-rail.x1,15,'#476b7d');rect(rail.x1,rail.y-5,rail.x2-rail.x1,5,'#bde6eb');for(let x=rail.x1+8;x<rail.x2-8;x+=28)line(x,rail.y-13,x+12,rail.y-5,'#8fb5c4',3)}const ev=playing?.event,items=ev?(ev.itemsBefore||[]).filter(i=>i.kind!=='vision'&&!eventPickups(ev).some(p=>p.id===i.id&&elapsed>=p.at)):(room.items||[]);
  if(!ev){for(const it of room.respawns||[]){const left=Math.max(0,it.readyAt-room.shots.reduce((a,b)=>a+b,0));ctx.save();ctx.strokeStyle='#e1f2da';ctx.lineWidth=2;ctx.setLineDash([3,4]);ctx.beginPath();ctx.arc(it.x,it.y,15,0,7);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#314b43';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText('刷新 '+left,it.x,it.y+4);ctx.restore()}}
  for(const it of items){const mt=ev?(ev.motionStart||0)+Math.min(elapsed,ev.duration):(room.motionTime||0)+(now-motionReceipt)/1000;const phase=mt*1.35+(it.phase||0),x=it.x+(it.mx||0)*Math.sin(phase),y=it.y+(it.my||0)*Math.cos(phase),kind=it.kind;ctx.save();ctx.shadowColor=itemColors[kind];ctx.shadowBlur=10;ctx.fillStyle='#263d3c';ctx.beginPath();ctx.arc(x,y,it.r||15,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=itemColors[kind];ctx.lineWidth=2.5;ctx.stroke();ctx.fillStyle=itemColors[kind];ctx.font='bold 18px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';drawItemIcon(kind,x,y,20);ctx.font='bold 10px sans-serif';ctx.fillStyle='#263d3c';ctx.fillText(itemNames[kind]+((it.amount||1)>1?' ×'+it.amount:''),x,y+24);ctx.restore()}
