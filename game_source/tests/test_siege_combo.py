@@ -379,25 +379,89 @@ r=v24();r['buffs'][0]['bounce']=4;x,y=g._siege_muzzle(0,r,75)
 r['items']=[dict(id=999,kind='bounce',x=x,y=y,r=20,amount=3,zone='center',slot=999)]
 g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
 assert r['buffs'][0]['bounce']==5 and r['items'][0]['amount']==2
-# Skills are not shell modifiers, repair has one charge, and protection
-# remains armed until the opposing shot.
-r=v24();r['buffs'][0].update(shield=3,heal=1)
+# Every positive skill uses the same draft/commit path; no immediate use.
+r=v24();r['buffs'][0].update(shield=3,heal=1,coreteleport=1,gunteleport=1)
 core=next(b for b in r['bodies'] if b['side']==0 and b['kind']=='core');core['hp']=50
-g._siege_v24_skill(r,0,'heal',None,time.time());assert core['hp']==68 and r['buffs'][0]['heal']==0
-g._siege_v24_skill(r,0,'shield',None,time.time());assert r['armed'][0]['shield']==1 and r['buffs'][0]['shield']==2
-g._siege_fire(r,75,40,{},config=g._siege_public_config({}));assert r['armed'][0]['shield']==1
-# Point guidance changes actual velocity for the split group, once only.
-r=v24();r['buffs'][0].update(homing=1,splitshot=3);now=time.time()
-g._siege_manual_start(r,0,70,55,{'homing':1,'splitshot':3},False,g._siege_public_config({}),now)
-rt=g._SIEGE_MANUAL_ROUNDS[id(r)];g._siege_manual_tick(r,now+.2);before=rt['active'][0]['sample']
-assert len(before['fragments'])==8 and before['controls']['homing']==1
-g._siege_command(rt,0,'homing',before['shotNo'],now+.2,[700,340]);g._siege_manual_tick(r,now+.3)
-after=rt['active'][0]['sample'];assert after['controls']['homing']==0 and sum(e[0]=='maneuver' and e[4]=='homing' for e in after['behaviorEvents'])==8
-try:g._siege_command(rt,0,'homing',before['shotNo'],now+.3,[700,340]);assert False
+for k in ('shield','armor','heal','coreteleport','gunteleport'):
+    r['buffs'][0][k]=max(1,r['buffs'][0][k])
+    assert g._siege_selection(r,{k:1},0)=={k:1}
+    assert g._siege_selection(r,{k:0},0)=={}
+    try:g._siege_v24_skill(r,0,k,None,time.time());assert False
+    except ValueError:pass
+assert core['hp']==50 and r['buffs'][0]['heal']==1 and not r['armed'][0]
+g._siege_fire(r,75,40,{'shield':2,'heal':1},config=g._siege_public_config({}))
+assert core['hp']==68 and r['buffs'][0]['heal']==0 and r['buffs'][0]['shield']==1 and r['armed'][0]['shield']==2
+r=v24();r['buffs'][0]['heal']=1
+g._siege_fire(r,75,40,{'heal':1},config=g._siege_public_config({}))
+assert r['buffs'][0]['heal']==1
+# No legal own-side terminal landing: refund the teleport, not an enemy-side teleport.
+r=v24();r['buffs'][0]['coreteleport']=1
+g._siege_fire(r,45,70,{'coreteleport':1},config=g._siege_public_config({}))
+assert not r['event']['teleports'] and r['buffs'][0]['coreteleport']==1
+# Own-side rear shot moves the selected body, respecting empty ground.
+for k in ('coreteleport','gunteleport'):
+    r=v24();r['buffs'][0][k]=1
+    g._siege_fire(r,110,25,{k:1},config=g._siege_public_config({}))
+    assert r['event']['teleports'] and r['event']['teleports'][0][0]==k and r['buffs'][0][k]==0,(k,r['event']['impact'],r['event']['teleports'])
+    assert 35<=r['event']['teleports'][0][4]<=435
+print('Siege v0.24 all skills: quantity selection, deferred heal/shield and legal teleport/refund PASS')
+# Armor is a reversible draft, never an immediate-use skill.
+r=v24();r['buffs'][0]['armor']=5
+assert g._siege_selection(r,{'armor':5},0)=={'armor':5}
+assert g._siege_selection(r,{'armor':2},0)=={'armor':2}
+assert g._siege_selection(r,{'armor':0},0)=={} and r['buffs'][0]['armor']==5 and not r['armed'][0]
+try:g._siege_v24_skill(r,0,'armor',None,time.time());assert False
 except ValueError:pass
-for j in range(2,100):
-    if g._siege_manual_tick(r,now+j*.25):break
+assert r['buffs'][0]['armor']==5
+g._siege_fire(r,75,40,{'armor':2},config=g._siege_public_config({}))
+assert r['buffs'][0]['armor']==3 and r['armed'][0]['armor']==2
+assert 'armor' not in r['event']['attackCounts']
+r['turn']=1
+g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
+assert r['event']['defenseCounts']['armor']==2 and not r['armed'][0]
+# Sync draft/cancel doesn't consume armor; the committed round does.
+r=v24();r['buffs'][0]['armor']=5;now=time.time();rt=g._siege_sync_runtime(r,now)
+g._siege_sync_plan(r,rt,0,{'round':rt['round'],'angle':75,'power':40,'selection':{'armor':4}},False)
+g._siege_sync_plan(r,rt,0,{'round':rt['round'],'angle':75,'power':40,'selection':{'armor':1}},False)
+assert r['buffs'][0]['armor']==5 and not r['armed'][0]
+g._siege_sync_compute(r,rt,now)
+assert r['buffs'][0]['armor']==4 and not r['armed'][0]
+print('Siege v0.24 armor: reversible selection, commit and opposing defense, sync PASS')
+# Automatic guidance: no influence in own half, mirrored strong steering in
+# enemy half, every branch uses the same rule, no live controls.
+import math
+r=v24();cores=r['bodies'];cfg=g._siege_public_config({})
+assert not g._siege_has_controls(r,{'homing':1},0,cfg)
+r['buffs'][0]['homing']=1
+assert not g._siege_has_controls(r,{'homing':1},0,cfg)
+for side,x in ((0,479.99),(1,480.01)):
+    assert g._siege_v24_guidance(100.,-300.,x,100.,1/60,side,cores)==(100.,-300.)
+for side,x in ((0,510.),(1,450.)):
+    target=next(b for b in cores if b['side']==1-side and b['kind']=='core')
+    vx,vy=(350. if side==0 else -350.),-300.
+    def err(vx,vy):
+        return abs((math.atan2(target['y']-100.,target['x']-x)-math.atan2(vy,vx)+math.pi)%(2*math.pi)-math.pi)
+    before=err(vx,vy)
+    for _ in range(10):vx,vy=g._siege_v24_guidance(vx,vy,x,100.,1/60,side,cores)
+    assert err(vx,vy)<before*.2 and math.hypot(vx,vy)<=800.000001
+# Actual shots agree before midfield, then guided shells hit the exposed core.
+def guidance_shot(side,selected):
+    r=v24();r['turn']=side;r['buffs'][side].update(selected)
+    g._siege_fire(r,45,70,selected,config=g._siege_public_config({}))
+    return r['event']
+for side in (0,1):
+    normal=guidance_shot(side,{})
+    guided=guidance_shot(side,{'homing':1})
+    prefix=[(f[0],f[1]) for f in normal['frames'] if f[1] and (f[1][0]<480 if side==0 else f[1][0]>480)]
+    assert prefix and all((f[0],f[1]) in prefix for f in guided['frames'] if f[1] and f[0]<=prefix[-1][0]),(side,prefix,guided['impact'])
+    assert guided['cores'][1-side]<100 and guided['cores'][1-side]<normal['cores'][1-side],(side,normal['cores'],guided['cores'],guided['impact'])
+# Split/serial projectile engine has automatic guidance without manual controls.
+r=v24();sel={'homing':1,'splitshot':2,'repeat':1};r['buffs'][0].update(sel)
+g._siege_fire(r,45,70,sel,config=cfg)
+e=r['event'];assert len({f[0] for fr in e['frames'] for f in fr[3] if f[0]>=20000})==8
+assert e['cores'][1]<100 and not any(v[0]=='maneuver' for v in e['behaviorEvents'])
 assert id(r) not in g._SIEGE_MANUAL_ROUNDS
+print('Siege v0.24 automatic homing: mirrored midfield gate, strong tracking, split and replay PASS')
 # Physical barrels propagate, not merely visual particles.
 r=v24('art')
 for i,x in enumerate((350,405,460)):
@@ -415,7 +479,7 @@ for theme in ('classic','art'):
     r['respawns']=[{**it,'readyAt':0}];r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
     g._siege_refill(r);refill=next(i for i in r['items'] if i['slot']==it['slot'])
     assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y'])
-assert 'siegeRarityModal' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'skillDock' in g.SIEGE_PAGE
+assert 'siegeRarityModal' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'skillDock' not in g.SIEGE_PAGE
 print('Siege v0.24: 32 conserved projectiles, giant radius, capped pickups, skill charges, point guidance, barrel chains, theme and persistent rarity PASS')
 
 # Negative effects are independent of rarity configuration and protected slots.
