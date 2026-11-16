@@ -2451,6 +2451,12 @@ def _siege_bot_fire(r,a,p,live=None,planned=None):
     def shoot(angle,selection):
         if live is not None:_siege_live_start(r,live,1,angle,p,selection,config={'simple':True,'unified':True,'delayedSplit':True})
         else:_siege_fire(r,angle,p,selection,config={'simple':True,'unified':True,'delayedSplit':True})
+    if planned is not None:
+        # Never silently redirect a building shot to another angle or use a different payload.
+        try:shoot(a,selection);return
+        except ValueError:
+            safe={k:n for k,n in selection.items() if k not in ('wooddrop','stonedrop','big','splitshot','repeat','through')}
+            shoot(a,safe);return
     for angle in ((a,135,155,175,105,90,75,45,5) if a>90 else (a,45,25,5,75,90,115,145,175)):
         try:shoot(angle,selection);return
         except ValueError:continue
@@ -2474,10 +2480,15 @@ def _siege_bot(r,live=None):
             d=1 if target['x']>core['x'] else -1
             # A barricade must be between the advancing enemy and the core, ahead of the gun
             # only if there is enough distance for safe projectile clearance.
-            near=min(abs(target['x']-core['x']),260)
-            x=core['x']+d*max(85,near*.62)
-            existing=any(b['hp']>0 and b['kind'] in ('wood','stone') and abs(b['x']-x)<65 for b in bodies)
-            if near>145 and 35<x<925 and abs(x-sx)>85 and not existing:
+            near=abs(target['x']-core['x'])
+            gun_xs=[_siege_launcher(i,r)[0] for i in (0,1)]
+            candidates=[xx for xx in range(45,916,10)
+                if 65<d*(xx-core['x'])<near-50
+                and all(abs(xx-gx)>85 for gx in gun_xs)
+                and not any(b['hp']>0 and b['kind'] in ('wood','stone') and abs(b['x']-xx)<55 for b in bodies)]
+            if candidates:
+                # Prefer a forward position that intercepts a wave before it reaches a gun.
+                x=min(candidates,key=lambda xx:abs(d*(xx-core['x'])-min(near-55,max(130,near*.56))))
                 build=next((k for k in ('stonedrop','wooddrop') if inv.get(k,0)>0),None)
         best_attack=None;best_build=None
         for a in range(0,360,6):
@@ -2505,8 +2516,11 @@ def _siege_bot(r,live=None):
         else:
             _,a,p=best_attack
             # Offensive rounds do not spend building materials or random trajectory modifiers.
-            for k in ('pierce','through','big','splitshot','repeat'):
-                if inv.get(k,0)>0 and (k!='big' or a<180):selection[k]=1
+            for k in ('pierce','through'):
+                if inv.get(k,0)>0:selection[k]=1
+            if best_attack[0]<1000 and inv.get('big',0)>0 and 15<a<165:
+                try:_siege_launch_check(r,1,a,{'big':1});selection['big']=1
+                except ValueError:pass
         _siege_bot_fire(r,a,p,live,selection);return
     # For unusual layouts, choose a trajectory that clears our own fort and any platforms.
     if r.get('field') in _SIEGE_NEW_FIELDS:
