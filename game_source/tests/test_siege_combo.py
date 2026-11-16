@@ -365,9 +365,28 @@ e=r['event'];splits=[x for x in e['behaviorEvents'] if x[0]=='split']
 assert len(splits)==4 and all(x[4]==8 and abs(x[5]-.125)<1e-8 and x[6]=='launch' for x in splits),splits
 assert len({f[0] for fr in e['frames'] for f in fr[3] if f[0]>=20000})==32
 assert not e['bounces'] and e['payloadEvents']['bounceblast']>0
-# Giant effect changes only collision radius.
+# Giant shells gain meaningful blast damage and reach, with a more modest footprint.
 r=v24();r['buffs'][0]['big']=3;g._siege_fire(r,75,55,{'big':3},config=g._siege_public_config({}))
-assert r['event']['radius']==24 and r['event']['blastRadius']==52
+assert r['event']['radius']==18 and r['event']['blastRadius']==82
+# Controlled geometry: a vertical shell hits a fixed durable stone target.
+def balance_target(kind='stone',x=235,y=240):
+    r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['launchers']=[[235,368],[725,368]]
+    b=dict(id=999,side=1,x=x,y=y,w=60,h=30,kind=kind,hp=1000,max=1000,vx=0.,vy=0.,fixed=True)
+    r['bodies'].append(b);return r,b
+damage=[]
+for n in (0,1,3,5):
+    r,b=balance_target();r['buffs'][0]['big']=n
+    g._siege_fire(r,90,55,{'big':n} if n else {},config=g._siege_public_config({}))
+    assert r['event']['hitId']==999
+    damage.append(1000-b['hp'])
+assert all(a<b for a,b in zip(damage,damage[1:])),damage
+# A bounce damages the first contact and then the projectile keeps flying.
+r,b=balance_target();r['buffs'][0]['bounce']=1
+g._siege_fire(r,90,55,{'bounce':1},config=g._siege_public_config({}))
+e=r['event'];hits=[x for x in e['behaviorEvents'] if x[0]=='bounceHit']
+assert hits and hits[0][4]==999 and b['hp']<1000 and e['hitAt']>hits[0][1],(hits,b,e['hitAt'])
+assert any(f[0]>hits[0][1]+.05 and f[1] for f in e['frames'])
+print('Siege giant damage by layer:',damage,'ricochet contact + continued flight PASS')
 # Empty inventory must accept every positive pickup, and expose it in public state.
 for k in g._SIEGE_V24_KEYS:
     if k in g._SIEGE_NEGATIVE:continue
