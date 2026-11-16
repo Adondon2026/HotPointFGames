@@ -140,7 +140,24 @@ try:
         }""",event)
         assert not real['fail'] and real['count']>10 and real['pre']>0 and real['maxJump']<.001,real
         print('Siege camera rendered playback:',real)
+        # Two actual public views of the cooperative game. Seat 1 must face
+        # right, share the same core, and get the turn after seat 0 fires.
+        coop=g._siege_new('A','a',True,8,'classic','off',0,'stock')
+        g._siege_v24_setup(coop,'zombie');g._siege_field(coop);coop['code']='COOP01'
+        g._siege_fire(coop,90,25,{},config=g._siege_public_config({}))
+        d=g._siege_public(coop,'bot',coop['rev']);d['busy']=False
+        page.evaluate('d=>{apply(d);overview=null;update()}',d)
+        expect(page.locator('#coopCore')).to_be_visible()
+        expect(page.locator('#coopCoreText')).to_have_text('共享核心 100/100')
+        expect(page.locator('#turn')).to_contain_text('轮到你')
+        assert page.evaluate('muzzle(1,45,6)[0]>launcher(1)[0]')
+        assert page.evaluate('room.bodies.filter(b=>b.kind==="zombie").length')==3
+        g._siege_fire(coop,90,25,{},config=g._siege_public_config({}))
+        d=g._siege_public(coop,'a',-1)
+        page.evaluate('d=>{apply(d);overview=null;update()}',d)
+        page.wait_for_function('playing===null',timeout=15000)
         assert not errors,errors
+        print('Siege zombie coop real browser: shared core, seat 1 right-facing, enemy phase replay PASS')
         print('Siege camera actual replay coverage:',result)
         print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')
         print('Siege v24 real browser: all 22 inventory rows rendered; uniform controls, filter, selection and cancel PASS')

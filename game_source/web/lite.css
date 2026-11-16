@@ -105,3 +105,5 @@ body[data-game="ddz"][data-view="game"] #gameCard{background:transparent;border:
 #liteCurrent .siege-theme-switch button.active{background:#3b5545;border-color:#698471;color:#f0e9d7}
 #liteCurrent .siege-theme-switch button:focus-visible{outline:2px solid var(--green);outline-offset:1px}
 @media(max-width:350px){#liteCurrent .siege-theme-switch button{padding:4px 8px;font-size:11px}}
+
+#liteCurrent .siege-theme-switch{flex-wrap:wrap}#liteCurrent .siege-theme-switch button{flex:0 1 auto}

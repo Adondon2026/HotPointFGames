@@ -401,6 +401,8 @@ def _siege_zombie_round(r,t,frames,snap,events):
     # The enemy phase is independent of the previous shot's debris.
     state=r['zombie'];bodies=r['bodies'];core=_siege_core_body(bodies,0)
     state['round']+=1
+    # Give the camera time to establish the enemy phase before any movement.
+    for _ in range(6):t+=.08;frames.append(snap(t,None))
     start=t;events.append(['zombiePhase',round(start,3)])
     if not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
         if state['wave']==state['totalWaves']:
@@ -1147,7 +1149,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if dist>br:continue
             direct=24 if b is target else 0
             if dive_strike and counts.get('dive'):direct*=_siege_dive_strike(counts['dive'])
-            if counts.get('pierce') and (b['kind']=='stone' if v24 else b['kind']!='core'):direct*=1+1.5*counts['pierce']
+            if counts.get('pierce') and (b['kind']=='stone' or (b['kind']=='zombie' and b.get('zombieType') in ('shield','heavy','giant')) if v24 else b['kind']!='core'):direct*=1+1.5*counts['pierce']
             if v24 and b['kind'] in _SIEGE_TNT_KINDS and (b is target or (1-dist/br)*scale>=.45):_siege_tnt_arm(b,world_now(),side)
             damage=((1-dist/br)*18+direct)*ds*scale
             if b['kind']=='core':damage*=.83
@@ -1298,7 +1300,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 scale=parent.get('scale',1.) if parent else 1.
                 travel=parent.get('travel',0.) if parent else flight_distance
                 damage=28*damage_for(counts)*scale*_siege_v20_vanish(travel,negatives)
-                if target['kind']=='stone':damage*=1+1.5*counts.get('pierce',0)
+                if target['kind']=='stone' or (target['kind']=='zombie' and target.get('zombieType') in ('shield','heavy','giant')):damage*=1+1.5*counts.get('pierce',0)
                 if target['kind']=='core':damage*=.83
                 if target['kind'] not in _SIEGE_TNT_KINDS:
                     hurt(target,damage);last_hit=t;settled=0
@@ -2019,6 +2021,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if j>=18 and settled>=18:break
         for b in bodies:b['vx']=b['vy']=0.
     if r.get('theme')=='zombie' and live is None:
+        for b in bodies:
+            if b['kind']=='zombie':b['fixed']=True;b['vx']=b['vy']=0.
         r['zombie']['kills']=r['zombie']['spawned']-sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)
         if side==1 and _siege_core(bodies,0)>0:t=_siege_zombie_round(r,t,frames,snap,behavior_events)
     frames.append(snap(t,None))

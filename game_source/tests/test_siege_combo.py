@@ -716,4 +716,13 @@ for wave in range(1,7):
     if wave<6:assert r['zombie']['wave']==wave+1 and r['phase']=='play'
 assert r['phase']=='over' and r['zombie']['won']
 g._siege_rematch(r);assert r['zombie']['wave']==1 and not r['zombie']['won']
-print('Siege zombie coop: shared core, same direction, alternating turns, enemy action, six waves and rematch PASS')
+# Real enemy attack consumes shared defense and can end the game.
+r=v24('zombie');g._siege_field(r);core=g._siege_core_body(r['bodies'],0)
+r['bodies']=[core];z=dict(id=999,side=2,kind='zombie',zombieType='giant',x=core['x']+48,y=377,w=58,h=78,hp=190,max=190,vx=0.,vy=0.,fixed=True)
+r['bodies'].append(z);r['zombie']['spawned']=1;r['turn']=1;r['armed'][0]={'shield':1}
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+assert abs(core['hp']-(100-24*.35))<.01 and r['armed']==[{},{}],core
+core['hp']=10;r['turn']=1
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+assert r['phase']=='over' and not r['zombie']['won'] and g._siege_core(r['bodies'],1)==0
+print('Siege zombie coop: shared core, same direction, alternating turns, enemy action, six waves, defeat and rematch PASS')
