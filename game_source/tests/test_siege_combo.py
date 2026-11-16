@@ -405,6 +405,20 @@ g._siege_fire(r,75,40,sel,config=g._siege_public_config({}))
 assert r['event']['compoundUsed']==['breach','siegebreak'] and r['event']['compoundEffects'].count('through')==2
 assert r['buffs'][0]['compound']==1 and r['compoundRecipes'][0]==['ricochet']
 assert g._SIEGE_V24_CAPS['compound']==g._SIEGE_V24_CAPS['demolish']==3
+# All three recipes can combine, and fourth/unknown layers are rejected.
+r=v24();r['buffs'][0]['compound']=3;r['compoundRecipes']=[['breach','ricochet','siegebreak'],[]]
+sel={'compound:breach':1,'compound:ricochet':1,'compound:siegebreak':1}
+assert g._siege_selection(r,sel,0)==sel
+try:g._siege_selection(r,{**sel,'compound:breach':2},0);assert False
+except ValueError:pass
+g._siege_fire(r,75,40,sel,config=g._siege_public_config({}))
+assert len(r['event']['compoundUsed'])==3 and r['buffs'][0]['compound']==0 and r['event']['compoundEffects'].count('bounceblast')==2
+# Demolition layers enlarge the actual affected area, without a second blast on core.
+for n in (1,3):
+    r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0]['demolish']=n
+    b=dict(id=99,side=1,x=365,y=396,w=20,h=40,kind='stone',hp=75,max=75,vx=0.,vy=0.)
+    r['bodies'].append(b);g._siege_fire(r,90,40,{'demolish':n},config=g._siege_public_config({}))
+    assert (b['hp']<=0)==(n==3),(n,b,r['event']['impact'])
 r=v24();r['buffs'][0]['compound']=2;r['compoundRecipes']=[['burst','seek'],[]]
 x,y=g._siege_muzzle(0,r,75);r['items']=[dict(id=999,kind='compound',recipe='breach',x=x,y=y,r=20,amount=2,zone='center')]
 g._siege_fire(r,75,40,{},config=g._siege_public_config({}))

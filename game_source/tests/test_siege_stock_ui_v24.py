@@ -125,6 +125,7 @@ try:
                 const w=VIEW_W,h=VIEW_H;
                 if(camera.x<-.001||camera.x+w>960.001||camera.y+h>480.001){fail='map boundary';break}
                 if(elapsed<0){pre++;if(animFrame[1]||animFrame[3]?.length){fail='premature projectile';break}continue}
+                if(Math.abs(animFrame[0]-Math.min(elapsed,ev.duration))>.12){fail='physical clock accelerated';break}
                 if(playing.handoff)continue;
                 const pts=cameraShotPoints([{p:animFrame[1],fragments:animFrame[3],radius:animFrame[4]}]);
                 if(pts.length){count++;if(!pts.every(([x,y,r])=>Math.max(0,x-r)>=camera.x-.6&&Math.min(960,x+r)<=camera.x+w+.6&&y-r>=camera.y-.6&&Math.min(480,y+r)<=camera.y+h+.6)){fail='projectile outside actual view';break}}

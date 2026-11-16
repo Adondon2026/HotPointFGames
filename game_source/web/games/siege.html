@@ -517,7 +517,7 @@ function drawBlastPulse(x,y,age,radius,heavy=true){
  ctx.restore()
 }
 function drawPayloadBlasts(events,t){
- for(const e of (events||[]).filter(e=>e[0]==='salvage'&&t>=e[1]&&t-e[1]<.55)){const q=(t-e[1])/.55;ctx.save();ctx.strokeStyle='#78d9be';ctx.globalAlpha=1-q;ctx.lineWidth=3;ctx.beginPath();ctx.arc(e[2],e[3],e[4]*(1-.75*q),0,7);ctx.stroke();ctx.restore()}
+ for(const e of (events||[]).filter(e=>e[0]==='salvage'&&t>=e[1]&&t-e[1]<.55)){const q=(t-e[1])/.55;ctx.save();ctx.strokeStyle='#78d9be';ctx.globalAlpha=1-q;ctx.lineWidth=3;ctx.beginPath();ctx.arc(e[2],e[3],e[4]*(1-.75*q),0,7);ctx.stroke();ctx.font='bold 15px sans-serif';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='#203632';ctx.fillStyle='#c9ffe3';const label='回收 '+(e[5]||1)+' 块';ctx.strokeText(label,e[2],e[3]-25-q*15);ctx.fillText(label,e[2],e[3]-25-q*15);ctx.restore()}
  for(const e of (events||[]).filter(e=>e[0]==='bounceBlast'&&t>=e[1]&&t-e[1]<.58).slice(-24))drawBlastPulse(e[2],e[3],t-e[1],e[4]||28);
 }
 function payloadSounds(id,events,t){for(const e of events||[])if(e[0]==='bounceBlast'&&t>=e[1]&&t-e[1]<.58)siegeAudio.hit(id+':payload:'+e.slice(1).join(':'),t-e[1])}
@@ -568,7 +568,7 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(
  // Camera handoff is independent from physics; only the server-authoritative
  // replay duration can unlock the next turn.
  if(rawElapsed>=(ev.playbackDuration??Math.max(ev.duration,cameraEnd+HANDOFF))){
-  cameraSnap(playing.handoff?.to||home(room.turn));if(ev.side===room.seat&&ev.selected?.gunteleport&&!ev.teleports?.some(z=>z[0]==='gunteleport'))notice='炮台瞬移未找到合法空地，已退回增益';playing=null;animFrame=null;f=null;update()
+  cameraSnap(playing.handoff?.to||home(room.turn));if(ev.side===room.seat){const missed=['gunteleport','coreteleport'].filter(k=>ev.selected?.[k]&&!ev.teleports?.some(z=>z[0]===k));if(missed.length)notice=missed.map(k=>siegeV24Names[k]).join('、')+'未找到合法空地，已退回增益';else if(ev.selected?.salvage){const e=ev.behaviorEvents?.find(e=>e[0]==='salvage');notice=e?'已回收 '+e[5]+' 块木石':'未找到可回收材料，已退回增益'}}playing=null;animFrame=null;f=null;update()
  }else if(Math.floor(elapsed*10)!==Math.floor((elapsed-.017)*10))update();
  }
  if(overview&&!playing){const elapsed=(now-overview.start)/1000;const q=elapsed<1.2?elapsed/1.2:1-(elapsed-1.2)/1.2;cameraHandoff({from:home(overview.side),to:home(1-overview.side)},q);if(elapsed>=2.4){cameraSnap(home(overview.side));overview=null;update()}}
