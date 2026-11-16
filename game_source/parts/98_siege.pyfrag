@@ -402,17 +402,18 @@ def _siege_zombie_round(r,t,frames,snap,events):
     state=r['zombie'];bodies=r['bodies'];core=_siege_core_body(bodies,0)
     state['round']+=1
     # Give the camera time to establish the enemy phase before any movement.
+    t=max(t,1.)
     for _ in range(6):t+=.08;frames.append(snap(t,None))
     start=t;events.append(['zombiePhase',round(start,3)])
     if not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
         if state['wave']==state['totalWaves']:
-            state['won']=True;return t
+            state['won']=True;return t+.5
         state['wave']+=1;_siege_zombie_spawn(r)
         for inv in r['buffs']:
             for k in ('splitshot','heal','tntdrop'):inv[k]=min(_siege_cap(r,k),inv[k]+1)
         events.append(['zombieWave',round(t,3),state['wave']])
         frames.append(snap(t,None))
-        return t
+        return t+.5
     shield=max((b.get('shield',0) for b in r['armed']),default=0)
     armor=max((b.get('armor',0) for b in r['armed']),default=0)
     attacked=set()
@@ -2024,7 +2025,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for b in bodies:
             if b['kind']=='zombie':b['fixed']=True;b['vx']=b['vy']=0.
         r['zombie']['kills']=r['zombie']['spawned']-sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)
-        if side==1 and _siege_core(bodies,0)>0:t=_siege_zombie_round(r,t,frames,snap,behavior_events)
+        if side==1 and _siege_core(bodies,0)>0:
+            # Preserve meaningful action at normal speed; discard only quiet tail.
+            timing=_siege_replay_timing(frames,t,hit_at,bodies=bodies,events=behavior_events)
+            end=timing['visualEnd'];frames[:]=[f for f in frames if f[0]<end];t=end;frames.append(snap(t,None))
+            t=_siege_zombie_round(r,t,frames,snap,behavior_events)
     frames.append(snap(t,None))
     if live is None:r['shots'][side]+=1;r['rev']+=1
     refreshed=_siege_refill(r)

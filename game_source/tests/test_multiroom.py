@@ -47,6 +47,25 @@ try:
  assert len(siege(a,x,'rematch')['items'])==21
  assert siege(a,x,'return')['ok'];assert state(a,y)['phase']=='lobby';assert act(a,x,'set_mode',mode='army')['ok']
  assert state(a,y)['mode']=='army';assert state(b,z)['mode']=='dice';assert not act(a,y,'dissolve')['ok']
+ # Two separate authenticated LAN clients play the cooperative theme.
+ assert act(a,x,'set_mode',mode='siege')['ok']
+ assert act(a,x,'siege_settings',rulesVersion=24,theme='zombie',rarities={},itemCount=8,combatMode='sync',ammo=10)['ok']
+ assert act(a,x,'start')['ok']
+ u,v=siege(a,x,'state'),siege(a,y,'state')
+ assert u['theme']==v['theme']=='zombie' and u['combatMode']=='turn' and u['ammo']==0 and u['cores']==v['cores']==[100,100]
+ assert not siege(a,y,'fire',rev=v['rev'],angle=90,power=25)['ok']
+ shot=siege(a,x,'fire',rev=u['rev'],angle=90,power=25)
+ assert shot['ok'] and shot['turn']==1 and shot['zombie']['round']==1
+ assert siege(a,y,'state',last=u['rev'])['event']==shot['event']
+ g.ROOMS[a['code']]['state']['siege']['until']=0
+ turn=siege(a,y,'state')
+ shot=siege(a,y,'fire',rev=turn['rev'],angle=90,power=25)
+ assert shot['ok'] and shot['turn']==0 and shot['zombie']['round']==2 and 'zombiePhase' in shot['event']
+ assert siege(a,x,'state',last=turn['rev'])['event']==shot['event']
+ g.ROOMS[a['code']]['state']['siege']['until']=0
+ assert siege(a,x,'return')['ok']
+ assert state(a,y)['phase']=='lobby' and state(b,z)['mode']=='dice'
+ print('LAN zombie coop: two authenticated clients, turn authority, shared state and enemy phase PASS')
  g.flush_state();saved=json.loads(g.ROOMS_FILE.read_text());assert set(saved)=={a['code'],b['code']};assert saved[b['code']]['state']['phase']!='lobby'
  assert act(a,x,'dissolve')['ok'];assert api(route(a,'state')+'?token='+y)['roomEnded'];assert state(b,z)['mode']=='dice'
  assert act(b,z,'reset')['ok'];assert act(b,z,'leave')['ok'];assert state(b,w)['isHost'];assert act(b,w,'leave')['ok'];assert not api('/api/rooms')['rooms']
