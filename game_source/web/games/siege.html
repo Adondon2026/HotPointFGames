@@ -209,13 +209,8 @@ function cameraPlan(data,meta,sync=false){
  return out;
 }
 function replayClock(data,wall){
- if(data.playbackDuration==null)return Math.max(0,wall);
- const end=data.shellEnd,hold=data.handoffAt,finish=data.playbackDuration;
- if(wall<=end)return Math.max(0,wall);
- // Show the impact briefly; compress the already solved physics tail during handoff.
- const preview=Math.min(data.duration,end+Math.max(.18,Math.min(.65,1-end)));
- if(wall<=hold)return Math.min(preview,wall);
- return preview+(data.duration-preview)*clamp((wall-hold)/Math.max(.001,finish-hold),0,1);
+ // Exactly real time. Only an insignificant final tail is omitted.
+ return Math.min(data.duration,Math.max(0,wall));
 }
 function cameraPlanAt(plan,t){
  if(!plan.length)return {x:camera.x,y:camera.y,w:VIEW_W};
@@ -268,7 +263,7 @@ function apply(d){const old=room;room=d;motionReceipt=performance.now();
   const fresh=!old||old.code!==d.code||old.combatMode!=='live'||d.shots.some((n,i)=>n<old.shots[i]);
   livePrevious=fresh?null:old;playing=null;animFrame=null;overview=null;
   if(fresh||d.shots[d.seat]!==old.shots[d.seat]){selection={};shotConfig=defaultShotConfig();stockOpen=false;stockKey='';drag=null;pan=null}
-  for(const k of Object.keys(selection)){selection[k]=Math.min(selection[k],d.buffs[d.seat]?.[k]||0);if(!selection[k])delete selection[k]}
+  for(const k of Object.keys(selection)){selection[k]=Math.min(selection[k],k.startsWith('compound:')?(d.compoundRecipes?.[d.seat]||[]).filter?.(x=>x===k.split(':')[1]).length||0:d.buffs[d.seat]?.[k]||0);if(!selection[k])delete selection[k]}
   rev=d.rev;if(!trialPage)localStorage.setItem('gh_siege_room',d.code);$('lobby').classList.add('hidden');$('game').classList.remove('hidden');document.body.classList.add('in-battle');if(!old||old.code!==d.code)try{siegeAudio.enterBattle?.()}catch(e){console.warn('audio unavailable',e)}
   if(fresh){resizeField();cameraSnap(home(d.seat))}else if((old.busy&&!d.busy)||(old.liveShots?.length&&!d.liveShots?.length)){cameraSnap(home(d.seat));notice=''}
   update();return;
@@ -443,31 +438,34 @@ function v24StockSummary(){
  const n=(1+(selection.repeat||0))*2**(selection.splitshot||0),pct=(100/2**(selection.splitshot||0)).toFixed(1).replace(/\.0$/,'');
  const inv=room.buffs[room.seat]||{},total=siegeV24Keys.filter(k=>room.trial||!siegeV24Negatives.includes(k)).reduce((a,k)=>a+(inv[k]||0),0),selected=Object.values(selection).reduce((a,b)=>a+b,0);
  $('stockBtn').textContent='增益 '+total+(selected?' · 已选'+selected:'');
- $('stockSummary').textContent=Object.keys(selection).length?n+' 枚炮弹'+(selection.splitshot?' · 单枚 '+pct+'% 基础攻击':'')+(selection.repeat?' · 连发 '+(1+selection.repeat)+' 次':'')+(selection.compound?' · '+compoundHint(room.compoundRecipes?.[room.seat]):'')+((selection.tntdrop||selection.tntwait)?' · TNT ≤'+Math.min(8,n*((selection.tntdrop||0)+(selection.tntwait||0))):''):'普通炮弹 · 不消耗增益';
+ $('stockSummary').textContent=Object.keys(selection).length?n+' 枚炮弹'+(selection.splitshot?' · 单枚 '+pct+'% 基础攻击':'')+(selection.repeat?' · 连发 '+(1+selection.repeat)+' 次':'')+(Object.keys(selection).some(k=>k.startsWith('compound:'))?' · '+Object.entries(selection).filter(([k])=>k.startsWith('compound:')).map(([k,n])=>compoundLabels[k.split(':')[1]]+' ×'+n).join('、'):'')+((selection.tntdrop||selection.tntwait)?' · TNT ≤'+Math.min(8,n*((selection.tntdrop||0)+(selection.tntwait||0))):''):'普通炮弹 · 不消耗增益';
 }
 function v24EffectHint(k,n){
  const fmt=v=>Number(v.toFixed(2));
- return ({splitshot:2**n+' 枚 · 单枚 '+(100/2**n).toFixed(1).replace(/\.0$/,'')+'% 攻击',repeat:(1+n)+' 发完整母弹',bounce:n+' 次反弹',through:n+' 次穿透',homing:'过中线后强力追踪敌方核心',demolish:'首次落点 · 强力破坏敌方木石',salvage:'己方落点回收生成木石',compound:compoundHint(room?.compoundRecipes?.[room?.seat]),big:'增大碰撞体积 · 不增伤',bounceblast:'碰撞产生向外冲击',blackhole:'碰撞产生向内吸引',pierce:'对坚硬建筑额外伤害',push:'沿入射方向持续推力',wooddrop:'最终落点生成木块',stonedrop:'最终落点生成石块',tntdrop:'停稳1秒后爆炸',tntwait:'留场 · 命中或爆炸引爆',shield:'核心承伤 '+fmt(100*.35**n)+'% · 下次受击',armor:'建筑承伤 '+fmt(100*.65**n)+'% · 下次受击',heal:'开炮时恢复18点核心生命',coreteleport:'己方有效落点附近瞬移核心',gunteleport:'打向己方空地 · 落点附近瞬移 · 无位置退回',heavy:'降低飞行能力',vanish:'炮弹可能提前消失',wobble:'弹道不稳定',fart:'炮弹产生异常推进'})[k]||'';
+ return ({splitshot:2**n+' 枚 · 单枚 '+(100/2**n).toFixed(1).replace(/\.0$/,'')+'% 攻击',repeat:(1+n)+' 发完整母弹',bounce:n+' 次反弹',through:n+' 次穿透',homing:'过中线后强力追踪敌方核心',demolish:'拆迁范围 '+(100+25*(n-1))+' · 伤害 '+125*n,salvage:'命中附近140范围木石 · 双方均可回收',compound:'按配方选择 · 最多3层',big:'增大碰撞体积 · 不增伤',bounceblast:'碰撞产生向外冲击',blackhole:'碰撞产生向内吸引',pierce:'对坚硬建筑额外伤害',push:'沿入射方向持续推力',wooddrop:'最终落点生成木块',stonedrop:'最终落点生成石块',tntdrop:'停稳1秒后爆炸',tntwait:'留场 · 命中或爆炸引爆',shield:'核心承伤 '+fmt(100*.35**n)+'% · 下次受击',armor:'建筑承伤 '+fmt(100*.65**n)+'% · 下次受击',heal:'开炮时恢复18点核心生命',coreteleport:'全地图落点附近瞬移 · 无位置退回',gunteleport:'全地图落点附近瞬移 · 无位置退回',heavy:'降低飞行能力',vanish:'炮弹可能提前消失',wobble:'弹道不稳定',fart:'炮弹产生异常推进'})[k]||'';
 }
 function updateV24Stock(){
- const active=canAim(),inv=room.buffs[room.seat]||{},keys=siegeV24Keys.filter(k=>inv[k]>0&&(room.trial||!siegeV24Negatives.includes(k)));
+ const active=canAim(),inv={...(room.buffs[room.seat]||{})},recipes=room.compoundRecipes?.[room.seat],pool=Array.isArray(recipes)?recipes:recipes?[recipes]:[];
+ const keys=siegeV24Keys.filter(k=>k!=='compound'&&inv[k]>0&&(room.trial||!siegeV24Negatives.includes(k)));
+ if(inv.compound){for(const recipe of new Set(pool.length?pool:['burst'])){const k='compound:'+recipe;inv[k]=pool.length?pool.filter(x=>x===recipe).length:inv.compound;keys.push(k)}}
+ const base=k=>k.startsWith('compound:')?'compound':k,groupOf=k=>siegeV24Group(base(k)),nameOf=k=>base(k)==='compound'?'复合·'+(compoundLabels[k.split(':')[1]]||'穿爆'):siegeV24Names[k],hint=(k,n)=>base(k)==='compound'?compoundHint(k.split(':')[1]):v24EffectHint(k,n);
  $('stockPanel').classList.toggle('readonly',false);$('stockPanel').classList.toggle('hidden',!active||!stockOpen);$('stockBtn').classList.toggle('hidden',!active);v24StockSummary();
  if(!active||!stockOpen)return;
  $('stockHelp').textContent='统一选择数量 · 开炮时生效 · 可随时归零';$('stockClear').classList.remove('hidden');$('stockPanel').querySelector('h3').textContent='增益';
- const groups=v24Groups.filter(c=>keys.some(k=>siegeV24Group(k)===c)),cats=['全部','已选',...groups];if(!cats.includes(stockCat)||(stockCat==='已选'&&!keys.some(k=>selection[k]>0)))stockCat='全部';
+ const groups=v24Groups.filter(c=>keys.some(k=>groupOf(k)===c)),cats=['全部','已选',...groups];if(!cats.includes(stockCat)||(stockCat==='已选'&&!keys.some(k=>selection[k]>0)))stockCat='全部';
  const keyOf=()=>JSON.stringify(['v24',inv,selection,room.armed?.[room.seat],stockCat,room.trial,room.compoundRecipes?.[room.seat]]);const key=keyOf();if(key===stockKey)return;
  const catBox=$('stockCats'),catScroll=catBox.scrollLeft;catBox.replaceChildren();
  for(const c of cats){const b=document.createElement('button');b.type='button';b.textContent=c;b.classList.toggle('active',stockCat===c);b.setAttribute('aria-pressed',String(stockCat===c));b.onclick=()=>{stockCat=c;stockKey='';update()};catBox.append(b)}catBox.scrollLeft=catScroll;
  const rows=$('stockRows'),scroll=stockLastCat===stockCat?rows.scrollTop:0;stockLastCat=stockCat;rows.replaceChildren();let group='';
- for(const k of keys.filter(k=>stockCat==='全部'||(stockCat==='已选'?selection[k]>0:siegeV24Group(k)===stockCat)).sort((a,b)=>v24Groups.indexOf(siegeV24Group(a))-v24Groups.indexOf(siegeV24Group(b)))){
-  const kind=siegeV24Group(k),name=siegeV24Names[k],limit=Math.min(inv[k],Math.max(0,siegeV24Cap(k)-(['armor','shield'].includes(k)&&!room.trial?(room.armed?.[room.seat]?.[k]||0):0))),n=Math.min(selection[k]||0,limit);if(n)selection[k]=n;else delete selection[k];
+ for(const k of keys.filter(k=>stockCat==='全部'||(stockCat==='已选'?selection[k]>0:groupOf(k)===stockCat)).sort((a,b)=>v24Groups.indexOf(groupOf(a))-v24Groups.indexOf(groupOf(b)))){
+  const kind=groupOf(k),name=nameOf(k),limit=Math.min(inv[k],Math.max(0,siegeV24Cap(base(k))-(['armor','shield'].includes(k)&&!room.trial?(room.armed?.[room.seat]?.[k]||0):0))),n=Math.min(selection[k]||0,limit);if(n)selection[k]=n;else delete selection[k];
   const sub=kind;
   if((stockCat==='全部'||stockCat==='技能')&&sub!==group){group=sub;const heading=document.createElement('div');heading.className='stock-group-label';heading.textContent=sub;rows.append(heading)}
-  const r=document.createElement('div');r.className='stock-row'+(n?' is-selected':'')+(k==='compound'?' compound-row':'');
-  const label='<div class="buff-label" title="'+v24EffectHint(k,n||1)+'">'+siegeIcon(k,20)+'<span class="buff-info"><strong>'+name+' <small>×'+inv[k]+'</small></strong><span class="buff-effect">'+v24EffectHint(k,n||1)+'</span></span></div>';
+  const r=document.createElement('div');r.className='stock-row'+(n?' is-selected':'')+(base(k)==='compound'?' compound-row':'');
+  const label='<div class="buff-label" title="'+hint(k,n||1)+'">'+siegeIcon(base(k),20)+'<span class="buff-info"><strong>'+name+' <small>×'+inv[k]+'</small></strong><span class="buff-effect">'+hint(k,n||1)+'</span></span></div>';
   r.innerHTML=label+'<button type="button" aria-label="减少'+name+'">−</button><input type="number" inputmode="numeric" min="0" max="'+limit+'" step="1" value="'+n+'" aria-label="'+name+'使用数量"><button type="button" aria-label="增加'+name+'">+</button><button type="button" aria-label="'+name+'选满">满</button>';
   const [minus,plus,full]=r.querySelectorAll('button'),input=r.querySelector('input'),detail=r.querySelector('.buff-effect');
-  function set(v,editing=false){v=clamp(Math.trunc(Number(v)||0),0,limit);if(v)selection[k]=v;else delete selection[k];trialGhost=null;if(editing){minus.disabled=!v;plus.disabled=v>=limit;r.classList.toggle('is-selected',!!v);detail.textContent=v24EffectHint(k,v||1);r.querySelector('.buff-label').title=detail.textContent;detail.classList.toggle('selected',!!v);stockKey=keyOf();v24StockSummary()}else{input.value=v;stockKey='';update()}}
+  function set(v,editing=false){v=clamp(Math.trunc(Number(v)||0),0,limit);if(v)selection[k]=v;else delete selection[k];trialGhost=null;if(editing){minus.disabled=!v;plus.disabled=v>=limit;r.classList.toggle('is-selected',!!v);detail.textContent=hint(k,v||1);r.querySelector('.buff-label').title=detail.textContent;detail.classList.toggle('selected',!!v);stockKey=keyOf();v24StockSummary()}else{input.value=v;stockKey='';update()}}
   minus.disabled=!n;plus.disabled=n>=limit;full.disabled=!limit;input.disabled=!limit;detail.classList.toggle('selected',!!n);input.onfocus=()=>input.select();input.oninput=()=>set(input.value,true);input.onchange=()=>{input.value=selection[k]||0};input.onblur=()=>{input.value=selection[k]||0;if(stockCat==='已选'&&!selection[k]){stockKey='';update()}};input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();input.blur()}};
   minus.onclick=()=>set((selection[k]||0)-1);plus.onclick=()=>set((selection[k]||0)+1);full.onclick=()=>set(limit);rows.append(r)
  }
@@ -569,7 +567,7 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(
  // Camera handoff is independent from physics; only the server-authoritative
  // replay duration can unlock the next turn.
  if(rawElapsed>=(ev.playbackDuration??Math.max(ev.duration,cameraEnd+HANDOFF))){
-  cameraSnap(playing.handoff?.to||home(room.turn));if(ev.side===room.seat&&ev.selected?.gunteleport&&!ev.teleports?.some(z=>z[0]==='gunteleport'))notice='炮台瞬移未找到己方空地，已退回增益';playing=null;animFrame=null;f=null;update()
+  cameraSnap(playing.handoff?.to||home(room.turn));if(ev.side===room.seat&&ev.selected?.gunteleport&&!ev.teleports?.some(z=>z[0]==='gunteleport'))notice='炮台瞬移未找到合法空地，已退回增益';playing=null;animFrame=null;f=null;update()
  }else if(Math.floor(elapsed*10)!==Math.floor((elapsed-.017)*10))update();
  }
  if(overview&&!playing){const elapsed=(now-overview.start)/1000;const q=elapsed<1.2?elapsed/1.2:1-(elapsed-1.2)/1.2;cameraHandoff({from:home(overview.side),to:home(1-overview.side)},q);if(elapsed>=2.4){cameraSnap(home(overview.side));overview=null;update()}}

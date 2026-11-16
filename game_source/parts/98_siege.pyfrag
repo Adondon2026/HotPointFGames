@@ -46,14 +46,37 @@ def _siege_compound_recipe(value=None):
 # Presentation time is independent of the lengthy rigid-body settling tail.
 _SIEGE_REPLAY_PREROLL=.38
 _SIEGE_REPLAY_HANDOFF=.48
-def _siege_replay_timing(frames,duration,hit_at=None,sync=False):
+def _siege_replay_timing(frames,duration,hit_at=None,sync=False,events=(),meta=()):
     last=0.
     for i,f in enumerate(frames):
         visible=any(s.get('p') or s.get('fragments') for s in f[2]) if sync else bool((f[1] and (hit_at is None or f[0]<hit_at)) or f[3])
         if visible:last=frames[min(i+1,len(frames)-1)][0]
     end=min(duration,max(last,hit_at or 0.))
     hold=max(1.,end+.18)
-    return dict(shellEnd=round(end,3),handoffAt=round(hold,3),playbackDuration=round(hold+_SIEGE_REPLAY_HANDOFF,3))
+    # Play meaningful events at 1x. A short, obscured state transition may
+    # omit only the low-energy tail, never accelerate an explosion.
+    important=end
+    for e in events:
+        if e[0] in ('bounceBlast','salvage','teleport'):important=max(important,e[1])
+    kinds={b['id']:b.get('kind') for b in meta}
+    prev=None
+    for f in frames:
+        t=f[0];positions=f[1] if sync else f[2]
+        if sync:
+            for s in f[2]:
+                for e in s.get('behaviorEvents',[]):
+                    if e[0] in ('bounceBlast','salvage','teleport'):important=max(important,e[1])
+        if prev is not None and t-prev[0]>=.045:
+            old={b[0]:b for b in prev[1]};dt=t-prev[0]
+            for b in positions:
+                a=old.get(b[0])
+                if a is None or a[3]-b[3]>=2 or (b[3]>0 and math.hypot(b[1]-a[1],b[2]-a[2])>=max(3.,dt*(35 if kinds.get(b[0])=='core' else 85))):
+                    important=max(important,t)
+            prev=(t,positions)
+        elif prev is None:prev=(t,positions)
+    visible=min(duration,max(hold,important+.65))
+    finish=max(hold+_SIEGE_REPLAY_HANDOFF,visible)
+    return dict(shellEnd=round(end,3),handoffAt=round(hold,3),visibleUntil=round(visible,3),playbackDuration=round(finish,3))
 
 _SIEGE_TNT_KINDS=('tnt','tnt_wait')
 _SIEGE_TNT_SHOT_CAP=8
@@ -77,7 +100,7 @@ _SIEGE_MAX_RADIUS=36
 # Negative pickups are forced on the next shot and are not inventory buffs.
 _SIEGE_HARD_CAPS={k:(1 if k in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE,'fuse') else 20 if k=='bounce' else 10 if k=='through' else 5) for k in _SIEGE_ITEMS}
 _SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,*_SIEGE_NEGATIVE)
-_SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield') else 1 if k in ('homing','heal','coreteleport','gunteleport',*_SIEGE_ELITE_KEYS) else 5 for k in _SIEGE_V24_KEYS}
+_SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield','compound','demolish') else 1 if k in ('homing','heal','coreteleport','gunteleport','salvage') else 5 for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop',*_SIEGE_TNT_KEYS,'salvage')
 _SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport',*_SIEGE_ELITE_KEYS) else 'rare' if k in ('repeat','blackhole','shield') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_WEIGHTS={'common':8,'uncommon':4,'rare':2,'precious':1}
@@ -88,7 +111,7 @@ def _siege_v24_setup(r,theme='classic',levels=None):
     r.update(rulesVersion=24,theme=theme if theme in ('classic','art') else 'classic',rarities={k:v for k,v in (levels or {}).items() if k in _SIEGE_V24_KEYS and k not in _SIEGE_NEGATIVE and v in _SIEGE_V24_WEIGHTS},buffMode='stock')
     r['allowedBuffs']=list(_siege_allowed(r));r['stackCaps']=dict(_SIEGE_V24_CAPS)
 def _siege_v24_draw(r,zone='air'):
-    keys=tuple(k for k in _siege_allowed(r) if zone in ('center','side') or k not in _SIEGE_ELITE_KEYS)
+    keys=tuple(k for k in _siege_allowed(r) if (k in ('compound','demolish') if zone in ('center','side') else k not in ('compound','demolish')))
     if not keys:return None
     levels={**_SIEGE_V24_LEVELS,**{k:v for k,v in r.get('rarities',{}).items() if k not in _SIEGE_NEGATIVE}}
     weights=[(2 if zone=='air' and r.get('theme')!='art' else 0) if k in _SIEGE_NEGATIVE else (_SIEGE_V24_ART.get(k,0) if r.get('theme')=='art' else _SIEGE_V24_WEIGHTS[levels[k]])*_SIEGE_V24_LOCATION.get(zone,_SIEGE_V24_LOCATION['air'])[levels[k]] for k in keys]
@@ -97,7 +120,7 @@ def _siege_v24_draw(r,zone='air'):
     return random.choices(keys,weights=weights,k=1)[0] if sum(weights)>0 else None
 def _siege_v24_amount(r,k):
     cap=_SIEGE_V24_CAPS[k]
-    if cap==1:return 1
+    if cap==1 or k in ('compound','demolish'):return 1
     return min(cap,random.choices((1,2,3),weights=(40,40,20) if r.get('theme')=='art' and k in ('splitshot','repeat','bounce','bounceblast') else (75,20,5))[0])
 def _siege_caps(r):
     if _siege_v24(r):return {k:_SIEGE_V24_CAPS.get(k,0) for k in _SIEGE_ITEMS}
@@ -225,10 +248,12 @@ def _siege_normalize_buffs(r):
             for k in _SIEGE_ITEMS:r['buffs'][i][k]=min(_SIEGE_V24_CAPS.get(k,0),max(0,r['buffs'][i][k]))
         for k in _SIEGE_ONE_SHOT:r['buffs'][i][k]=0 if r.get('bot') and i==1 else min(1,max(0,r['buffs'][i][k]))
     if _siege_v24(r):
-        recipes=r.setdefault('compoundRecipes',[None,None])
+        recipes=r.setdefault('compoundRecipes',[[],[]])
         for i,b in enumerate(r['buffs']):
-            if b.get('compound') and recipes[i] not in _SIEGE_COMPOUND_RECIPES:recipes[i]='burst'
-            elif not b.get('compound'):recipes[i]=None
+            raw=recipes[i]
+            pool=[k for k in (raw if isinstance(raw,list) else [raw]) if isinstance(k,str) and k in _SIEGE_COMPOUND_RECIPES]
+            n=b.get('compound',0)
+            recipes[i]=(pool+['burst']*n)[:n]
     for it in (*r.get('items',[]),*r.get('respawns',[])):
         if it.get('kind')=='vision':it['kind']='power'
         if it.get('kind') in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE):it['amount']=1
@@ -280,7 +305,7 @@ def _siege_field(r):
     dynamic=r.get('mode','classic')=='dynamic'
     offset=random.randint(-30,55) if dynamic else 0
     layout=random.choice(('tower','wall','split')) if dynamic else 'tower'
-    r['compoundRecipes']=[None,None]
+    r['compoundRecipes']=[[],[]]
     r.update(offset=offset,layout=layout,bodies=_siege_fort(offset,layout),items=_siege_items(r['itemCount'],allowed=_siege_allowed(r)),buffs=_siege_buffs(),windPair=_siege_weather(r.get('windLevel','off')))
     mode=r.get('mode','classic')
     pool=_SIEGE_MAP_POOLS.get(mode)
@@ -459,10 +484,20 @@ def _siege_selection(r,selection,side=None):
     if _siege_robot(r,r['turn'] if side is None else side) and isinstance(selection,dict):selection={k:n for k,n in selection.items() if k not in _SIEGE_ONE_SHOT}
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
     _siege_normalize_buffs(r);inv=r['buffs'][r['turn'] if side is None else side];out={}
+    idx=r['turn'] if side is None else side
     for k,n in selection.items():
+        if _siege_v24(r) and isinstance(k,str) and k.startswith('compound:'):
+            recipe=k.split(':',1)[1]
+            if recipe not in _SIEGE_COMPOUND_RECIPES or type(n) is not int or not 0<=n<=r['compoundRecipes'][idx].count(recipe):raise ValueError('复合弹配方数量无效')
+            if n:out[k]=n
+            continue
         if (k not in _SIEGE_SELECTABLE and not (_siege_v24(r) and k=='heal')) or (k in (*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS) and not _siege_v24(r)) or (_siege_v24(r) and k not in _SIEGE_V24_KEYS) or type(n) is not int or not 0<=n<=min(_siege_cap(r,k),inv[k]):raise ValueError('增益数量超出库存或单次上限')
         if _siege_v24(r) and k in ('shield','armor') and n+r.get('armed',[{},{}])[r['turn'] if side is None else side].get(k,0)>_siege_cap(r,k):raise ValueError('已有防御待命，请减少本炮选择数量')
         if n:out[k]=n
+    if _siege_v24(r):
+        detailed=sum(n for k,n in out.items() if k.startswith('compound:'))
+        if detailed+out.get('compound',0)>min(3,inv['compound']):raise ValueError('复合弹最多3层')
+        if detailed and out.get('compound'):raise ValueError('请按配方选择复合弹')
     return out
 
 def _siege_motion(r,t):
@@ -730,7 +765,7 @@ def _siege_trial_stock(r):
     # Trial inventory is refilled after each shot; ordinary rooms never enter here.
     r['buffs'][0]={k:_SIEGE_V24_CAPS.get(k,0) if _siege_v24(r) else max(1,_SIEGE_HARD_CAPS[k]) if k in _SIEGE_ACTIVE_ITEMS else 0 for k in _SIEGE_ITEMS}
     r['buffs'][1]={k:0 for k in _SIEGE_ITEMS}
-    if _siege_v24(r):r['compoundRecipes']=['burst',None]
+    if _siege_v24(r):r['compoundRecipes']=[['breach','ricochet','burst'],[]]
 
 def _siege_trial_reset(r,mode=None):
     if mode is not None:
@@ -747,11 +782,13 @@ def _siege_trial_steps(r,angle,power,selection,force=False,config=None,control=N
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
     selected={}
     for k,n in selection.items():
-        if k not in _SIEGE_ITEMS or type(n) is not int or not 0<=n<=_siege_cap(r,k):raise ValueError('增益数量无效')
+        if _siege_v24(r) and isinstance(k,str) and k.startswith('compound:'):
+            if type(n) is not int or not 0<=n<=3:raise ValueError('增益数量无效')
+        elif k not in _SIEGE_ITEMS or type(n) is not int or not 0<=n<=_siege_cap(r,k):raise ValueError('增益数量无效')
         if n:selected[k]=n
     config=_siege_config(config)
     # Validate before modifying any state. Negatives and heal are trial-only direct choices.
-    chosen={k:n for k,n in selected.items() if k in _SIEGE_SELECTABLE or (_siege_v24(r) and k=='heal')}
+    chosen={k:n for k,n in selected.items() if k in _SIEGE_SELECTABLE or (_siege_v24(r) and (k=='heal' or k.startswith('compound:')))}
     _siege_launch_check(r,0,angle,chosen,force=force)
     r['negativePending'][0]={k:1 for k in _SIEGE_NEGATIVE if selected.get(k)}
     if selected.get('heal') and not _siege_v24(r):
@@ -799,6 +836,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     stock=r.get('buffMode','auto')=='stock'
     armed=r.setdefault('armed',[{},{}]);armed_before=[dict(x) for x in armed]
     chosen=_siege_selection(r,selection,side)
+    compound_choices={k.split(':',1)[1]:n for k,n in chosen.items() if k.startswith('compound:')}
+    if compound_choices:
+        chosen={k:n for k,n in chosen.items() if not k.startswith('compound:')};chosen['compound']=sum(compound_choices.values())
     engineering=(config['build']=='safe' or (v24 and not any(chosen.get(k) for k in ('bounceblast','blackhole','pierce','push','demolish','compound',*_SIEGE_TNT_KEYS)))) and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop','salvage'))
     suppressed=('power','shock','pierce','push','blackhole','clone','gunteleport','coreteleport','bounceblast','ignite','firetrail','firearc','mine') if engineering else ()
     if live is None:suppressed=(*suppressed,'shotshield')
@@ -835,13 +875,19 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             core['hp']=min(core['max'],core['hp']+18)
         else:r['buffs'][side]['heal']+=attack_counts['heal'] # no wasted charge at full health
     spec=_siege_compile_spec(attack_counts,config);root_counts=spec['root'];child_counts=spec['child']
-    compound_recipe=None
+    compound_recipes=[];compound_recipe=None;compound_effects=[]
     if v24 and attack_counts.get('compound'):
-        recipes=r.setdefault('compoundRecipes',[None,None])
-        compound_recipe=_siege_compound_recipe(recipes[side]);recipes[side]=None
+        pool=r['compoundRecipes'][side]
+        if compound_choices:
+            for recipe,n in compound_choices.items():
+                for _ in range(n):pool.remove(recipe);compound_recipes.append(recipe)
+        else:
+            compound_recipes=pool[:attack_counts['compound']];del pool[:attack_counts['compound']]
+        compound_recipe=compound_recipes[0] if compound_recipes else None
+        for recipe in compound_recipes:
+            compound_effects.extend(_SIEGE_COMPOUND_RECIPES[recipe])
         for counts in (root_counts,child_counts):
-            for k in _SIEGE_COMPOUND_RECIPES[compound_recipe]:
-                counts[k]=min(_SIEGE_V24_CAPS[k],counts.get(k,0)+1)
+            for k in compound_effects:counts[k]=min(_SIEGE_V24_CAPS[k],counts.get(k,0)+1)
     manual=bool(config.get('manual') and not _siege_robot(r,side))
     manual_keys=() if v24 else _SIEGE_MANUAL_KEYS
     if control is not None:control.update(left={k:attack_counts[k] for k in manual_keys if attack_counts.get(k)},levels={k:attack_counts[k] for k in manual_keys if attack_counts.get(k)},pending=[])
@@ -1309,21 +1355,21 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if not v24:return
         # Each elite charge triggers at most once per shot, not per fragment.
         if attack_counts.get('demolish') and 'demolish' not in elite_used:
-            elite_used.add('demolish');behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1),100])
+            elite_used.add('demolish');level=attack_counts['demolish'];reach=100+25*(level-1);behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1),reach])
             for b in bodies:
                 if b['hp']<=0 or b.get('platform') or b['kind'] not in ('wood','stone') or b['side']==side:continue
                 dist=math.hypot(max(0.,abs(b['x']-x)-b['w']/2),max(0.,abs(b['y']-y)-b['h']/2))
-                if dist<100:hurt(b,125*(1-dist/125),side)
-        if attack_counts.get('salvage') and 'salvage' not in elite_used and (x<=480 if side==0 else x>=480):
+                if dist<reach:hurt(b,125*level*(1-dist/(reach+25)),side)
+        if attack_counts.get('salvage') and 'salvage' not in elite_used:
             recovered=set()
             for b in bodies:
-                if b['hp']<=0 or not b.get('generated') or b['side']!=side or b['kind'] not in ('wood','stone'):continue
-                if math.hypot(b['x']-x,b['y']-y)<=140:
+                if b['hp']<=0 or b.get('platform') or b['kind'] not in ('wood','stone'):continue
+                if math.hypot(max(0.,abs(b['x']-x)-b['w']/2),max(0.,abs(b['y']-y)-b['h']/2))<=140:
                     recovered.add('wooddrop' if b['kind']=='wood' else 'stonedrop');b['hp']=0.
             if recovered:
                 elite_used.add('salvage');behavior_events.append(['salvage',round(t,3),round(x,1),round(y,1),140])
                 for k in recovered:r['buffs'][side][k]=min(_siege_cap(r,k),r['buffs'][side][k]+1)
-        if (side==0 and 35<=x<=435) or (side==1 and 525<=x<=925):own_landings.append((x,y))
+        if 0<=x<=960:own_landings.append((x,y))
         counts=root_counts if parent is None or parent.get('kind')=='repeat' else child_counts
         for k in ('wooddrop','stonedrop'):
             if counts.get(k):generate_payload(k,counts[k],x,y)
@@ -1420,7 +1466,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     gain=min(space,item.get('amount',1))
                     if gain<=0:continue
                     if k=='compound':
-                        item['recipe']=_siege_compound_recipe(item.get('recipe'));r.setdefault('compoundRecipes',[None,None])[side]=item['recipe']
+                        item['recipe']=_siege_compound_recipe(item.get('recipe'));r['compoundRecipes'][side].extend([item['recipe']]*gain)
                     inv[k]+=gain;pickups.append({**item,'x':ix,'y':iy,'at':round(t,3),'side':side,'gained':gain})
                     if gain<item.get('amount',1):item['amount']-=gain;continue
                     r['items'].remove(item)
@@ -1777,7 +1823,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if v24:
             destination=None
             if core['hp']>0:
-                lo,hi=(35,435) if side==0 else (525,925)
+                lo,hi=35,925
                 for lx,ly in own_landings:
                     # Use the nearest legal empty ground within 60 world units of the landing.
                     for x in sorted(range(lo,hi+1,5),key=lambda x:abs(x-lx)):
@@ -1859,7 +1905,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['wind']=r.get('windPair',0)*(1 if r['turn']==0 else -1)
     r['event']={'id':r['rev'],'side':side,'emberEvents':ember_events,'generatedCounts':generated_counts if unified else {},'payloadEvents':event_counts if unified else {},'trialDamage':round(trial_damage,1),'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':actual_angle,'requestedAngle':angle,'angleOffset':angle_offset,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'engineering':engineering,'behaviorEvents':behavior_events,'fireArcs':arc_events,'minesBefore':mines_before,'mineEvents':mine_events,'holePaths':hole_paths,'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(x) for x in r.get('launchers',[])],'gunMotion':r.get('gunMotion',[])}
     if v24 and control is None:
-        r['event'].update(_siege_replay_timing(frames,t,hit_at),compoundRecipe=compound_recipe,compoundEffects=list(_SIEGE_COMPOUND_RECIPES.get(compound_recipe,())))
+        r['event'].update(_siege_replay_timing(frames,t,hit_at,events=behavior_events,meta=bodies),compoundRecipe=compound_recipe,compoundRecipes=compound_recipes,compoundEffects=compound_effects)
         r['until']=time.time()+_SIEGE_REPLAY_PREROLL+r['event']['playbackDuration']+.10
     else:r['until']=time.time()+(.35 if control is not None else t+.35)
 
@@ -2053,7 +2099,7 @@ def _siege_sync_compute(r,rt,now):
     if min(cores)<=0 or (ammo and all(n>=ammo for n in w['shots'])):
         w['phase']='over';w['winner']=None if abs(cores[0]-cores[1])<.01 else int(cores[1]>cores[0])
     w['rev']+=1;w['reloadSeconds']=r.get('reloadSeconds',15);w['event']=None
-    duration=frames[-1][0];timing=_siege_replay_timing(frames,duration,sync=True) if _siege_v24(w) else {}
+    duration=frames[-1][0];timing=_siege_replay_timing(frames,duration,sync=True,meta=list(meta.values())) if _siege_v24(w) else {}
     w['until']=time.time()+(_SIEGE_REPLAY_PREROLL+timing['playbackDuration']+.10 if timing else duration+.35)
     r.clear();r.update(w)
     rt.update(replay={'id':r['rev'],'duration':duration,'frames':frames,'meta':list(meta.values()),'items':list(items.values()),'motionStart':max(0,now-w['motionEpoch']),**timing},until=r['until'],notice=notices)
@@ -2155,7 +2201,7 @@ def _siege_bot(r,live=None):
 def _siege_public(r,key,last):
     _siege_migrate_catalog(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
-    v={'rulesVersion':r.get('rulesVersion',23),'theme':r.get('theme','classic'),'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'compoundRecipes':r.get('compoundRecipes',[None,None]),'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
+    v={'rulesVersion':r.get('rulesVersion',23),'theme':r.get('theme','classic'),'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'compoundRecipes':r.get('compoundRecipes',[[],[]]),'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
     return _siege_manual_view(r,v,time.time())
 
 def siege_request(data):
