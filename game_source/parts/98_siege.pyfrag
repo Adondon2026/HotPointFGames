@@ -49,28 +49,31 @@ _SIEGE_REPLAY_HANDOFF=.48
 def _siege_replay_timing(frames,duration,hit_at=None,sync=False,bodies=(),events=()):
     if not frames:return dict(shellEnd=0.,handoffAt=1.,visualEnd=0.,playbackDuration=1.48)
     # Never accelerate simulation time. Trim only a visually quiet tail.
-    last=0.;action=0.;prev=None;meta={b['id']:b for b in bodies}
+    last=0.;action=0.;effect_end=0.;prev=None;meta={b['id']:b for b in bodies}
     for i,f in enumerate(frames):
         visible=any(s.get('p') or s.get('fragments') for s in f[2]) if sync else bool((f[1] and (hit_at is None or f[0]<hit_at)) or f[3])
         if visible:last=frames[min(i+1,len(frames)-1)][0]
         if sync:
             for s in f[2]:
                 for e in s.get('behaviorEvents',()):
-                    if e[0] in ('bounceBlast','salvage','teleport'):action=max(action,f[0]-s.get('age',f[0])+e[1]+.5)
+                    if e[0] in ('bounceBlast','salvage','teleport','pushHit','blackholeHit'):action=max(action,f[0]-s.get('age',f[0])+e[1]+.5)
+                    if e[0] in ('blackholeStart','pushHit'):effect_end=max(effect_end,f[0]-s.get('age',f[0])+e[1]+(2. if e[0]=='blackholeStart' else 1.3))
         positions=f[1] if sync else f[2]
         if prev is None:prev=(f[0],{b[0]:b for b in positions})
         if f[0]-prev[0]>=.19:
             dt=f[0]-prev[0];old=prev[1]
             for b in positions:
                 a=old.get(b[0]);m=meta.get(b[0],{})
-                if m.get('motionY') or m.get('platform'):continue
+                if m.get('motionY') or (m.get('platform') and m.get('fixed')):continue
                 if a and (a[3]-b[3]>=1 or (b[3]>0 and math.hypot(b[1]-a[1],b[2]-a[2])>=max(3. if m.get('kind')=='core' else 7.,dt*(18 if m.get('kind')=='core' else 38)))):action=max(action,f[0]+.15)
                 elif not a and b[3]>0:action=max(action,f[0]+.15)
             prev=(f[0],{b[0]:b for b in positions})
     for e in events:
-        if e[0] in ('bounceBlast','salvage','teleport'):action=max(action,e[1]+.5)
+        if e[0] in ('bounceBlast','salvage','teleport','pushHit','blackholeHit'):action=max(action,e[1]+.5)
+        elif e[0]=='blackholeStart':action=max(action,e[1]+2.)
+        if e[0] in ('blackholeStart','pushHit'):effect_end=max(effect_end,e[1]+(2. if e[0]=='blackholeStart' else 1.3))
     end=min(duration,max(last,hit_at or 0.))
-    hold=max(1.,end+.18)
+    hold=max(1.,end+.18,min(duration,effect_end))
     # Only cut a tail if the final state differs by at most a tiny drift. This
     # prevents accumulating slow movement from becoming a visible snap.
     final={b[0]:b for b in (frames[-1][1] if sync else frames[-1][2])}
@@ -78,7 +81,7 @@ def _siege_replay_timing(frames,duration,hit_at=None,sync=False,bodies=(),events
         f=frames[i];positions=f[1] if sync else f[2];changed=False
         for b in positions:
             z=final.get(b[0]);m=meta.get(b[0],{})
-            if m.get('platform') or m.get('motionY'):continue
+            if (m.get('platform') and m.get('fixed')) or m.get('motionY'):continue
             if z is None:changed|=b[3]>0;continue
             if abs(z[3]-b[3])>=1 or (z[3]>0 and math.hypot(z[1]-b[1],z[2]-b[2])>(3. if m.get('kind')=='core' else 7.)):changed=True;break
         if changed:action=max(action,frames[min(i+1,len(frames)-1)][0]);break
@@ -500,7 +503,18 @@ def _siege_zombie_world(r):
             if k in _siege_allowed(r) and r.get('rarities',{}).get(k,_SIEGE_V24_LEVELS[k])=='common':inv[k]=1
     _siege_zombie_spawn(r)
 
-def _siege_zombie_round(r,t,frames,snap,events):
+def _siege_zombie_supports(r,core):
+    # Trace the load-bearing stack under the shared core, not unrelated scenery.
+    bodies=r['bodies'];seen={core['id']};stack=[core];supports=[]
+    while stack:
+        b=stack.pop();feet=b['y']+b['h']/2
+        for c in bodies:
+            if c['id'] in seen or c['hp']<=0 or c['kind'] not in ('wood','stone','barrel','tnt','tnt_wait','cannon'):continue
+            if abs(c['x']-b['x'])<(c['w']+b['w'])/2 and abs(c['y']-c['h']/2-feet)<=4:
+                seen.add(c['id']);supports.append(c);stack.append(c)
+    return supports
+
+def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     # Fixed one-second enemy action, recorded at normal simulation time.
     # The enemy phase is independent of the previous shot's debris.
     state=r['zombie'];bodies=r['bodies'];core=_siege_core_body(bodies,0)
@@ -551,10 +565,22 @@ def _siege_zombie_round(r,t,frames,snap,events):
             if flying:z['y']+=max(-speed/12,min(speed/12,core['y']-z['y']))
             close=abs(z['x']-core['x'])<=(z['w']+core['w'])/2+8 and abs(z['y']-core['y'])<=(z['h']+core['h'])/2+8
             target=core if close else None
+            # Ground enemies that cannot reach an elevated core attack accessible
+            # load-bearing blocks. Moving towards a support also handles offset stacks.
+            support_target=None
+            if not flying and core['y']+core['h']/2<z['y']-z['h']/2+12:
+                supports=_siege_zombie_supports(r,core)
+                reachable=[b for b in supports if abs(z['y']-b['y'])<=(z['h']+b['h'])/2+12 and b['kind']!='cannon']
+                if reachable:
+                    support_target=min(reachable,key=lambda b:abs(b['x']-z['x']))
+                    target=None  # a core above the head is not a ground-level melee target
+                    d=1 if support_target['x']>z['x'] else -1
+                    nx=z['x']+d*speed/12
+                    if abs(z['x']-support_target['x'])<=(z['w']+support_target['w'])/2+8:target=support_target
             if not flying and not target:
                 obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait','cannon') and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
                 if obstacles:target=min(obstacles,key=lambda b:abs(b['x']-z['x']))
-                if target and (z['zombieType']=='climber' and target['h']<=44 or z['zombieType']=='pole' and target['h']<=82 and not z.get('vaulted')):
+                if target and target is not support_target and (z['zombieType']=='climber' and target['h']<=44 or z['zombieType']=='pole' and target['h']<=82 and not z.get('vaulted')):
                     top=target['y']-target['h']/2-z['h']/2
                     if not any(b is not target and b['hp']>0 and b['kind'] in ('wood','stone') and abs(nx-b['x'])<(z['w']+b['w'])/2 and abs(top-b['y'])<(z['h']+b['h'])/2 for b in bodies):
                         if z['zombieType']=='pole':z['vaulted']=True
@@ -583,7 +609,13 @@ def _siege_zombie_round(r,t,frames,snap,events):
                 z['y']=min(support-z['h']/2,z['y']+18)
             if not any(q is not z and q['hp']>0 and abs(nx-q['x'])<(z['w']+q['w'])/2 and abs(z['y']-q['y'])<(z['h']+q['h'])/2 for q in alive):
                 z['x']=max(z['w']/2,min(960-z['w']/2,nx))
+        if physics:physics(t)
         frames.append(snap(t,None))
+    # Let a destroyed support actually collapse before returning control.
+    if physics:
+        for j in range(1,25):
+            if not any(b['hp']>0 and not b.get('fixed') and b['kind']!='zombie' and (math.hypot(b['vx'],b['vy'])>20 or not _siege_body_supported(b,bodies,_siege_floor(r,b['x']))) for b in bodies):break
+            t=start+1+j/12;physics(t);frames.append(snap(t,None))
     r['armed']=[{},{}]
     _siege_zombie_supply(r)
     return t
@@ -810,10 +842,14 @@ def _siege_wall_damage(speed):
     return min(85.,85.*(max(0.,min(650.,speed)-120.)/530.)**1.5)
 
 def _siege_v24_push(body,vx,vy,layers,share=1.):
-    if body.get('platform') or body['kind'] in _SIEGE_TNT_KINDS or layers<=0:return
+    if body['hp']<=0 or layers<=0:return
     mag=max(1.,math.hypot(vx,vy))
+    mass=_siege_body_mass(body)
+    strength=(290+105*(layers-1))*share/max(.75,mass**.5)
+    body['vx']+=vx/mag*strength
+    body['vy']+=min(-170*share,vy/mag*strength-220*share)
     forces=body.setdefault('pushForces',[])
-    forces.append([vx/mag*240.*share,vy/mag*240.*share,min(10.,2.*layers)])
+    forces.append([vx/mag*300.*share, min(0.,vy/mag)*180.*share,min(1.1,.35+.15*layers)])
     body['pushTime']=max(f[2] for f in forces)
     for key in ('fixed','motionY','floatFort','baseY'):body.pop(key,None)
 
@@ -953,11 +989,11 @@ def _siege_release_interval(level,base):
 def _siege_dive_strike(level):
     return 1+.2*max(0,level)
 
-def _siege_v24_guidance(vx,vy,x,y,dt,side,bodies):
-    """Strong continuous steering only inside the opposing half; no teleport or collision bypass."""
+def _siege_v24_guidance(vx,vy,x,y,dt,side,bodies,age=0.):
+    """Coop acquires nearest living zombie after .2s; classic keeps its midfield gate."""
     coop=any(b.get('shared') for b in bodies)
     if coop:
-        if x<300:return vx,vy
+        if age<.2-1e-8:return vx,vy
         target=min((b for b in bodies if b['kind']=='zombie' and b['hp']>0),key=lambda b:math.hypot(b['x']-x,b['y']-y),default=None)
     else:
         if (side==0 and x<480.) or (side==1 and x>480.):return vx,vy
@@ -984,7 +1020,7 @@ def _siege_motion_delta(vx,vy,x,y,age,dt,counts,config,side,bodies,dived=False):
     folds=int((max(0,age)+1e-8)/.65);previous=int((max(0,age-dt)+1e-8)/.65)
     if counts.get('pingpong') and previous<folds<=counts['pingpong'] and not dived:vx=-vx
     if counts.get('homing') and config.get('autoHomingV24'):
-        vx,vy=_siege_v24_guidance(vx,vy,x,y,dt,side,bodies)
+        vx,vy=_siege_v24_guidance(vx,vy,x,y,dt,side,bodies,age)
     elif counts.get('homing'):
         target=next((b for b in bodies if b['kind']=='core' and b['side']==1-side and b['hp']>0),None)
         if target and math.hypot(target['x']-x,target['y']-y)<=100+20*counts['homing']:
@@ -1569,12 +1605,13 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 # One field per event, with level determining intensity, not overlapping identical fields.
                 if len(holes)>=12:break
                 holes.append([round(x,1),round(y,1),round(t,3),n]+([scale] if v24 else []))
+                if v24:behavior_events.append(['blackholeStart',round(t,3),round(x,1),round(y,1),120+22*n])
                 if config['blackholeMode']=='attached' and target and target['hp']>0:hole_anchors[len(holes)-1]=(target['id'],x-target['x'],y-target['y'])
                 generated_counts[k]+=1;break
             generated_counts[k]+=1
         if k in _SIEGE_OBJECT_LIMITS and generated_counts[k]:triggered.add(k)
     def dispatch_event(event,x,y,svx,svy,parent=None,target=None):
-        nonlocal split_done,impact,hit_at,last_hit,px,py,teleport_target,main_split_at
+        nonlocal split_done,impact,hit_at,last_hit,px,py,teleport_target,main_split_at,settled
         if not unified:return False
         counts=root_counts if parent is None or parent.get('kind') in ('repeat','clone') else child_counts
         scale=parent.get('scale',1.) if parent else 1.
@@ -1584,7 +1621,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if target['kind'] in _SIEGE_TNT_KINDS:_siege_tnt_arm(target,world_now(),side)
             if counts.get('push'):
                 _siege_v24_push(target,svx,svy,counts['push'],scale)
-                if target.get('pushTime',0)>0:target['impactSource']=side
+                if target.get('pushTime',0)>0:
+                    target['impactSource']=side;settled=0
+                    behavior_events.append(['pushHit',round(t,3),round(x,1),round(y,1),target['id']])
         for k in _SIEGE_PAYLOADS:
             if v24 and k in ('wooddrop','stonedrop',*_SIEGE_TNT_KEYS):continue
             if k=='splitshot' or not counts.get(k) or (event not in ('bounce','through','end') if v24 else _siege_event_for(config,k)!=event):continue
@@ -1791,20 +1830,24 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             # Sum continuous forces and preserve already applied explosion impulses.
             fields=list(active_fields())
             for b in bodies:
-                if b['hp']<=0 or b.get('platform'):continue
-                ax=ay=0.;field_force=0.
+                if b['hp']<=0:continue
+                ax=ay=0.;field_force=0.;dot=0.;dot_owner=side
                 for hx,hy,level,share,owner in fields:
                     dx,dy=hx-b['x'],hy-b['y'];dist=math.hypot(dx,dy);reach=120+22*level
-                    if dist>reach or dist<1:continue
-                    if b.get('fixed'):
-                        if b['kind']=='core' or not b.get('floatFort'):continue
-                        b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
-                    accel=(130+105*level)*(1-dist/reach)*share/_siege_body_mass(b)
+                    if dist>=reach:continue
+                    for key in ('fixed','motionY','floatFort','baseY'):b.pop(key,None)
+                    falloff=1-dist/reach
+                    accel=(550+200*level)*falloff*share/max(.75,_siege_body_mass(b))
                     ax+=dx/max(14.,dist)*accel;ay+=dy/max(14.,dist)*accel
                     if accel>field_force:field_force=accel;b['impactSource']=owner
-                if b.get('fixed'):continue
+                    if b['kind']=='zombie':
+                        dot+=(12+8*level)*(.35+.65*falloff)*share;dot_owner=owner
+                if dot>0:
+                    hurt(b,min(70.,dot)*dt,dot_owner)
+                    if round(t*60)%12==0:behavior_events.append(['blackholeHit',round(t,3),round(b['x'],1),round(b['y'],1),b['id']])
+                if b.get('fixed') or b['hp']<=0:continue
                 force=math.hypot(ax,ay)
-                if force>540:ax*=540/force;ay*=540/force
+                if force>1050:ax*=1050/force;ay*=1050/force
                 if b.get('pushTime',0)>0:
                     forces=b.get('pushForces')
                     if forces is None:
@@ -2190,7 +2233,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             # Preserve meaningful action at normal speed; discard only quiet tail.
             timing=_siege_replay_timing(frames,t,hit_at,bodies=bodies,events=behavior_events)
             end=timing['visualEnd'];frames[:]=[f for f in frames if f[0]<end];t=end;frames.append(snap(t,None))
-            t=_siege_zombie_round(r,t,frames,snap,behavior_events)
+            def enemy_physics(now):
+                nonlocal t
+                for j in range(5):
+                    t=now-(4-j)*dt;integrate()
+                t=now
+            t=_siege_zombie_round(r,t,frames,snap,behavior_events,enemy_physics)
+            _siege_zombie_drops(r)
+            r['zombie']['kills']=r['zombie']['spawned']-sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)
     frames.append(snap(t,None))
     if live is None:r['shots'][side]+=1;r['rev']+=1
     refreshed=_siege_refill(r)
