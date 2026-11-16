@@ -500,7 +500,18 @@ def _siege_zombie_world(r):
             if k in _siege_allowed(r) and r.get('rarities',{}).get(k,_SIEGE_V24_LEVELS[k])=='common':inv[k]=1
     _siege_zombie_spawn(r)
 
-def _siege_zombie_round(r,t,frames,snap,events):
+def _siege_zombie_supports(r,core):
+    # Trace the load-bearing stack under the shared core, not unrelated scenery.
+    bodies=r['bodies'];seen={core['id']};stack=[core];supports=[]
+    while stack:
+        b=stack.pop();feet=b['y']+b['h']/2
+        for c in bodies:
+            if c['id'] in seen or c['hp']<=0 or c['kind'] not in ('wood','stone','barrel','tnt','tnt_wait','cannon'):continue
+            if abs(c['x']-b['x'])<(c['w']+b['w'])/2 and abs(c['y']-c['h']/2-feet)<=4:
+                seen.add(c['id']);supports.append(c);stack.append(c)
+    return supports
+
+def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     # Fixed one-second enemy action, recorded at normal simulation time.
     # The enemy phase is independent of the previous shot's debris.
     state=r['zombie'];bodies=r['bodies'];core=_siege_core_body(bodies,0)
@@ -551,10 +562,21 @@ def _siege_zombie_round(r,t,frames,snap,events):
             if flying:z['y']+=max(-speed/12,min(speed/12,core['y']-z['y']))
             close=abs(z['x']-core['x'])<=(z['w']+core['w'])/2+8 and abs(z['y']-core['y'])<=(z['h']+core['h'])/2+8
             target=core if close else None
+            # Ground enemies that cannot reach an elevated core attack accessible
+            # load-bearing blocks. Moving towards a support also handles offset stacks.
+            support_target=None
+            if not flying and not target and core['y']+core['h']/2<z['y']-z['h']/2+12:
+                supports=_siege_zombie_supports(r,core)
+                reachable=[b for b in supports if abs(z['y']-b['y'])<=(z['h']+b['h'])/2+12 and b['kind']!='cannon']
+                if reachable:
+                    support_target=min(reachable,key=lambda b:abs(b['x']-z['x']))
+                    d=1 if support_target['x']>z['x'] else -1
+                    nx=z['x']+d*speed/12
+                    if abs(z['x']-support_target['x'])<=(z['w']+support_target['w'])/2+8:target=support_target
             if not flying and not target:
                 obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait','cannon') and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
                 if obstacles:target=min(obstacles,key=lambda b:abs(b['x']-z['x']))
-                if target and (z['zombieType']=='climber' and target['h']<=44 or z['zombieType']=='pole' and target['h']<=82 and not z.get('vaulted')):
+                if target and target is not support_target and (z['zombieType']=='climber' and target['h']<=44 or z['zombieType']=='pole' and target['h']<=82 and not z.get('vaulted')):
                     top=target['y']-target['h']/2-z['h']/2
                     if not any(b is not target and b['hp']>0 and b['kind'] in ('wood','stone') and abs(nx-b['x'])<(z['w']+b['w'])/2 and abs(top-b['y'])<(z['h']+b['h'])/2 for b in bodies):
                         if z['zombieType']=='pole':z['vaulted']=True
@@ -583,7 +605,13 @@ def _siege_zombie_round(r,t,frames,snap,events):
                 z['y']=min(support-z['h']/2,z['y']+18)
             if not any(q is not z and q['hp']>0 and abs(nx-q['x'])<(z['w']+q['w'])/2 and abs(z['y']-q['y'])<(z['h']+q['h'])/2 for q in alive):
                 z['x']=max(z['w']/2,min(960-z['w']/2,nx))
+        if physics:physics(t)
         frames.append(snap(t,None))
+    # Let a destroyed support actually collapse before returning control.
+    if physics:
+        for j in range(1,25):
+            if not any(b['hp']>0 and not b.get('fixed') and b['kind']!='zombie' and (math.hypot(b['vx'],b['vy'])>20 or not _siege_body_supported(b,bodies,_siege_floor(r,b['x']))) for b in bodies):break
+            t=start+1+j/12;physics(t);frames.append(snap(t,None))
     r['armed']=[{},{}]
     _siege_zombie_supply(r)
     return t
@@ -2200,7 +2228,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             # Preserve meaningful action at normal speed; discard only quiet tail.
             timing=_siege_replay_timing(frames,t,hit_at,bodies=bodies,events=behavior_events)
             end=timing['visualEnd'];frames[:]=[f for f in frames if f[0]<end];t=end;frames.append(snap(t,None))
-            t=_siege_zombie_round(r,t,frames,snap,behavior_events)
+            def enemy_physics(now):
+                nonlocal t
+                for j in range(5):
+                    t=now-(4-j)*dt;integrate()
+                t=now
+            t=_siege_zombie_round(r,t,frames,snap,behavior_events,enemy_physics)
+            _siege_zombie_drops(r)
+            r['zombie']['kills']=r['zombie']['spawned']-sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)
     frames.append(snap(t,None))
     if live is None:r['shots'][side]+=1;r['rev']+=1
     refreshed=_siege_refill(r)
