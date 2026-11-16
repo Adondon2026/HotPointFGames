@@ -567,7 +567,7 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(
  // Camera handoff is independent from physics; only the server-authoritative
  // replay duration can unlock the next turn.
  if(rawElapsed>=(ev.playbackDuration??Math.max(ev.duration,cameraEnd+HANDOFF))){
-  cameraSnap(playing.handoff?.to||home(room.turn));if(ev.side===room.seat&&ev.selected?.gunteleport&&!ev.teleports?.some(z=>z[0]==='gunteleport'))notice='炮台瞬移未找到合法空地，已退回增益';playing=null;animFrame=null;f=null;update()
+  cameraSnap(playing.handoff?.to||home(room.turn));if(ev.side===room.seat){const messages=[];if(ev.selected?.gunteleport&&!ev.teleports?.some(z=>z[0]==='gunteleport'))messages.push('炮台瞬移无合法空地，已退回');if(ev.selected?.coreteleport&&!ev.teleports?.some(z=>z[0]==='coreteleport'))messages.push('核心瞬移无合法空地，已退回');if(ev.selected?.salvage)messages.push(ev.behaviorEvents?.some(z=>z[0]==='salvage')?'材料回收成功':'未找到可回收木石，已退回');if(messages.length)notice=messages.join(' · ')}playing=null;animFrame=null;f=null;update()
  }else if(Math.floor(elapsed*10)!==Math.floor((elapsed-.017)*10))update();
  }
  if(overview&&!playing){const elapsed=(now-overview.start)/1000;const q=elapsed<1.2?elapsed/1.2:1-(elapsed-1.2)/1.2;cameraHandoff({from:home(overview.side),to:home(1-overview.side)},q);if(elapsed>=2.4){cameraSnap(home(overview.side));overview=null;update()}}

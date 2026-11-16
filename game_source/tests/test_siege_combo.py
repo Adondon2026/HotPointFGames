@@ -437,6 +437,9 @@ assert r['buffs'][0]['compound']==1 and r['compoundRecipes'][0]==['ricochet']
 assert r['event']['compoundRecipes']==['breach','seek'] and r['event']['compoundEffects'].count('pierce')==2
 # A late TNT explosion is presented in real time, while a quiet tail is omitted.
 assert g._siege_replay_timing(frames,6,.1,events=[['bounceBlast',2,100,100,80]])['visibleUntil']==2.65
+# A substantial slow slide is not replaced by a jump.
+slow=[[0,[1,1],[[1,100,300,42]],[],6,[]],[.1,None,[[1,100,300,42]],[],6,[]]]+[[i/10,None,[[1,100+i,300,42]],[],6,[]] for i in range(2,61)]
+assert g._siege_replay_timing(slow,6,.1,meta=[{'id':1,'kind':'wood'}])['visibleUntil']>=4.5
 print('Siege elite resources: protected pool, compound, demolition, salvage and refund PASS')
 # Full inventory leaves the pickup at its position, including independent skills.
 for k in ('shield','homing','splitshot','heal'):
@@ -468,6 +471,11 @@ assert r['buffs'][0]['heal']==1
 r=v24();r['buffs'][0]['coreteleport']=1
 g._siege_fire(r,45,70,{'coreteleport':1},config=g._siege_public_config({}))
 assert r['event']['teleports'] and r['buffs'][0]['coreteleport']==0
+# Both movable bodies can cross the midline; exact safe destination depends on terrain.
+for k in ('coreteleport','gunteleport'):
+    r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0][k]=1
+    g._siege_fire(r,45,70,{k:1},config=g._siege_public_config({}))
+    assert r['event']['teleports'] and r['event']['teleports'][0][4]>480 and r['buffs'][0][k]==0,(k,r['event']['teleports'],r['event']['impact'])
 # Own-side rear shot moves the selected body, respecting empty ground.
 for k in ('coreteleport','gunteleport'):
     r=v24();r['buffs'][0][k]=1

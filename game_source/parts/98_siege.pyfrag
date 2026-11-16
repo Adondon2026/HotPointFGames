@@ -75,6 +75,17 @@ def _siege_replay_timing(frames,duration,hit_at=None,sync=False,events=(),meta=(
             prev=(t,positions)
         elif prev is None:prev=(t,positions)
     visible=min(duration,max(hold,important+.65))
+    # Do not skip a slow but substantial slide: the final state may replace
+    # only a genuinely negligible residual displacement.
+    final={b[0]:b for b in (frames[-1][1] if sync else frames[-1][2])} if frames else {}
+    for f in frames:
+        if f[0]<visible:continue
+        positions=f[1] if sync else f[2]
+        if any((b[0] in final and (b[3]>0)!=(final[b[0]][3]>0)) or
+               (b[0] in final and b[3]>0 and math.hypot(b[1]-final[b[0]][1],b[2]-final[b[0]][2])>(6 if kinds.get(b[0])=='core' else 14))
+               for b in positions):
+            visible=f[0]
+        else:break
     finish=max(hold+_SIEGE_REPLAY_HANDOFF,visible)
     return dict(shellEnd=round(end,3),handoffAt=round(hold,3),visibleUntil=round(visible,3),playbackDuration=round(finish,3))
 
@@ -1642,6 +1653,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 collect(x,y,rr,t)
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
+                if v24 and target and target['kind'] in ('wood','stone'):salvage_at(x,y)
                 if target and root_counts.get('through') and len(passed)<root_counts['through'] and target['kind']!='core' and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_scale*(1+1.5*root_counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     passed.add(target['id']);penetrated=target;target=None
@@ -1720,6 +1732,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 collect(x,y,fr,t)
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
+                if v24 and target and target['kind'] in ('wood','stone'):salvage_at(x,y)
                 if target and counts.get('through') and len(f['passed'])<counts['through'] and target['kind']!='core' and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42)*(1+1.5*counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     f['passed'].add(target['id']);penetrated=target;target=None
