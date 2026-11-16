@@ -209,7 +209,7 @@ function cameraPlan(data,meta,sync=false){
  return out;
 }
 function replayClock(data,wall){
- return Math.max(0,Math.min(wall,data.visualEnd??data.duration));
+ return Math.max(0,Math.min(wall,data.duration));
 }
 function cameraPlanAt(plan,t){
  if(!plan.length)return {x:camera.x,y:camera.y,w:VIEW_W};

@@ -407,6 +407,10 @@ frames=[[0,[1,1],[],[],6,[]],[.1,None,[],[],6,[]],[6,None,[],[],6,[]]]
 timing=g._siege_replay_timing(frames,6,.1)
 assert timing==dict(shellEnd=.1,handoffAt=1.,visualEnd=.1,playbackDuration=1.48),timing
 assert g._siege_replay_timing(frames,60,.1)==timing
+# Real TNT action cannot be skipped or compressed, quiet jitter after it can.
+frames=[[0,[1,1],[[1,200,300,42]],[],6,[]],[.1,None,[[1,200,300,42]],[],6,[]],[1.2,None,[[1,200,300,42]],[],6,[]],[1.4,None,[[1,260,300,42]],[],6,[]],[1.6,None,[[1,280,300,42]],[],6,[]],[2.,None,[[1,281,300,42]],[],6,[]],[6.,None,[[1,281.2,300,42]],[],6,[]]]
+timing=g._siege_replay_timing(frames,6,.1,events=[['bounceBlast',1.2,200,300,92]])
+assert 1.7<=timing['visualEnd']<=2.2 and timing['playbackDuration']>=timing['visualEnd'],timing
 # The real public room lock follows playbackDuration, not physics duration.
 r=v24();g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
 e=r['event'];assert e['handoffAt']>=1 and e['playbackDuration']>=round(e['handoffAt']+.48,3)
@@ -415,6 +419,15 @@ r=v24();now=time.time();rt=g._siege_sync_runtime(r,now);g._siege_sync_compute(r,
 e=rt['replay'];assert e['handoffAt']>=1 and abs((r['until']-time.time())-(.38+e['playbackDuration']+.10))<.2
 assert rt['replay']['shellEnd']<=rt['replay']['duration']
 print('Siege replay tempo: 0.1s shell, 1s viewing minimum, 1.48s display independent of debris PASS')
+# Salvage removes either team's ORIGINAL or generated material, no core damage.
+for owner in (0,1,-1):
+    r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0]['salvage']=1
+    b=dict(id=99,side=owner,x=235,y=350,w=36,h=38,kind='stone',hp=75,max=75,vx=0.,vy=0.)
+    r['bodies'].append(b);g._siege_fire(r,90,40,{'salvage':1},config=g._siege_public_config({}))
+    assert b['hp']==0 and r['buffs'][0]['salvage']==0 and r['buffs'][0]['stonedrop']==1 and r['event']['cores']==[100,100],(owner,b,r['event']['impact'])
+# Three demolition charges widen the first impact and consume all three.
+r=v24();r['buffs'][0]['demolish']=3;g._siege_fire(r,90,40,{'demolish':3},config=g._siege_public_config({}))
+assert r['buffs'][0]['demolish']==0 and any(e[0]=='bounceBlast' and e[4]==160 for e in r['event']['behaviorEvents'])
 # Salvage with no eligible material returns the charge.
 r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0]['salvage']=1
 g._siege_fire(r,90,40,{'salvage':1},config=g._siege_public_config({}))
@@ -534,11 +547,13 @@ for theme in ('classic','art'):
     r=v24(theme);r.update(mode='random',itemCount=13);g._siege_field(r)
     assert len(r['items'])==13 and set(i['kind'] for i in r['items'])<=set(g._siege_allowed(r))
     assert any(i['zone']=='center' for i in r['items'])
+    assert all(i['kind'] in ('demolish','compound') for i in r['items'] if i['zone'] in ('center','side'))
+    assert all(i['kind'] not in ('demolish','compound') for i in r['items'] if i['zone']=='air')
     if theme=='art':assert any(b['kind']=='barrel' for b in r['bodies']) and 'heal' not in g._siege_allowed(r)
     it=next(i for i in r['items'] if i['zone']=='center');r['items'].remove(it)
     r['respawns']=[{**it,'readyAt':0}];r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
     g._siege_refill(r);refill=next(i for i in r['items'] if i['slot']==it['slot'])
-    assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y'])
+    assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y']) and refill['kind'] in ('demolish','compound')
 assert 'siegeRarityModal' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'skillDock' not in g.SIEGE_PAGE
 print('Siege v0.24: 32 conserved projectiles, giant radius, capped pickups, skill charges, point guidance, barrel chains, theme and persistent rarity PASS')
 
@@ -547,7 +562,7 @@ r=v24('classic',['heavy','splitshot'])
 g._siege_v24_setup(r,'classic',{'heavy':'precious','splitshot':'rare'})
 assert 'heavy' not in r['rarities']
 for zone in ('side','center'):
-    assert all(g._siege_v24_draw(r,zone)=='splitshot' for _ in range(30))
+    assert all(g._siege_v24_draw(r,zone) is None for _ in range(30))
 r=v24('classic',['heavy'])
 assert g._siege_v24_draw(r,'air')=='heavy' and g._siege_v24_draw(r,'center') is None
 r.update(mode='random',itemCount=13);g._siege_field(r)

@@ -70,6 +70,17 @@ def _siege_replay_timing(frames,duration,hit_at=None,sync=False,bodies=(),events
         if e[0] in ('bounceBlast','salvage','teleport'):action=max(action,e[1]+.5)
     end=min(duration,max(last,hit_at or 0.))
     hold=max(1.,end+.18)
+    # Only cut a tail if the final state differs by at most a tiny drift. This
+    # prevents accumulating slow movement from becoming a visible snap.
+    final={b[0]:b for b in (frames[-1][1] if sync else frames[-1][2])}
+    for i in range(len(frames)-1,-1,-1):
+        f=frames[i];positions=f[1] if sync else f[2];changed=False
+        for b in positions:
+            z=final.get(b[0]);m=meta.get(b[0],{})
+            if m.get('platform') or m.get('motionY'):continue
+            if z is None:changed|=b[3]>0;continue
+            if abs(z[3]-b[3])>=1 or (z[3]>0 and math.hypot(z[1]-b[1],z[2]-b[2])>(3. if m.get('kind')=='core' else 7.)):changed=True;break
+        if changed:action=max(action,frames[min(i+1,len(frames)-1)][0]);break
     visual_end=min(duration,max(end,action))
     return dict(shellEnd=round(end,3),handoffAt=round(hold,3),visualEnd=round(visual_end,3),playbackDuration=round(max(hold+_SIEGE_REPLAY_HANDOFF,visual_end),3))
 
@@ -103,6 +114,8 @@ _SIEGE_V24_ART={'splitshot':16,'repeat':24,'bounce':16,'bounceblast':22,'through
 _SIEGE_V24_LOCATION={'air':{'common':1.5,'uncommon':1.,'rare':.4,'precious':.15},'side':{'common':.7,'uncommon':1.3,'rare':2.,'precious':2.5},'center':{'common':.25,'uncommon':1.,'rare':3.,'precious':6.}}
 def _siege_v24(r):return r.get('rulesVersion')==24
 def _siege_v24_setup(r,theme='classic',levels=None):
+    # Legacy default-all rooms gain the new v24 items, explicit subsets stay intact.
+    if set(r.get('allowedBuffs') or ())==set(_SIEGE_ACTIVE_ITEMS):r['allowedBuffs']=list(_SIEGE_V24_KEYS)
     r.update(rulesVersion=24,theme=theme if theme in ('classic','art') else 'classic',rarities={k:v for k,v in (levels or {}).items() if k in _SIEGE_V24_KEYS and k not in _SIEGE_NEGATIVE and v in _SIEGE_V24_WEIGHTS},buffMode='stock')
     r['allowedBuffs']=list(_siege_allowed(r));r['stackCaps']=dict(_SIEGE_V24_CAPS)
 def _siege_v24_draw(r,zone='air'):
@@ -387,7 +400,7 @@ def _siege_v24_world(r):
                 if placed>=(2 if art else 1):break
     r['nextBodyId']=max(100,max((b['id'] for b in bodies),default=0)+1)
     if not count or not _siege_allowed(r):r['items']=[];return
-    if not any(k not in _SIEGE_NEGATIVE for k in _siege_allowed(r)):slots=[]
+    if not any(k in ('demolish','compound') for k in _siege_allowed(r)):slots=[]
     center=next((p for p in slots if p[2]=='center'),None)
     positions=[center] if center else []
     sides=[p for p in slots if p[2]=='side']
