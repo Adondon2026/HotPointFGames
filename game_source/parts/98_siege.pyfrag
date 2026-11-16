@@ -369,11 +369,11 @@ def _siege_field(r):
 # and zombies only act after both players have fired.
 _SIEGE_ZOMBIE_WAVES=(
     ('walker','walker','walker'),
-    ('walker','shield','walker','climber'),
-    ('heavy','walker','climber','flyer'),
-    ('shield','heavy','walker','flyer','walker'),
-    ('giant','climber','shield','flyer','walker'),
-    ('giant','heavy','shield','climber','flyer','walker'),
+    ('walker','runner','shield','pole'),
+    ('heavy','bomber','priest','flyer'),
+    ('guard','heavy','dancer','flyer','runner'),
+    ('giant','engineer','guard','priest','bomber'),
+    ('giant','engineer','guard','pole','dancer','runner'),
 )
 _SIEGE_ZOMBIE_TYPES={
     'walker':(32,42,44,104,9),
@@ -382,6 +382,13 @@ _SIEGE_ZOMBIE_TYPES={
     'flyer':(30,34,38,128,10),
     'climber':(30,40,52,116,10),
     'giant':(58,78,190,52,24),
+    'runner':(26,38,32,180,8),
+    'pole':(30,44,48,135,10),
+    'bomber':(30,40,42,145,30),
+    'priest':(32,46,65,72,7),
+    'dancer':(34,46,75,65,9),
+    'guard':(44,54,150,65,13),
+    'engineer':(62,44,135,86,18),
 }
 # Progression is shared by field pickups, resupply, and enemy drops.
 _SIEGE_ZOMBIE_DIFFICULTIES={
@@ -391,7 +398,7 @@ _SIEGE_ZOMBIE_DIFFICULTIES={
     'hell':(1.55,1.3,1.5,2),
 }
 _SIEGE_ZOMBIE_RARITIES=('common','uncommon','rare','precious')
-_SIEGE_ZOMBIE_DROP_LEVEL={'walker':0,'climber':0,'flyer':1,'shield':1,'heavy':2,'giant':3}
+_SIEGE_ZOMBIE_DROP_LEVEL={'walker':0,'climber':0,'flyer':1,'shield':1,'heavy':2,'giant':3,'runner':0,'pole':1,'bomber':1,'priest':2,'dancer':2,'guard':3,'engineer':3}
 def _siege_zombie_difficulty(r):
     return _SIEGE_ZOMBIE_DIFFICULTIES.get(r.get('zombieDifficulty','medium'),_SIEGE_ZOMBIE_DIFFICULTIES['medium'])
 def _siege_zombie_draw(r,enemy=None):
@@ -404,7 +411,11 @@ def _siege_zombie_draw(r,enemy=None):
     if enemy is not None:
         top=max(_SIEGE_ZOMBIE_RARITIES.index(levels[k]) for k in keys)
         keys=[k for k in keys if _SIEGE_ZOMBIE_RARITIES.index(levels[k])==top]
-    return random.choices(keys,weights=[_SIEGE_V24_WEIGHTS[levels[k]] for k in keys],k=1)[0]
+    # Prefer variety among eligible rewards, without violating selected rarity ceilings.
+    history=r.setdefault('zombieRewardHistory',[])
+    weights=[_SIEGE_V24_WEIGHTS[levels[k]]/(1+3*history[-8:].count(k)) for k in keys]
+    k=random.choices(keys,weights=weights,k=1)[0];history.append(k);del history[:-16]
+    return k
 def _siege_zombie_pickup(r,k,x,y,slot=None,enemy=False):
     if k is None:return
     ident=r.setdefault('nextItemId',1000);r['nextItemId']=ident+1
@@ -468,6 +479,7 @@ def _siege_zombie_world(r):
     if map_key=='ridge':
         x=650;h=72
         r['bodies'].append(dict(id=1,side=-1,kind='stone',x=x,y=_siege_floor(r,x)-h/2,w=28,h=h,hp=75,max=75,vx=0.,vy=0.))
+    r['zombieRewardHistory']=[]
     r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,difficulty=r.get('zombieDifficulty','medium'))
     r['items']=[];r['respawns']=[]
     slots=[(230,205),(335,140),(430,235),(510,100),(580,190),(665,130),(755,245),(840,110)]
@@ -491,6 +503,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
     for _ in range(6):t+=.08;frames.append(snap(t,None))
     start=t;events.append(['zombiePhase',round(start,3)])
     if not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
+        r['armed']=[{},{}]
         if state['wave']==state['totalWaves']:
             state['won']=True;return t+.5
         state['wave']+=1;_siege_zombie_spawn(r)
@@ -501,10 +514,26 @@ def _siege_zombie_round(r,t,frames,snap,events):
     shield=min(_siege_cap(r,'shield'),sum(b.get('shield',0) for b in r['armed']))
     armor=min(_siege_cap(r,'armor'),sum(b.get('armor',0) for b in r['armed']))
     attacked=set()
+    # Support enemies act once per enemy phase, never once per simulation tick.
+    living=[b for b in bodies if b['kind']=='zombie' and b['hp']>0]
+    for z in living:
+        if z['zombieType']=='priest':
+            for ally in living:
+                if ally is not z and math.hypot(ally['x']-z['x'],ally['y']-z['y'])<=125:
+                    ally['hp']=min(ally['max'],ally['hp']+14)
+        if z['zombieType']=='dancer' and not z.get('summoned'):
+            z['summoned']=True
+            d=1 if core['x']>z['x'] else -1
+            x=max(16,min(944,z['x']-d*42));w,h,hp,_,_=_SIEGE_ZOMBIE_TYPES['walker']
+            if not any(b['hp']>0 and abs(b['x']-x)<(b['w']+w)/2 and abs(b['y']-(_siege_floor(r,x)-h/2))<(b['h']+h)/2 for b in bodies):
+                ident=r['nextBodyId'];r['nextBodyId']+=1;hp=round(hp*_siege_zombie_difficulty(r)[0],1)
+                bodies.append(dict(id=ident,side=2,kind='zombie',zombieType='walker',x=x,y=_siege_floor(r,x)-h/2,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
+                state['spawned']+=1
     for step in range(1,13):
         t=start+step/12
         alive=sorted((b for b in bodies if b['kind']=='zombie' and b['hp']>0),key=lambda b:abs(b['x']-core['x']))
         for z in alive:
+            if z['hp']<=0:continue
             _,_,_,speed,damage=_SIEGE_ZOMBIE_TYPES[z['zombieType']]
             _,speed_scale,damage_scale,_=_siege_zombie_difficulty(r);speed*=speed_scale;damage*=damage_scale
             d=1 if core['x']>z['x'] else -1
@@ -516,18 +545,25 @@ def _siege_zombie_round(r,t,frames,snap,events):
             if not flying and not target:
                 obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait','cannon') and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
                 if obstacles:target=min(obstacles,key=lambda b:abs(b['x']-z['x']))
-                if target and z['zombieType']=='climber' and target['h']<=44:
+                if target and (z['zombieType']=='climber' and target['h']<=44 or z['zombieType']=='pole' and target['h']<=82 and not z.get('vaulted')):
                     top=target['y']-target['h']/2-z['h']/2
                     if not any(b is not target and b['hp']>0 and b['kind'] in ('wood','stone') and abs(nx-b['x'])<(z['w']+b['w'])/2 and abs(top-b['y'])<(z['h']+b['h'])/2 for b in bodies):
+                        if z['zombieType']=='pole':z['vaulted']=True
                         z['y']=top;target=None
             if target:
+                if z['zombieType']=='bomber':
+                    for b in bodies:
+                        if b['hp']<=0 or b['kind'] in ('zombie','cannon'):continue
+                        if math.hypot(max(0,abs(b['x']-z['x'])-b['w']/2),max(0,abs(b['y']-z['y'])-b['h']/2))<=65:
+                            b['hp']=max(0,b['hp']-damage*(.35**shield if b is core else .65**armor))
+                    z['hp']=0;z['rewarded']=True;events.append(['zombieAttack',round(t,3),z['id'],target['id'],round(damage,1)]);continue
                 if z['id'] not in attacked:
                     attacked.add(z['id']);amount=damage*(.35**shield if target is core else .65**armor)
                     if target['kind']!='cannon':target['hp']=max(0.,target['hp']-amount)
                     events.append(['zombieAttack',round(t,3),z['id'],target['id'],round(amount,1)])
-                if target['kind']=='cannon':
+                if target['kind']=='cannon' or (z['zombieType']=='engineer' and target['kind'] in ('wood','stone')):
                     # Advance the movable gun with the enemy, unless backed by a live body.
-                    xx=max(target['w']/2,min(960-target['w']/2,target['x']+d*speed/12))
+                    xx=max(target['w']/2,min(960-target['w']/2,target['x']+d*speed/12*(.55 if target['kind']=='stone' else 1)))
                     if not any(b is not target and b is not z and b['hp']>0 and abs(xx-b['x'])<(target['w']+b['w'])/2 and abs(target['y']-b['y'])<(target['h']+b['h'])/2 for b in bodies):
                         target['x']=xx;target['y']=min(target['y'],_siege_floor(r,xx)-target['h']/2);z['x']=nx
                     else:z['x']=max(z['w']/2,min(960-z['w']/2,nx)) # pass a blocked cannon, never stall the wave
@@ -1174,7 +1210,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if b.get('shared') and r.get('theme')=='zombie':return
         # Keep the gun operable; its body can still receive collision impulses.
         if b['kind']=='cannon':return
-        if b['kind']=='zombie':damage*=.70 if b.get('zombieType')=='shield' else .80 if b.get('zombieType')=='heavy' else 1.
+        if b['kind']=='zombie':
+            if b.get('zombieType')!='guard':
+                guard=min((q for q in bodies if q['hp']>0 and q.get('zombieType')=='guard' and math.hypot(q['x']-b['x'],q['y']-b['y'])<=105),key=lambda q:math.hypot(q['x']-b['x'],q['y']-b['y']),default=None)
+                if guard is not None:b=guard
+            damage*=.70 if b.get('zombieType')=='shield' else .80 if b.get('zombieType')=='heavy' else 1.
         if b['kind']!='core' and b['side'] in (0,1):damage*= {'normal':1.,'sturdy':.75,'fortified':.55}.get(r.get('fortStrength'),1.)
         source=source if v24 and source in (0,1) else side
         source_defense=attack_defense(source)
@@ -1877,7 +1917,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 collect(x,y,rr,t)
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
-                if target and root_counts.get('through') and len(passed)<root_counts['through'] and target['kind']!='core' and not target.get('platform'):
+                if target and root_counts.get('through') and len(passed)<root_counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_scale*(1+1.5*root_counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     passed.add(target['id']);penetrated=target;target=None
                     if unified and dispatch_event('through',x,y,vx,vy,target=penetrated):break
@@ -1955,7 +1995,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 collect(x,y,fr,t)
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
-                if target and counts.get('through') and len(f['passed'])<counts['through'] and target['kind']!='core' and not target.get('platform'):
+                if target and counts.get('through') and len(f['passed'])<counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42)*(1+1.5*counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     f['passed'].add(target['id']);penetrated=target;target=None
                     if unified and dispatch_event('through',x,y,f['vx'],f['vy'],f,penetrated):break
@@ -2398,8 +2438,9 @@ def _siege_sync_public(r,rt,key,last=-1):
         v['replay']=replay;v['replayElapsed']=(replay['playbackDuration']+.10-(rt['until']-time.time())) if 'playbackDuration' in replay else max(0,replay['duration']+.35-(rt['until']-time.time()))
     return v
 
-def _siege_bot_fire(r,a,p,live=None):
+def _siege_bot_fire(r,a,p,live=None,planned=None):
     selection={k:min(_siege_cap(r,k),2,n) for k,n in r['buffs'][1].items() if n>0 and (k in _SIEGE_SELECTABLE or (_siege_v24(r) and k=='heal')) and k not in _SIEGE_ONE_SHOT} if r.get('buffMode')=='stock' else None
+    if planned is not None:selection=planned
     if live is not None and live.get('planOnly'):
         live['plan']=(a,p,selection or {});return
     if live is not None and selection is not None:
@@ -2422,19 +2463,51 @@ def _siege_bot_fire(r,a,p,live=None):
 
 def _siege_bot(r,live=None):
     if r.get('theme')=='zombie':
-        targets=[b for b in r['bodies'] if b['kind']=='zombie' and b['hp']>0]
-        target=min(targets,key=lambda b:abs(b['x']-_siege_launcher(1,r)[0]),default=None)
-        tx,ty=(target['x'],target['y']) if target else (650,390)
-        sx,sy=_siege_launcher(1,r);choices=[]
-        for a in range(0,360,10):
-            for power in range(25,101,5):
-                x,y=_siege_muzzle(1,r,a);rad=math.radians(a);v=power*8;best=1e9
-                for j in range(1,101):
-                    t=j*.04;px=x+v*math.cos(rad)*t;py=y-v*math.sin(rad)*t+230*t*t
-                    if not 0<px<960 or py>_siege_floor(r,px)-6:break
-                    best=min(best,math.hypot(px-tx,py-ty))
-                choices.append((best,a,power))
-        _,a,p=min(choices);_siege_bot_fire(r,a,p,live);return
+        bodies=r['bodies'];core=_siege_core_body(bodies,0);sx,sy=_siege_launcher(1,r)
+        targets=[b for b in bodies if b['kind']=='zombie' and b['hp']>0]
+        inv=r['buffs'][1];direction=_siege_direction(r,1)
+        selection={k:1 for k in ('shield','armor') if inv.get(k,0)>0 and r['armed'][1].get(k,0)<_siege_cap(r,k)}
+        if inv.get('heal',0)>0 and core['hp']<=82:selection['heal']=1
+        target=min(targets,key=lambda b:abs(b['x']-core['x'])/max(1,_SIEGE_ZOMBIE_TYPES[b['zombieType']][3]),default=None)
+        build=None
+        if target:
+            d=1 if target['x']>core['x'] else -1
+            # A barricade must be between the advancing enemy and the core, ahead of the gun
+            # only if there is enough distance for safe projectile clearance.
+            near=min(abs(target['x']-core['x']),260)
+            x=core['x']+d*max(85,near*.62)
+            existing=any(b['hp']>0 and b['kind'] in ('wood','stone') and abs(b['x']-x)<65 for b in bodies)
+            if near>145 and 35<x<925 and abs(x-sx)>85 and not existing:
+                build=next((k for k in ('stonedrop','wooddrop') if inv.get(k,0)>0),None)
+        best_attack=None;best_build=None
+        for a in range(0,360,6):
+            rad=math.radians(a)
+            for power in range(20,101,5):
+                px,py=_siege_muzzle(1,r,a);vx=direction*power*8*math.cos(rad);vy=-power*8*math.sin(rad)
+                hit=None
+                for j in range(1,181):
+                    px+=vx/60;py+=vy/60;vy+=_SIEGE_GRAV/60
+                    if px<=6 or px>=954 or py>=_siege_floor(r,px)-6:break
+                    hit=next((b for b in bodies if b['hp']>0 and not (b.get('kind')=='cannon' and b['side']==1 and j<8) and abs(px-b['x'])<=b['w']/2+6 and abs(py-b['y'])<=b['h']/2+6),None)
+                    if hit:break
+                if hit and hit['kind']=='zombie':
+                    score=abs(hit['x']-core['x'])/max(1,_SIEGE_ZOMBIE_TYPES[hit['zombieType']][3])
+                    if hit.get('zombieType') in ('priest','dancer','guard','bomber'):score*=.75
+                else:
+                    score=1000+min((math.hypot(px-b['x'],py-b['y']) for b in targets),default=500)+(300 if hit and hit['side'] in (0,1) else 0)
+                candidate=(score,a,power)
+                if best_attack is None or candidate<best_attack:best_attack=candidate
+                if build and hit is None and 20<px<940 and py>=_siege_floor(r,px)-12:
+                    candidate=(abs(px-x),a,power)
+                    if best_build is None or candidate<best_build:best_build=candidate
+        if build and best_build and best_build[0]<35 and (best_attack[0]>=1000 or r['zombie']['round']%3==0):
+            selection[build]=min(2,inv[build]);_,a,p=best_build
+        else:
+            _,a,p=best_attack
+            # Offensive rounds do not spend building materials or random trajectory modifiers.
+            for k in ('pierce','through','big','splitshot','repeat'):
+                if inv.get(k,0)>0 and (k!='big' or a<180):selection[k]=1
+        _siege_bot_fire(r,a,p,live,selection);return
     # For unusual layouts, choose a trajectory that clears our own fort and any platforms.
     if r.get('field') in _SIEGE_NEW_FIELDS:
         sx,sy=_siege_launcher(1,r);wind=-r.get('windPair',0) if live is not None else r.get('wind',0);now=max(0,time.time()-r.get('motionEpoch',time.time()));choices=[]
