@@ -774,3 +774,27 @@ assert len([b for b in r['bodies'] if b['kind']=='cannon'])==1
 g._siege_fire(r,270,25,{},config=g._siege_public_config({}))
 assert r['turn']==0 and r['zombie']['round']==2 and len(r['players'])==1
 print('Siege new terrain, physical cannon, all-angle aim, defense lifetime and solo regression PASS')
+
+# Core is a penetrable target, and damage is applied before continued flight.
+r,b=balance_target('core');r['buffs'][0]['through']=1
+g._siege_fire(r,90,55,{'through':1},config=g._siege_public_config({}))
+assert b['id'] in r['event']['passed'] and b['hp']<b['max'],(b,r['event']['passed'])
+# Every special enemy appears in the wave roster; first wave remains approachable.
+assert set(('runner','pole','bomber','priest','dancer','guard','engineer'))<=set(k for wave in g._SIEGE_ZOMBIE_WAVES for k in wave)
+assert set(g._SIEGE_ZOMBIE_WAVES[0])=={'walker'}
+# Reward history should avoid identical draws when multiple choices are available.
+r=v24('zombie');r['allowedBuffs']=['big','bounce','wooddrop','stonedrop','push'];g._siege_field(r)
+assert len({g._siege_zombie_draw(r) for _ in range(30)})>=3
+# Bot separates a planned barricade from its offensive round.
+r=v24('zombie');g._siege_field(r);r['turn']=1
+r['buffs'][1].update(wooddrop=2,stonedrop=2,pierce=1)
+r['zombie']['round']=3
+captured=[];original=g._siege_bot_fire
+try:
+    g._siege_bot_fire=lambda r,a,p,live=None,planned=None:captured.append((a,p,planned))
+    g._siege_bot(r)
+finally:g._siege_bot_fire=original
+assert captured and 0<=captured[0][0]<360
+plan=captured[0][2]
+assert not (any(plan.get(k) for k in ('wooddrop','stonedrop')) and any(plan.get(k) for k in ('pierce','through','big','splitshot','repeat')))
+print('Core penetration, varied zombie roster/rewards and bot payload separation PASS')
