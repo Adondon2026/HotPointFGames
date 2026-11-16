@@ -4,8 +4,9 @@ const siegeAudio=(()=>{
  const tracks=['ocean','arcade','off'];
  let mode=tracks.includes(localStorage.getItem('siege_bgm'))?localStorage.getItem('siege_bgm'):'ocean';
  let effects=localStorage.getItem('siege_sfx')!=='off',ctx=null,source=null,volume=null,started=false,seen=new Set();
+ const storedVolume=localStorage.getItem('siege_bgm_volume');let musicVolume=storedVolume===null?100:Math.max(0,Math.min(200,Number(storedVolume)||0));
  const duration=24,midi=n=>440*Math.pow(2,(n-69)/12),buffers={};
- function ready(){const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return false;try{if(!ctx){ctx=new Audio();volume=ctx.createGain();volume.gain.value=.18;volume.connect(ctx.destination)}if(ctx.state==='suspended')ctx.resume().catch(()=>{});return true}catch(_){return false}}
+ function ready(){const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return false;try{if(!ctx){ctx=new Audio();volume=ctx.createGain();volume.gain.value=musicVolume/100*.85;const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-4;limiter.knee.value=3;limiter.ratio.value=12;limiter.attack.value=.003;limiter.release.value=.12;volume.connect(limiter);limiter.connect(ctx.destination)}if(ctx.state==='suspended')ctx.resume().catch(()=>{});return true}catch(_){return false}}
  function build(which){
   const sr=22050,n=Math.round(duration*sr),buffer=ctx.createBuffer(1,n,sr),out=buffer.getChannelData(0);
   const rand=(()=>{let x=which==='ocean'?927411:311982;return ()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}})();
@@ -31,7 +32,7 @@ const siegeAudio=(()=>{
    for(let b=0;b<16;b++){const start=b*1.5;[0,1,1.75,2.25,3,3.5].forEach((q,i)=>note(roots[b]+([1,3,5].includes(i)?7:0),start+q*beat,.22,.085,'bass'));[.5,1.5,2.5,3.5].forEach((q,i)=>note(chords[b][[0,2,1,3][i]]+12,start+q*beat,.13,.035,'chip'));melody[b].forEach((m,i)=>{if(m!==null)note(m,start+i*beat/2,.17,.155,'chip')})}
    for(let k=0;k<64;k++){const at=Math.round(k*beat*sr);for(let j=0;j<Math.floor(.075*sr);j++){const t=j/sr,idx=(at+j)%n,env=Math.exp(-t*38);out[idx]+=k%2===0?.042*Math.sin(2*Math.PI*(73+90*Math.exp(-t*20))*t)*env:.016*(rand()*2-1)*env}}
   }
-  let mx=0;for(let i=0;i<n;i++){out[i]=Math.tanh(out[i]*2.2)*.8;mx=Math.max(mx,Math.abs(out[i]))}if(mx>.8)for(let i=0;i<n;i++)out[i]*=.8/mx;
+  let mx=0;for(let i=0;i<n;i++){out[i]=Math.tanh(out[i]*2.2)*.8;mx=Math.max(mx,Math.abs(out[i]))}if(mx>0)for(let i=0;i<n;i++)out[i]*=.65/mx;
   const edge=400;for(let i=0;i<edge;i++){const a=i/edge;out[n-edge+i]=out[n-edge+i]*(1-a)+out[i]*a}return buffer;
  }
  function stop(){if(source){try{source.stop()}catch(_){}source.disconnect();source=null}}
@@ -47,7 +48,8 @@ const siegeAudio=(()=>{
  function hit(id,age){once('hit:'+id,age,()=>spaced('hit',.065,()=>{tone(0,.22,150,52,.22);tone(.03,.26,300,95,.09)}))}
  function bounce(id,age){once('bounce:'+id,age,()=>spaced('bounce',.045,()=>{tone(0,.12,380,780,.065);tone(.045,.13,680,420,.045)}))}
  function pickup(id,age,kind){once('pickup:'+id,age,()=>spaced('pickup',.075,()=>{tone(0,.11,660,880,.075);tone(.09,.14,880,kind==='heal'?1320:1100,.065)}))}
- const musicSelect=document.getElementById('siegeMusic'),effectsToggle=document.getElementById('siegeEffects');musicSelect.value=mode;effectsToggle.checked=effects;
+ const musicSelect=document.getElementById('siegeMusic'),effectsToggle=document.getElementById('siegeEffects'),volumeSlider=document.getElementById('siegeMusicVolume'),volumeValue=document.getElementById('siegeMusicVolumeValue');musicSelect.value=mode;effectsToggle.checked=effects;
+ if(volumeSlider){volumeSlider.value=musicVolume;volumeValue.textContent=musicVolume+'%';volumeSlider.addEventListener('input',()=>{musicVolume=Number(volumeSlider.value);volumeValue.textContent=musicVolume+'%';localStorage.setItem('siege_bgm_volume',String(musicVolume));if(volume&&ctx)volume.gain.setTargetAtTime(musicVolume/100*.85,ctx.currentTime,.03);unlock()})}
  musicSelect.addEventListener('change',()=>{mode=musicSelect.value;localStorage.setItem('siege_bgm',mode);started=ready();music()});effectsToggle.addEventListener('change',()=>{effects=effectsToggle.checked;localStorage.setItem('siege_sfx',effects?'on':'off');unlock()});
  for(const event of ['pointerdown','click','touchend'])document.addEventListener(event,()=>{if(document.body.classList.contains('in-battle'))unlock()},{passive:true});document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else if(started&&document.body.classList.contains('in-battle'))music()});window.addEventListener('pagehide',stop);
  return {unlock,enterBattle:()=>{seen.clear();if(started)music()},shot,hit,bounce,pickup,stop:()=>{stop();started=false;seen.clear()}};
