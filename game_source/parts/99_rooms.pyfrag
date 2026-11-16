@@ -55,7 +55,7 @@ def _room_load_settings(player,record):
         row=db.execute('SELECT settings FROM room_preferences WHERE owner=?',(key,)).fetchone()
     if row:
         try:
-            saved=json.loads(row['settings']);record['state']['settings'].update({k:v for k,v in saved.items() if k in fresh_state()['settings']})
+            saved=json.loads(row['settings']);record['state']['settings'].update({k:v for k,v in saved.items() if k in fresh_state()['settings'] or k in ('siegeZombieDifficulty','siegeZombieMap')})
         except (ValueError,TypeError,AttributeError):pass
     settings=record['state']['settings']
     if settings.get('siegeCombatMode')=='live':settings.update(siegeCombatMode='sync',siegeReload=15)
