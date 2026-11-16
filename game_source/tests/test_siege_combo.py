@@ -748,3 +748,29 @@ assert z['hp']==round(44*1.55,1) and r['zombie']['difficulty']=='hell'
 z['hp']=0;g._siege_zombie_drops(r)
 assert r['items'][-1]['amount']==2
 print('Siege coop progression: whitelist, rarity gates, single enemy drops and difficulty PASS')
+
+# New cannon bodies, full-circle firing, and terrain-specific cooperative play.
+r=v24('zombie');r['zombieMap']='crossfire';g._siege_field(r)
+assert r['zombieBothSides'] and len([b for b in r['bodies'] if b['kind']=='cannon'])==2
+assert g._siege_core_body(r['bodies'],0)['x']==480
+assert g._siege_muzzle(0,r,0)[0]<g._siege_launcher(0,r)[0]
+assert g._siege_muzzle(1,r,0)[0]>g._siege_launcher(1,r)[0]
+assert min(b['x'] for b in r['bodies'] if b['kind']=='zombie')<480<max(b['x'] for b in r['bodies'] if b['kind']=='zombie')
+r=v24('zombie');r['zombieMap']='ridge';g._siege_field(r)
+gun=g._siege_cannon(r,0);assert gun and not gun.get('fixed')
+assert g._siege_floor(r,100)<g._siege_floor(r,480)
+assert g._siege_launcher(0,r)[1]<g._siege_launcher(1,r)[1]
+assert g._siege_muzzle(0,r,270)[1]>g._siege_launcher(0,r)[1]
+old=g._siege_launcher(0,r);gun['x']+=8;assert g._siege_launcher(0,r)[0]==old[0]+8
+# A cooperative defense remains armed during the teammate shot and clears at the enemy phase.
+r=v24('zombie');g._siege_field(r);r['buffs'][0]['shield']=1
+g._siege_fire(r,90,25,{'shield':1},config=g._siege_public_config({}))
+assert r['armed'][0].get('shield')==1 and r['turn']==1
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+assert r['event']['armedBefore'][0]['shield']==1 and r['armed']==[{},{}]
+# A solo round advances zombies directly, never a synthetic opponent.
+r=v24('zombie');r['zombieSolo']=True;r['bot']=False;r['players']=r['players'][:1];g._siege_field(r)
+assert len([b for b in r['bodies'] if b['kind']=='cannon'])==1
+g._siege_fire(r,270,25,{},config=g._siege_public_config({}))
+assert r['turn']==0 and r['zombie']['round']==2 and len(r['players'])==1
+print('Siege new terrain, physical cannon, all-angle aim, defense lifetime and solo regression PASS')
