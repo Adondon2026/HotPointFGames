@@ -23,6 +23,7 @@ try:
     # no selected buffs. Include every positive buff, including armor and shield.
     keys = [k for k in g._SIEGE_V24_KEYS if k not in g._SIEGE_NEGATIVE]
     r['buffs'][0].update({k:min(2,g._SIEGE_V24_CAPS[k]) for k in keys})
+    r['compoundRecipes']=[['burst','burst'],[]]
     data = g._siege_public(r,'a',-1)
     with sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH') or shutil.which('google-chrome') or shutil.which('chromium'),args=['--no-sandbox'])
@@ -105,6 +106,12 @@ try:
         page.evaluate("""()=>{room.compoundRecipes=[['siegebreak'],[]];stockKey='';update()}""")
         page.get_by_role('button',name='全部',exact=True).tap()
         expect(page.locator('.compound-row .buff-effect')).to_have_text('攻坚 · 穿透 +1 · 破甲 +1 · 爆炸 +1')
+        page.evaluate("""()=>{room.buffs[0].compound=3;room.compoundRecipes=[['breach','ricochet','ricochet'],[]];stockKey='';update()}""")
+        expect(page.locator('.compound-row')).to_have_count(2)
+        page.get_by_role('button',name='复合·爆跳选满').tap()
+        page.get_by_role('button',name='增加复合·破障').tap()
+        assert page.evaluate("selection['compound:ricochet']===2&&selection['compound:breach']===1")
+        page.get_by_role('button',name='清空',exact=True).tap()
         assert page.locator('.compound-row .buff-effect').evaluate("e=>e.scrollHeight<=e.clientHeight+1")
         print('Siege single shell pan and debris-independent plan:',pan)
         # Exercise the actual requestAnimationFrame renderer, not just the planner.

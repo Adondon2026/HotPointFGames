@@ -109,6 +109,8 @@ _SIEGE_V24_LOCATION={'air':{'common':1.5,'uncommon':1.,'rare':.4,'precious':.15}
 def _siege_v24(r):return r.get('rulesVersion')==24
 def _siege_v24_setup(r,theme='classic',levels=None):
     r.update(rulesVersion=24,theme=theme if theme in ('classic','art') else 'classic',rarities={k:v for k,v in (levels or {}).items() if k in _SIEGE_V24_KEYS and k not in _SIEGE_NEGATIVE and v in _SIEGE_V24_WEIGHTS},buffMode='stock')
+    raw=r.get('allowedBuffs')
+    if raw is not None and set(_SIEGE_ACTIVE_ITEMS).issubset(raw):r['allowedBuffs']=list(_SIEGE_V24_KEYS)
     r['allowedBuffs']=list(_siege_allowed(r));r['stackCaps']=dict(_SIEGE_V24_CAPS)
 def _siege_v24_draw(r,zone='air'):
     keys=tuple(k for k in _siege_allowed(r) if (k in ('compound','demolish') if zone in ('center','side') else k not in ('compound','demolish')))
@@ -393,7 +395,7 @@ def _siege_v24_world(r):
                 if placed>=(2 if art else 1):break
     r['nextBodyId']=max(100,max((b['id'] for b in bodies),default=0)+1)
     if not count or not _siege_allowed(r):r['items']=[];return
-    if not any(k not in _SIEGE_NEGATIVE for k in _siege_allowed(r)):slots=[]
+    if not any(k in ('compound','demolish') for k in _siege_allowed(r)):slots=[]
     center=next((p for p in slots if p[2]=='center'),None)
     positions=[center] if center else []
     sides=[p for p in slots if p[2]=='side']
@@ -1296,6 +1298,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         scale=parent.get('scale',1.) if parent else 1.
         kind=parent.get('kind','split') if parent else 'main'
         if v24 and event in ('bounce','through','end') and target:
+            if target['kind'] in ('wood','stone'):salvage_at(x,y)
             if target['kind'] in _SIEGE_TNT_KINDS:_siege_tnt_arm(target,world_now(),side)
             if counts.get('push'):
                 _siege_v24_push(target,svx,svy,counts['push'],scale)
@@ -1351,15 +1354,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         else:parent['live']=False;last_hit=t
         return True
     own_landings=[];elite_used=set()
-    def landing_payloads(x,y,parent=None):
-        if not v24:return
-        # Each elite charge triggers at most once per shot, not per fragment.
-        if attack_counts.get('demolish') and 'demolish' not in elite_used:
-            elite_used.add('demolish');level=attack_counts['demolish'];reach=100+25*(level-1);behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1),reach])
-            for b in bodies:
-                if b['hp']<=0 or b.get('platform') or b['kind'] not in ('wood','stone') or b['side']==side:continue
-                dist=math.hypot(max(0.,abs(b['x']-x)-b['w']/2),max(0.,abs(b['y']-y)-b['h']/2))
-                if dist<reach:hurt(b,125*level*(1-dist/(reach+25)),side)
+    def salvage_at(x,y):
         if attack_counts.get('salvage') and 'salvage' not in elite_used:
             recovered=set()
             for b in bodies:
@@ -1369,6 +1364,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if recovered:
                 elite_used.add('salvage');behavior_events.append(['salvage',round(t,3),round(x,1),round(y,1),140])
                 for k in recovered:r['buffs'][side][k]=min(_siege_cap(r,k),r['buffs'][side][k]+1)
+    def landing_payloads(x,y,parent=None):
+        if not v24:return
+        # Each elite charge triggers at most once per shot, not per fragment.
+        if attack_counts.get('demolish') and 'demolish' not in elite_used:
+            elite_used.add('demolish');level=attack_counts['demolish'];reach=100+25*(level-1);behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1),reach])
+            for b in bodies:
+                if b['hp']<=0 or b.get('platform') or b['kind'] not in ('wood','stone') or b['side']==side:continue
+                dist=math.hypot(max(0.,abs(b['x']-x)-b['w']/2),max(0.,abs(b['y']-y)-b['h']/2))
+                if dist<reach:hurt(b,125*level*(1-dist/(reach+25)),side)
+        salvage_at(x,y)
         if 0<=x<=960:own_landings.append((x,y))
         counts=root_counts if parent is None or parent.get('kind')=='repeat' else child_counts
         for k in ('wooddrop','stonedrop'):
@@ -1813,7 +1818,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if v24 and k in _SIEGE_TNT_KEYS:used=min(n,generated_counts[k])
                 r['buffs'][side][k]+=n-used
             elif k not in triggered:r['buffs'][side][k]+=n
-    # v24 teleports use the first valid own-side terminal landing, never a separate click.
+    # v24 teleports use the first valid terminal landing anywhere on the map.
     # Legacy teleport to the actual impact column anywhere on the battlefield. The descent is
     # kinematic and collision-safe; gravity gives its timing, not impact damage.
     for kind in _SIEGE_ONE_SHOT:
@@ -1829,7 +1834,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     for x in sorted(range(lo,hi+1,5),key=lambda x:abs(x-lx)):
                         if abs(x-lx)>60:break
                         w,h=(50,96) if kind=='gunteleport' else (core['w'],core['h'])
-                        y=_siege_floor(r,x)-h/2
+                        y=min(_siege_floor(r,z) for z in (x-w/2,x,x+w/2))-h/2
                         if abs(x-old[0])<5:continue
                         if any(b['hp']>0 and (kind=='gunteleport' or b is not core) and abs(b['x']-x)<(b['w']+w)/2 and abs(b['y']-y)<(b['h']+h)/2 for b in bodies):continue
                         if any(abs(x-_siege_launcher(i,r,motion_start+t)[0])<w/2+25 for i in (0,1) if i!=side or kind=='coreteleport'):continue

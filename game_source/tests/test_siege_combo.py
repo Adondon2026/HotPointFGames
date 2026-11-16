@@ -423,6 +423,13 @@ for k in ('demolish','salvage'):
     g._siege_fire(r,90,40,{k:1},config=g._siege_public_config({}))
     assert b['hp']==0 and r['buffs'][0][k]==0,(k,b,r['event']['impact'])
     if k=='salvage':assert r['buffs'][0]['wooddrop']==1 and r['event']['cores']==[100,100]
+# Salvage removes non-generated enemy and neutral material on contact, even with penetration.
+r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0].update(salvage=1,through=1)
+for ident,owner,x,kind in ((99,1,235,'wood'),(98,-1,270,'stone')):
+    r['bodies'].append(dict(id=ident,side=owner,x=x,y=330,w=35,h=36,kind=kind,hp=42,max=42,vx=0.,vy=0.))
+g._siege_fire(r,90,40,{'salvage':1,'through':1},config=g._siege_public_config({}))
+assert all(b['hp']==0 for b in r['bodies'] if b['id'] in (98,99))
+assert r['buffs'][0]['wooddrop']==1 and r['buffs'][0]['stonedrop']==1 and r['buffs'][0]['salvage']==0
 # Mixed compound selection consumes the selected recipes, not FIFO.
 r=v24();r['buffs'][0]['compound']=3;r['compoundRecipes']=[['breach','ricochet','seek'],[]]
 g._siege_fire(r,75,40,{'compound:breach':1,'compound:seek':1},config=g._siege_public_config({}))
@@ -541,7 +548,8 @@ for theme in ('classic','art'):
     it=next(i for i in r['items'] if i['zone']=='center');r['items'].remove(it)
     r['respawns']=[{**it,'readyAt':0}];r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
     g._siege_refill(r);refill=next(i for i in r['items'] if i['slot']==it['slot'])
-    assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y'])
+    assert refill['zone']=='center' and refill['kind'] in ('compound','demolish') and (refill['x'],refill['y'])==(it['x'],it['y'])
+    assert all(i['kind'] in ('compound','demolish') for i in r['items'] if i['zone'] in ('center','side'))
 assert 'siegeRarityModal' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'skillDock' not in g.SIEGE_PAGE
 print('Siege v0.24: 32 conserved projectiles, giant radius, capped pickups, skill charges, point guidance, barrel chains, theme and persistent rarity PASS')
 
@@ -550,7 +558,7 @@ r=v24('classic',['heavy','splitshot'])
 g._siege_v24_setup(r,'classic',{'heavy':'precious','splitshot':'rare'})
 assert 'heavy' not in r['rarities']
 for zone in ('side','center'):
-    assert all(g._siege_v24_draw(r,zone)=='splitshot' for _ in range(30))
+    assert g._siege_v24_draw(r,zone) is None
 r=v24('classic',['heavy'])
 assert g._siege_v24_draw(r,'air')=='heavy' and g._siege_v24_draw(r,'center') is None
 r.update(mode='random',itemCount=13);g._siege_field(r)
