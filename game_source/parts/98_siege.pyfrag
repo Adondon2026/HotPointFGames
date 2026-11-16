@@ -241,6 +241,12 @@ def _siege_item_pos(item,t):
     return item['x']+item.get('mx',0)*math.sin(phase),item['y']+item.get('my',0)*math.cos(phase)
 
 def _siege_floor(r,x):
+    terrain=r.get('terrain')
+    if terrain:
+        x=max(0.,min(960.,x))
+        for (x0,y0),(x1,y1) in zip(terrain,terrain[1:]):
+            if x<=x1:return y0+(y1-y0)*(x-x0)/(x1-x0)
+        return terrain[-1][1]
     return _SIEGE_G-r.get('rise',0) if x<=300 or x>=660 else _SIEGE_G
 
 def _siege_buffs():return [{k:0 for k in _SIEGE_ITEMS} for _ in range(2)]
@@ -321,7 +327,7 @@ def _siege_field(r):
     pool=_SIEGE_MAP_POOLS.get(mode)
     field_key=random.choice(pool) if pool else random.choice(tuple((*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS))) if mode=='random' else mode
     field=(_SIEGE_FIELDS|_SIEGE_NEW_FIELDS).get(field_key)
-    r.pop('launchers',None);r['armed']=[{},{}];r['reflectors']=[];r['gunMotion']=[];r['nextBodyId']=100;r['mines']=[];r['nextMineId']=1
+    r.pop('terrain',None);r.pop('launchers',None);r['armed']=[{},{}];r['reflectors']=[];r['gunMotion']=[];r['nextBodyId']=100;r['mines']=[];r['nextMineId']=1
     if field:
         offset=field['offset']+random.randint(-5,5);layout=field['layout'];rise=field['rise']
         r.update(offset=offset,gunShift=field.get('gunShift',0),layout=layout,rise=rise,field=field_key,fieldLabel=field['label'],bodies=_siege_fort(offset,layout,rise),items=_siege_items(r['itemCount'],field,allowed=_siege_allowed(r)))
@@ -429,25 +435,44 @@ def _siege_zombie_refresh(r):
         if k is None:
             r['respawns'].append({**it,'readyAt':sum(r['shots'])+2})
         else:_siege_zombie_pickup(r,k,it['x'],it['y'],slot=it['slot'])
+# Side-view terrain is a continuous floor profile, not a cosmetic backdrop.
+# (label, ground points, core X, cannon Xs, two-sided spawn)
+_SIEGE_ZOMBIE_MAPS={
+    'front':('最后防线',[(0,416),(960,416)],80,(170,270),False),
+    'crossfire':('腹背受敌',[(0,416),(960,416)],480,(370,590),True),
+    'ridge':('高地与低谷',[(0,255),(225,255),(385,416),(520,416),(650,295),(755,295),(865,416),(960,416)],100,(185,480),False),
+    'basin':('盆地要塞',[(0,270),(130,270),(300,416),(660,416),(830,270),(960,270)],480,(375,585),True),
+    'crest':('双峰夹击',[(0,416),(125,416),(270,280),(365,280),(480,390),(595,280),(690,280),(835,416),(960,416)],480,(320,640),True),
+}
 def _siege_zombie_spawn(r):
     state=r['zombie'];wave=state['wave'];bodies=r['bodies']
     for j,kind in enumerate(_SIEGE_ZOMBIE_WAVES[wave-1]):
         w,h,hp,speed,damage=_SIEGE_ZOMBIE_TYPES[kind]
         hp=round(hp*_siege_zombie_difficulty(r)[0],1)
-        x=930-j*62;y=220-j%2*45 if kind=='flyer' else _SIEGE_G-h/2
+        left=r.get('zombieBothSides') and j%2==0
+        rank=j//2 if r.get('zombieBothSides') else j
+        x=30+rank*62 if left else 930-rank*62
+        y=min(220-j%2*45,_siege_floor(r,x)-h/2) if kind=='flyer' else _siege_floor(r,x)-h/2
         ident=r['nextBodyId'];r['nextBodyId']+=1
         bodies.append(dict(id=ident,side=2,kind='zombie',zombieType=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
     state['spawned']+=len(_SIEGE_ZOMBIE_WAVES[wave-1])
 def _siege_zombie_world(r):
     r.update(field='zombie',fieldLabel='丧尸围城',mode='classic',combatMode='turn',ammo=0,rise=0,offset=0,gunShift=0,wind=0,windPair=0,windLevel='off',reflectors=[],gunMotion=[],launchers=[[170,368],[270,368]],nextBodyId=100)
-    r['bodies']=[dict(id=0,side=0,kind='core',shared=True,x=80,y=390,w=50,h=52,hp=100,max=100,vx=0.,vy=0.)]
-    # Leave the firing lane open. Building is a player choice.
-    for ident,x,y,w,h,kind,hp in ((1,120,397,36,38,'wood',42),):
-        r['bodies'].append(dict(id=ident,side=0,kind=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.))
+    map_key=r.get('zombieMap','front')
+    if map_key=='random':map_key=random.choice(tuple(_SIEGE_ZOMBIE_MAPS))
+    label,terrain,cx,guns,both=_SIEGE_ZOMBIE_MAPS.get(map_key,_SIEGE_ZOMBIE_MAPS['front'])
+    r.update(field='zombie_'+map_key if map_key!='front' else 'zombie',fieldLabel=label,terrain=terrain,zombieBothSides=both)
+    r['launchers']=[[x,_siege_floor(r,x)-48] for x in guns]
+    r['bodies']=[dict(id=0,side=0,kind='core',shared=True,x=cx,y=_siege_floor(r,cx)-26,w=50,h=52,hp=100,max=100,vx=0.,vy=0.)]
+    # The ridge has a destructible neutral screen, away from the muzzle.
+    if map_key=='ridge':
+        x=650;h=72
+        r['bodies'].append(dict(id=1,side=-1,kind='stone',x=x,y=_siege_floor(r,x)-h/2,w=28,h=h,hp=75,max=75,vx=0.,vy=0.))
     r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,difficulty=r.get('zombieDifficulty','medium'))
     r['items']=[];r['respawns']=[]
     slots=[(230,205),(335,140),(430,235),(510,100),(580,190),(665,130),(755,245),(840,110)]
     for j,(x,y) in enumerate(slots[:min(len(slots),r.get('itemCount',8))]):
+        y=min(y,_siege_floor(r,x)-35)
         k=_siege_zombie_draw(r)
         if k is None:r['respawns'].append(dict(id=j,slot=j,x=x,y=y,r=15,amount=1,zone='air',readyAt=2))
         else:_siege_zombie_pickup(r,k,x,y,slot=j)
@@ -485,7 +510,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
             d=1 if core['x']>z['x'] else -1
             flying=z['zombieType']=='flyer'
             nx=z['x']+d*speed/12
-            close=abs(z['x']-core['x'])<=(z['w']+core['w'])/2+8
+            close=abs(z['x']-core['x'])<=(z['w']+core['w'])/2+8 and abs(z['y']-core['y'])<=(z['h']+core['h'])/2+8
             target=core if close else None
             if not flying and not target:
                 obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait','cannon') and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
@@ -507,7 +532,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
                 continue
             if not flying:
                 # Walk on the ground or on top of a climbed barrier.
-                support=min([_SIEGE_G]+[b['y']-b['h']/2 for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone') and abs(nx-b['x'])<(z['w']+b['w'])/2 and b['y']-b['h']/2>=z['y']+z['h']/2-2])
+                support=min([_siege_floor(r,nx)]+[b['y']-b['h']/2 for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone') and abs(nx-b['x'])<(z['w']+b['w'])/2 and b['y']-b['h']/2>=z['y']+z['h']/2-2])
                 z['y']=min(support-z['h']/2,z['y']+18)
             if not any(q is not z and q['hp']>0 and abs(nx-q['x'])<(z['w']+q['w'])/2 and abs(z['y']-q['y'])<(z['h']+q['h'])/2 for q in alive):
                 z['x']=max(z['w']/2,min(960-z['w']/2,nx))
@@ -2044,7 +2069,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     top=_siege_floor(r,x)
                     for b in bodies:
                         if (b is core and kind=='coreteleport') or b is gun or b['hp']<=0:continue
-                        if abs(b['x']-x)<(b['w']+w)/2 and b['y']-b['h']/2>=ly- max(h,80):
+                        if abs(b['x']-x)<(b['w']+w)/2:
                             top=min(top,b['y']-b['h']/2)
                     destination=(x,top-h/2-(24 if gun else 0));break
             if destination is None:
@@ -2445,6 +2470,7 @@ def _siege_public(r,key,last):
     _siege_migrate_catalog(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
     v={'rulesVersion':r.get('rulesVersion',23),'theme':r.get('theme','classic'),'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'compoundRecipes':r.get('compoundRecipes',[None,None]),'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
+    if r.get('terrain'):v['terrain']=r['terrain']
     if r.get('theme')=='zombie':v['zombie']={**r['zombie'],'solo':bool(r.get('zombieSolo')),'remaining':sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])}
     return _siege_manual_view(r,v,time.time())
 
@@ -2469,6 +2495,9 @@ def siege_request(data):
             difficulty=data.get('zombieDifficulty','medium')
             if not isinstance(difficulty,str) or difficulty not in _SIEGE_ZOMBIE_DIFFICULTIES:return {'ok':False,'error':'难度无效'}
             r['zombieDifficulty']=difficulty
+            map_key=data.get('zombieMap','front')
+            if not isinstance(map_key,str) or map_key not in (*_SIEGE_ZOMBIE_MAPS,'random'):return {'ok':False,'error':'地图无效'}
+            r['zombieMap']=map_key
             _siege_v24_setup(r,data.get('theme','classic'),data.get('rarities') if isinstance(data.get('rarities'),dict) else {});_siege_field(r)
         if trial:
             r['players'][1]['name']='不毁靶场';r['stackCaps']=dict(_SIEGE_HARD_CAPS);_siege_trial_reset(r,'standard')
