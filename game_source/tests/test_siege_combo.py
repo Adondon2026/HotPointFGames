@@ -379,8 +379,8 @@ for k in g._SIEGE_V24_KEYS:
 print('Siege v0.24 positive pickup inventory and public state PASS')
 # Elite items appear only at protected resource slots and obey the whitelist.
 r=v24('classic',list(g._SIEGE_ELITE_KEYS))
-assert g._siege_v24_draw(r,'air') is None
-assert all(g._siege_v24_draw(r,'center') in g._SIEGE_ELITE_KEYS for _ in range(20))
+assert g._siege_v24_draw(r,'air')=='salvage'
+assert all(g._siege_v24_draw(r,'center') in ('demolish','compound') for _ in range(20))
 # Compound adds one penetration and one explosion without consuming their stocks.
 r=v24();r['buffs'][0]['compound']=1;r['compoundRecipes']=['burst',None]
 g._siege_fire(r,90,40,{'compound':1},config=g._siege_public_config({}))
@@ -392,26 +392,59 @@ for recipe,effects in g._SIEGE_COMPOUND_RECIPES.items():
     r=v24();x,y=g._siege_muzzle(0,r,75)
     r['items']=[dict(id=999,kind='compound',recipe=recipe,x=x,y=y,r=20,amount=1,zone='center')]
     g._siege_fire(r,75,40,{},config=g._siege_public_config({}))
-    assert r['compoundRecipes'][0]==recipe and g._siege_public(r,'a',-1)['compoundRecipes'][0]==recipe
+    assert r['compoundRecipes'][0]==[recipe] and g._siege_public(r,'a',-1)['compoundRecipes'][0]==[recipe]
     r['turn']=0;r['until']=0
     g._siege_fire(r,75,40,{'compound':1},config=g._siege_public_config({}))
-    assert r['event']['compoundRecipe']==recipe and tuple(r['event']['compoundEffects'])==effects and r['buffs'][0]['compound']==0 and r['compoundRecipes'][0] is None
+    assert r['event']['compoundRecipe']==recipe and tuple(r['event']['compoundEffects'])==effects and r['buffs'][0]['compound']==0 and r['compoundRecipes'][0]==[]
     assert all(r['buffs'][0][k]==0 for k in effects)
+# Trial mode permits every recipe while keeping the total per-shot cap of 3.
+r=v24();g._siege_trial_reset(r,'classic')
+assert all(r['compoundRecipes'][0].count(k)==3 for k in g._SIEGE_COMPOUND_RECIPES)
+try:g._siege_selection(r,{'compound:burst':3,'compound:seek':1},0);assert False
+except ValueError:pass
+assert g._siege_selection(r,{'compound:burst':2,'compound:seek':1},0)=={'compound:burst':2,'compound:seek':1}
+g._siege_fire(r,75,40,{'compound:burst':2,'compound:seek':1},config=g._siege_public_config({}))
+assert r['event']['compoundRecipesUsed']==['burst','burst','seek'] and r['buffs'][0]['compound']==3
+# Mixed compound selection consumes only selected recipes, shares the cap of 3.
+r=v24();r['buffs'][0]['compound']=3;r['compoundRecipes']=[['burst','breach','ricochet'],[]]
+g._siege_fire(r,75,40,{'compound:burst':1,'compound:breach':1},config=g._siege_public_config({}))
+assert r['event']['compoundRecipesUsed']==['burst','breach'] and r['event']['compoundEffects'].count('through')==2
+assert r['buffs'][0]['compound']==1 and r['compoundRecipes'][0]==['ricochet']
 # Presentation timing does not depend on the final simulated debris frame.
 frames=[[0,[1,1],[],[],6,[]],[.1,None,[],[],6,[]],[6,None,[],[],6,[]]]
 timing=g._siege_replay_timing(frames,6,.1)
-assert timing==dict(shellEnd=.1,handoffAt=1.,playbackDuration=1.48),timing
+assert timing==dict(shellEnd=.1,handoffAt=1.,visualEnd=.1,playbackDuration=1.48),timing
 assert g._siege_replay_timing(frames,60,.1)==timing
+# Real TNT action cannot be skipped or compressed, quiet jitter after it can.
+frames=[[0,[1,1],[[1,200,300,42]],[],6,[]],[.1,None,[[1,200,300,42]],[],6,[]],[1.2,None,[[1,200,300,42]],[],6,[]],[1.4,None,[[1,260,300,42]],[],6,[]],[1.6,None,[[1,280,300,42]],[],6,[]],[2.,None,[[1,281,300,42]],[],6,[]],[6.,None,[[1,281.2,300,42]],[],6,[]]]
+timing=g._siege_replay_timing(frames,6,.1,events=[['bounceBlast',1.2,200,300,92]])
+assert 1.7<=timing['visualEnd']<=2.2 and timing['playbackDuration']>=timing['visualEnd'],timing
 # The real public room lock follows playbackDuration, not physics duration.
 r=v24();g._siege_fire(r,90,40,{},config=g._siege_public_config({}))
-e=r['event'];assert e['handoffAt']>=1 and e['playbackDuration']==round(e['handoffAt']+.48,3)
+e=r['event'];assert e['handoffAt']>=1 and e['playbackDuration']>=round(e['handoffAt']+.48,3)
 assert abs((r['until']-time.time())-(.38+e['playbackDuration']+.10))<.2
 r=v24();now=time.time();rt=g._siege_sync_runtime(r,now);g._siege_sync_compute(r,rt,now)
 e=rt['replay'];assert e['handoffAt']>=1 and abs((r['until']-time.time())-(.38+e['playbackDuration']+.10))<.2
 assert rt['replay']['shellEnd']<=rt['replay']['duration']
 print('Siege replay tempo: 0.1s shell, 1s viewing minimum, 1.48s display independent of debris PASS')
+# Salvage removes either team's ORIGINAL or generated material, no core damage.
+for owner in (0,1,-1):
+    r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0]['salvage']=1
+    b=dict(id=99,side=owner,x=235,y=350,w=36,h=38,kind='stone',hp=75,max=75,vx=0.,vy=0.)
+    r['bodies'].append(b);g._siege_fire(r,90,40,{'salvage':1},config=g._siege_public_config({}))
+    assert b['hp']==0 and r['buffs'][0]['salvage']==0 and r['buffs'][0]['stonedrop']==1 and r['event']['cores']==[100,100],(owner,b,r['event']['impact'])
+# Actual opponent-half material contact, not just an enemy ownership label.
+r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];g._siege_fire(r,45,70,{},config=g._siege_public_config({}))
+pt=next(f[1] for f in r['event']['frames'] if f[1] and 530<f[1][0]<620)
+r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0]['salvage']=1
+b=dict(id=99,side=1,x=pt[0],y=pt[1],w=42,h=42,kind='wood',hp=42,max=42,vx=0.,vy=0.,fixed=True)
+r['bodies'].append(b);g._siege_fire(r,45,70,{'salvage':1},config=g._siege_public_config({}))
+assert b['hp']==0 and r['buffs'][0]['wooddrop']==1 and r['buffs'][0]['salvage']==0
+# Three demolition charges widen the first impact and consume all three.
+r=v24();r['buffs'][0]['demolish']=3;g._siege_fire(r,90,40,{'demolish':3},config=g._siege_public_config({}))
+assert r['buffs'][0]['demolish']==0 and any(e[0]=='bounceBlast' and e[4]==160 for e in r['event']['behaviorEvents'])
 # Salvage with no eligible material returns the charge.
-r=v24();r['buffs'][0]['salvage']=1
+r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0]['salvage']=1
 g._siege_fire(r,90,40,{'salvage':1},config=g._siege_public_config({}))
 assert r['buffs'][0]['salvage']==1
 # Actual terminal effects: test an isolated material near the vertical shell.
@@ -449,11 +482,11 @@ assert core['hp']==68 and r['buffs'][0]['heal']==0 and r['buffs'][0]['shield']==
 r=v24();r['buffs'][0]['heal']=1
 g._siege_fire(r,75,40,{'heal':1},config=g._siege_public_config({}))
 assert r['buffs'][0]['heal']==1
-# No legal own-side terminal landing: refund the teleport, not an enemy-side teleport.
-r=v24();r['buffs'][0]['coreteleport']=1
-g._siege_fire(r,45,70,{'coreteleport':1},config=g._siege_public_config({}))
-assert not r['event']['teleports'] and r['buffs'][0]['coreteleport']==1
-# Own-side rear shot moves the selected body, respecting empty ground.
+# Teleport destination can be in the opponent half; neither core may overlap.
+for k in ('coreteleport','gunteleport'):
+    r=v24();r['buffs'][0][k]=1
+    g._siege_fire(r,45,70,{k:1},config=g._siege_public_config({}))
+    assert r['event']['teleports'] and r['event']['teleports'][0][4]>480,(k,r['event']['impact'],r['event']['teleports'])
 for k in ('coreteleport','gunteleport'):
     r=v24();r['buffs'][0][k]=1
     g._siege_fire(r,110,25,{k:1},config=g._siege_public_config({}))
@@ -529,11 +562,13 @@ for theme in ('classic','art'):
     r=v24(theme);r.update(mode='random',itemCount=13);g._siege_field(r)
     assert len(r['items'])==13 and set(i['kind'] for i in r['items'])<=set(g._siege_allowed(r))
     assert any(i['zone']=='center' for i in r['items'])
+    assert all(i['kind'] in ('demolish','compound') for i in r['items'] if i['zone'] in ('center','side'))
+    assert all(i['kind'] not in ('demolish','compound') for i in r['items'] if i['zone']=='air')
     if theme=='art':assert any(b['kind']=='barrel' for b in r['bodies']) and 'heal' not in g._siege_allowed(r)
     it=next(i for i in r['items'] if i['zone']=='center');r['items'].remove(it)
     r['respawns']=[{**it,'readyAt':0}];r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
     g._siege_refill(r);refill=next(i for i in r['items'] if i['slot']==it['slot'])
-    assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y'])
+    assert refill['zone']=='center' and (refill['x'],refill['y'])==(it['x'],it['y']) and refill['kind'] in ('demolish','compound')
 assert 'siegeRarityModal' in g.HTML_PAGE and 'v24StockSummary' in g.SIEGE_PAGE and 'skillDock' not in g.SIEGE_PAGE
 print('Siege v0.24: 32 conserved projectiles, giant radius, capped pickups, skill charges, point guidance, barrel chains, theme and persistent rarity PASS')
 
@@ -542,7 +577,7 @@ r=v24('classic',['heavy','splitshot'])
 g._siege_v24_setup(r,'classic',{'heavy':'precious','splitshot':'rare'})
 assert 'heavy' not in r['rarities']
 for zone in ('side','center'):
-    assert all(g._siege_v24_draw(r,zone)=='splitshot' for _ in range(30))
+    assert all(g._siege_v24_draw(r,zone) is None for _ in range(30))
 r=v24('classic',['heavy'])
 assert g._siege_v24_draw(r,'air')=='heavy' and g._siege_v24_draw(r,'center') is None
 r.update(mode='random',itemCount=13);g._siege_field(r)
