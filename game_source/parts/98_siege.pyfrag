@@ -371,7 +371,7 @@ _SIEGE_ZOMBIE_WAVES=(
     ('walker','walker','walker'),
     ('walker','runner','shield','pole'),
     ('heavy','bomber','priest','flyer'),
-    ('guard','heavy','dancer','flyer','runner'),
+    ('guard','heavy','dancer','flyer','runner','climber'),
     ('giant','engineer','guard','priest','bomber'),
     ('giant','engineer','guard','pole','dancer','runner'),
 )
@@ -413,6 +413,13 @@ def _siege_zombie_draw(r,enemy=None):
         keys=[k for k in keys if _SIEGE_ZOMBIE_RARITIES.index(levels[k])==top]
     # Prefer variety among eligible rewards, without violating selected rarity ceilings.
     history=r.setdefault('zombieRewardHistory',[])
+    if enemy is None:
+        # Rotate the general supply through eligible categories; reserve occasional
+        # draws for newly unlocked rarity tiers instead of flooding it with commons.
+        upper=[k for k in keys if _SIEGE_ZOMBIE_RARITIES.index(levels[k])==ceiling]
+        if upper and ceiling>0 and not any(k in upper for k in history[-4:]):keys=upper
+        fresh=[k for k in keys if k not in history[-min(6,max(0,len(keys)-1)):]] if len(keys)>1 else keys
+        if fresh:keys=fresh
     weights=[_SIEGE_V24_WEIGHTS[levels[k]]/(1+3*history[-8:].count(k)) for k in keys]
     k=random.choices(keys,weights=weights,k=1)[0];history.append(k);del history[:-16]
     return k
@@ -522,13 +529,15 @@ def _siege_zombie_round(r,t,frames,snap,events):
                 if ally is not z and math.hypot(ally['x']-z['x'],ally['y']-z['y'])<=125:
                     ally['hp']=min(ally['max'],ally['hp']+14)
         if z['zombieType']=='dancer' and not z.get('summoned'):
-            z['summoned']=True
             d=1 if core['x']>z['x'] else -1
-            x=max(16,min(944,z['x']-d*42));w,h,hp,_,_=_SIEGE_ZOMBIE_TYPES['walker']
-            if not any(b['hp']>0 and abs(b['x']-x)<(b['w']+w)/2 and abs(b['y']-(_siege_floor(r,x)-h/2))<(b['h']+h)/2 for b in bodies):
+            w,h,hp,_,_=_SIEGE_ZOMBIE_TYPES['walker']
+            for offset in (48,88,126,-48,-88):
+                x=max(16,min(944,z['x']-d*offset))
+                if any(b['hp']>0 and abs(b['x']-x)<(b['w']+w)/2 and abs(b['y']-(_siege_floor(r,x)-h/2))<(b['h']+h)/2 for b in bodies):continue
+                z['summoned']=True
                 ident=r['nextBodyId'];r['nextBodyId']+=1;hp=round(hp*_siege_zombie_difficulty(r)[0],1)
                 bodies.append(dict(id=ident,side=2,kind='zombie',zombieType='walker',x=x,y=_siege_floor(r,x)-h/2,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
-                state['spawned']+=1
+                state['spawned']+=1;break
     for step in range(1,13):
         t=start+step/12
         alive=sorted((b for b in bodies if b['kind']=='zombie' and b['hp']>0),key=lambda b:abs(b['x']-core['x']))
@@ -566,7 +575,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
                     xx=max(target['w']/2,min(960-target['w']/2,target['x']+d*speed/12*(.55 if target['kind']=='stone' else 1)))
                     if not any(b is not target and b is not z and b['hp']>0 and abs(xx-b['x'])<(target['w']+b['w'])/2 and abs(target['y']-b['y'])<(target['h']+b['h'])/2 for b in bodies):
                         target['x']=xx;target['y']=min(target['y'],_siege_floor(r,xx)-target['h']/2);z['x']=nx
-                    else:z['x']=max(z['w']/2,min(960-z['w']/2,nx)) # pass a blocked cannon, never stall the wave
+                    elif target['kind']=='cannon':z['x']=max(z['w']/2,min(960-z['w']/2,nx)) # pass a blocked cannon, never stall the wave
                 continue
             if not flying:
                 # Walk on the ground or on top of a climbed barrier.
