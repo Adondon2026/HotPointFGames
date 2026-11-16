@@ -568,11 +568,12 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
             # Ground enemies that cannot reach an elevated core attack accessible
             # load-bearing blocks. Moving towards a support also handles offset stacks.
             support_target=None
-            if not flying and not target and core['y']+core['h']/2<z['y']-z['h']/2+12:
+            if not flying and core['y']+core['h']/2<z['y']-z['h']/2+12:
                 supports=_siege_zombie_supports(r,core)
                 reachable=[b for b in supports if abs(z['y']-b['y'])<=(z['h']+b['h'])/2+12 and b['kind']!='cannon']
                 if reachable:
                     support_target=min(reachable,key=lambda b:abs(b['x']-z['x']))
+                    target=None  # a core above the head is not a ground-level melee target
                     d=1 if support_target['x']>z['x'] else -1
                     nx=z['x']+d*speed/12
                     if abs(z['x']-support_target['x'])<=(z['w']+support_target['w'])/2+8:target=support_target
