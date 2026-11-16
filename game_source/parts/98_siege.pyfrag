@@ -49,14 +49,15 @@ _SIEGE_REPLAY_HANDOFF=.48
 def _siege_replay_timing(frames,duration,hit_at=None,sync=False,bodies=(),events=()):
     if not frames:return dict(shellEnd=0.,handoffAt=1.,visualEnd=0.,playbackDuration=1.48)
     # Never accelerate simulation time. Trim only a visually quiet tail.
-    last=0.;action=0.;prev=None;meta={b['id']:b for b in bodies}
+    last=0.;action=0.;effect_end=0.;prev=None;meta={b['id']:b for b in bodies}
     for i,f in enumerate(frames):
         visible=any(s.get('p') or s.get('fragments') for s in f[2]) if sync else bool((f[1] and (hit_at is None or f[0]<hit_at)) or f[3])
         if visible:last=frames[min(i+1,len(frames)-1)][0]
         if sync:
             for s in f[2]:
                 for e in s.get('behaviorEvents',()):
-                    if e[0] in ('bounceBlast','salvage','teleport'):action=max(action,f[0]-s.get('age',f[0])+e[1]+.5)
+                    if e[0] in ('bounceBlast','salvage','teleport','pushHit','blackholeHit'):action=max(action,f[0]-s.get('age',f[0])+e[1]+.5)
+                    if e[0] in ('blackholeStart','pushHit'):effect_end=max(effect_end,f[0]-s.get('age',f[0])+e[1]+(2. if e[0]=='blackholeStart' else 1.3))
         positions=f[1] if sync else f[2]
         if prev is None:prev=(f[0],{b[0]:b for b in positions})
         if f[0]-prev[0]>=.19:
@@ -70,8 +71,9 @@ def _siege_replay_timing(frames,duration,hit_at=None,sync=False,bodies=(),events
     for e in events:
         if e[0] in ('bounceBlast','salvage','teleport','pushHit','blackholeHit'):action=max(action,e[1]+.5)
         elif e[0]=='blackholeStart':action=max(action,e[1]+2.)
+        if e[0] in ('blackholeStart','pushHit'):effect_end=max(effect_end,e[1]+(2. if e[0]=='blackholeStart' else 1.3))
     end=min(duration,max(last,hit_at or 0.))
-    hold=max(1.,end+.18)
+    hold=max(1.,end+.18,min(duration,effect_end))
     # Only cut a tail if the final state differs by at most a tiny drift. This
     # prevents accumulating slow movement from becoming a visible snap.
     final={b[0]:b for b in (frames[-1][1] if sync else frames[-1][2])}
