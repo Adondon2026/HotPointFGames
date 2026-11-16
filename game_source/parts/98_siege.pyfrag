@@ -146,7 +146,7 @@ _SIEGE_MAX_ITEMS=25
 def _siege_allowed(r):
     """Room-authoritative whitelist. None means all (including legacy saved rooms)."""
     allowed=r.get('allowedBuffs')
-    if _siege_v24(r):return tuple(k for k in _SIEGE_V24_KEYS if (k not in _SIEGE_NEGATIVE if r.get('theme')=='zombie' else k in _SIEGE_V24_ART if r.get('theme')=='art' else allowed is None or k in allowed))
+    if _siege_v24(r):return tuple(k for k in _SIEGE_V24_KEYS if (k not in _SIEGE_NEGATIVE and (allowed is None or k in allowed) if r.get('theme')=='zombie' else k in _SIEGE_V24_ART if r.get('theme')=='art' else allowed is None or k in allowed))
     if allowed is None:return _SIEGE_ACTIVE_ITEMS
     return tuple(k for k in _SIEGE_ACTIVE_ITEMS if k in allowed or any(old in allowed and replacement==k for old,replacement in _SIEGE_REPLACEMENT.items()))
 
@@ -220,8 +220,10 @@ def _siege_refill(r):
         if turn<item['readyAt']:continue
         waiting.remove(item);it={k:v for k,v in item.items() if k not in ('readyAt','kind','id')}
         if _siege_v24(r):
-            k=_siege_v24_draw(r,it.get('zone','air'))
-            if k is None:continue
+            k=_siege_zombie_draw(r) if r.get('theme')=='zombie' else _siege_v24_draw(r,it.get('zone','air'))
+            if k is None:
+                if r.get('theme')=='zombie':item['readyAt']=turn+2;waiting.append(item)
+                continue
             it.pop('recipe',None)
             it.update(kind=k,amount=_siege_v24_amount(r,k),id=r.get('nextItemId',1000));
             if k=='compound':it['recipe']=_siege_compound_recipe()
@@ -374,10 +376,51 @@ _SIEGE_ZOMBIE_TYPES={
     'climber':(30,40,52,116,10),
     'giant':(58,78,190,52,24),
 }
+# Progression is shared by field pickups, resupply, and enemy drops.
+_SIEGE_ZOMBIE_DIFFICULTIES={
+    'easy':(.8,.85,.8,1),
+    'medium':(1.,1.,1.,1),
+    'hard':(1.25,1.15,1.25,2),
+    'hell':(1.55,1.3,1.5,2),
+}
+_SIEGE_ZOMBIE_RARITIES=('common','uncommon','rare','precious')
+_SIEGE_ZOMBIE_DROP_LEVEL={'walker':0,'climber':0,'flyer':1,'shield':1,'heavy':2,'giant':3}
+def _siege_zombie_difficulty(r):
+    return _SIEGE_ZOMBIE_DIFFICULTIES.get(r.get('zombieDifficulty','medium'),_SIEGE_ZOMBIE_DIFFICULTIES['medium'])
+def _siege_zombie_draw(r,enemy=None):
+    wave=r.get('zombie',{}).get('wave',1)
+    ceiling=0 if wave==1 else 1 if wave<=2 else 2 if wave<=4 else 3
+    if enemy is not None:ceiling=min(ceiling,_SIEGE_ZOMBIE_DROP_LEVEL.get(enemy,0))
+    levels={**_SIEGE_V24_LEVELS,**r.get('rarities',{})}
+    keys=[k for k in _siege_allowed(r) if _SIEGE_ZOMBIE_RARITIES.index(levels[k])<=ceiling]
+    if not keys:return None
+    if enemy is not None:
+        top=max(_SIEGE_ZOMBIE_RARITIES.index(levels[k]) for k in keys)
+        keys=[k for k in keys if _SIEGE_ZOMBIE_RARITIES.index(levels[k])==top]
+    return random.choices(keys,weights=[_SIEGE_V24_WEIGHTS[levels[k]] for k in keys],k=1)[0]
+def _siege_zombie_pickup(r,k,x,y,slot=None,enemy=False):
+    if k is None:return
+    ident=r.setdefault('nextItemId',1000);r['nextItemId']=ident+1
+    amount=min(_siege_cap(r,k),_siege_zombie_difficulty(r)[3] if enemy else 1)
+    item=dict(id=ident,kind=k,x=max(15,min(945,x)),y=max(30,min(396,y)),r=15,amount=amount,zone='air')
+    if slot is not None:item['slot']=slot
+    if k=='compound':item['recipe']=_siege_compound_recipe()
+    r['items'].append(item)
+    return item
+def _siege_zombie_drops(r):
+    for b in r['bodies']:
+        if b['kind']=='zombie' and b['hp']<=0 and not b.get('rewarded'):
+            b['rewarded']=True
+            _siege_zombie_pickup(r,_siege_zombie_draw(r,b['zombieType']),b['x'],b['y']-b['h']/2,enemy=True)
+def _siege_zombie_supply(r):
+    for inv in r['buffs']:
+        k=_siege_zombie_draw(r)
+        if k is not None and k!='compound':inv[k]=min(_siege_cap(r,k),inv[k]+1)
 def _siege_zombie_spawn(r):
     state=r['zombie'];wave=state['wave'];bodies=r['bodies']
     for j,kind in enumerate(_SIEGE_ZOMBIE_WAVES[wave-1]):
         w,h,hp,speed,damage=_SIEGE_ZOMBIE_TYPES[kind]
+        hp=round(hp*_siege_zombie_difficulty(r)[0],1)
         x=930-j*62;y=220-j%2*45 if kind=='flyer' else _SIEGE_G-h/2
         ident=r['nextBodyId'];r['nextBodyId']+=1
         bodies.append(dict(id=ident,side=2,kind='zombie',zombieType=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
@@ -387,13 +430,16 @@ def _siege_zombie_world(r):
     r['bodies']=[dict(id=0,side=0,kind='core',shared=True,x=80,y=390,w=50,h=52,hp=100,max=100,vx=0.,vy=0.)]
     for ident,x,y,w,h,kind,hp in ((1,360,394,32,44,'stone',75),(2,360,350,32,44,'stone',75),(3,400,397,36,38,'wood',42),(4,400,359,36,38,'wood',42)):
         r['bodies'].append(dict(id=ident,side=0,kind=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.))
-    r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False)
+    r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,difficulty=r.get('zombieDifficulty','medium'))
     r['items']=[];r['respawns']=[]
     slots=[(230,205),(335,140),(430,235),(510,100),(580,190),(665,130),(755,245),(840,110)]
-    kinds=('big','splitshot','bounce','bounceblast','repeat','pierce','tntdrop','heal')
     for j,(x,y) in enumerate(slots[:min(len(slots),r.get('itemCount',8))]):
-        r['items'].append(dict(id=j,slot=j,kind=kinds[j],x=x,y=y,r=15,amount=1,zone='air'))
-    for inv in r['buffs']:inv.update(big=1,bounceblast=1,wooddrop=1)
+        k=_siege_zombie_draw(r)
+        if k is None:r['respawns'].append(dict(id=j,slot=j,x=x,y=y,r=15,amount=1,zone='air',readyAt=2))
+        else:_siege_zombie_pickup(r,k,x,y,slot=j)
+    for inv in r['buffs']:
+        for k in ('big','wooddrop'):
+            if k in _siege_allowed(r) and r.get('rarities',{}).get(k,_SIEGE_V24_LEVELS[k])=='common':inv[k]=1
     _siege_zombie_spawn(r)
 
 def _siege_zombie_round(r,t,frames,snap,events):
@@ -409,8 +455,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
         if state['wave']==state['totalWaves']:
             state['won']=True;return t+.5
         state['wave']+=1;_siege_zombie_spawn(r)
-        for inv in r['buffs']:
-            for k in ('splitshot','heal','tntdrop'):inv[k]=min(_siege_cap(r,k),inv[k]+1)
+        _siege_zombie_supply(r)
         events.append(['zombieWave',round(t,3),state['wave']])
         frames.append(snap(t,None))
         return t+.5
@@ -422,6 +467,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
         alive=sorted((b for b in bodies if b['kind']=='zombie' and b['hp']>0),key=lambda b:abs(b['x']-core['x']))
         for z in alive:
             _,_,_,speed,damage=_SIEGE_ZOMBIE_TYPES[z['zombieType']]
+            _,speed_scale,damage_scale,_=_siege_zombie_difficulty(r);speed*=speed_scale;damage*=damage_scale
             d=1 if core['x']>z['x'] else -1
             flying=z['zombieType']=='flyer'
             nx=z['x']+d*speed/12
@@ -448,9 +494,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
                 z['x']=max(z['w']/2,min(960-z['w']/2,nx))
         frames.append(snap(t,None))
     r['armed']=[{},{}]
-    for inv in r['buffs']:
-        k=('big','bounceblast','pierce','wooddrop','stonedrop','bounce','through','tntdrop')[(state['round']-2)%8]
-        inv[k]=min(_siege_cap(r,k),inv[k]+1)
+    _siege_zombie_supply(r)
     return t
 
 def _siege_v24_world(r):
@@ -2024,6 +2068,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     if r.get('theme')=='zombie' and live is None:
         for b in bodies:
             if b['kind']=='zombie':b['fixed']=True;b['vx']=b['vy']=0.
+        _siege_zombie_drops(r)
         r['zombie']['kills']=r['zombie']['spawned']-sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)
         if side==1 and _siege_core(bodies,0)>0:
             # Preserve meaningful action at normal speed; discard only quiet tail.
@@ -2383,6 +2428,9 @@ def siege_request(data):
         r=_siege_new(name,key,trial or data.get('bot') is True,allowed_buffs=None if trial else allowed);r['code']=code
         if data.get('rulesVersion')==24:
             r['allowedBuffs']=list(_SIEGE_V24_KEYS) if trial or allowed is None else allowed
+            difficulty=data.get('zombieDifficulty','medium')
+            if difficulty not in _SIEGE_ZOMBIE_DIFFICULTIES:return {'ok':False,'error':'难度无效'}
+            r['zombieDifficulty']=difficulty
             _siege_v24_setup(r,data.get('theme','classic'),data.get('rarities') if isinstance(data.get('rarities'),dict) else {});_siege_field(r)
         if trial:
             r['players'][1]['name']='不毁靶场';r['stackCaps']=dict(_SIEGE_HARD_CAPS);_siege_trial_reset(r,'standard')
