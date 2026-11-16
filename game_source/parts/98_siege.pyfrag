@@ -413,9 +413,21 @@ def _siege_zombie_drops(r):
             b['rewarded']=True
             _siege_zombie_pickup(r,_siege_zombie_draw(r,b['zombieType']),b['x'],b['y']-b['h']/2,enemy=True)
 def _siege_zombie_supply(r):
-    for inv in r['buffs']:
+    for side,inv in enumerate(r['buffs']):
         k=_siege_zombie_draw(r)
-        if k is not None and k!='compound':inv[k]=min(_siege_cap(r,k),inv[k]+1)
+        if k is not None and inv[k]<_siege_cap(r,k):
+            inv[k]+=1
+            if k=='compound':r['compoundRecipes'][side].append(_siege_compound_recipe())
+def _siege_zombie_refresh(r):
+    # Keep dropped loot; refresh only the original renewable slots.
+    slots=[it for it in r['items'] if 'slot' in it]+list(r['respawns'])
+    r['items'][:]=[it for it in r['items'] if 'slot' not in it]
+    r['respawns']=[]
+    for it in slots:
+        k=_siege_zombie_draw(r)
+        if k is None:
+            r['respawns'].append({**it,'readyAt':sum(r['shots'])+2})
+        else:_siege_zombie_pickup(r,k,it['x'],it['y'],slot=it['slot'])
 def _siege_zombie_spawn(r):
     state=r['zombie'];wave=state['wave'];bodies=r['bodies']
     for j,kind in enumerate(_SIEGE_ZOMBIE_WAVES[wave-1]):
@@ -455,7 +467,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
         if state['wave']==state['totalWaves']:
             state['won']=True;return t+.5
         state['wave']+=1;_siege_zombie_spawn(r)
-        _siege_zombie_supply(r)
+        _siege_zombie_refresh(r);_siege_zombie_supply(r)
         events.append(['zombieWave',round(t,3),state['wave']])
         frames.append(snap(t,None))
         return t+.5
@@ -2429,7 +2441,7 @@ def siege_request(data):
         if data.get('rulesVersion')==24:
             r['allowedBuffs']=list(_SIEGE_V24_KEYS) if trial or allowed is None else allowed
             difficulty=data.get('zombieDifficulty','medium')
-            if difficulty not in _SIEGE_ZOMBIE_DIFFICULTIES:return {'ok':False,'error':'难度无效'}
+            if not isinstance(difficulty,str) or difficulty not in _SIEGE_ZOMBIE_DIFFICULTIES:return {'ok':False,'error':'难度无效'}
             r['zombieDifficulty']=difficulty
             _siege_v24_setup(r,data.get('theme','classic'),data.get('rarities') if isinstance(data.get('rarities'),dict) else {});_siege_field(r)
         if trial:
