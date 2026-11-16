@@ -443,7 +443,7 @@ function v24StockSummary(){
 }
 function v24EffectHint(k,n){
  const fmt=v=>Number(v.toFixed(2));
- return ({splitshot:2**n+' 枚 · 单枚 '+(100/2**n).toFixed(1).replace(/\.0$/,'')+'% 攻击',repeat:(1+n)+' 发完整母弹',bounce:n+' 次反弹 · 撞击建筑/核心造成伤害',through:n+' 次穿透',homing:'过中线后强力追踪敌方核心',demolish:'首次落点 · 范围 '+(100+30*(n-1))+' · 结构伤害 '+125*n,salvage:'命中或落点回收双方木石 · 范围110',compound:compoundHint(compoundInventory()[0]),big:'半径 '+(6+4*n)+' · 伤害 +'+18*n+'% · 爆炸范围 '+(52+10*n),bounceblast:'碰撞产生向外冲击',blackhole:'碰撞产生向内吸引',pierce:'对坚硬建筑额外伤害',push:'沿入射方向持续推力',wooddrop:'最终落点生成木块',stonedrop:'最终落点生成石块',tntdrop:'停稳1秒后爆炸',tntwait:'留场 · 命中或爆炸引爆',shield:'核心承伤 '+fmt(100*.35**n)+'% · 下次受击',armor:'建筑承伤 '+fmt(100*.65**n)+'% · 下次受击',heal:'开炮时恢复18点核心生命',coreteleport:'全地图落点附近瞬移核心',gunteleport:'全地图落点附近瞬移炮台 · 无位置退回',heavy:'降低飞行能力',vanish:'炮弹可能提前消失',wobble:'弹道不稳定',fart:'炮弹产生异常推进'})[k]||'';
+ return ({splitshot:2**n+' 枚 · 单枚 '+(100/2**n).toFixed(1).replace(/\.0$/,'')+'% 攻击',repeat:(1+n)+' 发完整母弹',bounce:n+' 次反弹 · 撞击建筑/核心造成伤害',through:n+' 次穿透',homing:room?.zombie?'发射0.2秒后追踪最近存活僵尸':'过中线后强力追踪敌方核心',demolish:'首次落点 · 范围 '+(100+30*(n-1))+' · 结构伤害 '+125*n,salvage:'命中或落点回收双方木石 · 范围110',compound:compoundHint(compoundInventory()[0]),big:'半径 '+(6+4*n)+' · 伤害 +'+18*n+'% · 爆炸范围 '+(52+10*n),bounceblast:'碰撞产生向外冲击',blackhole:'碰撞生成2秒引力场 · 吸引实体 · 持续伤害僵尸',pierce:'对坚硬建筑额外伤害',push:'命中实体强力击飞 · 叠加增强',wooddrop:'最终落点生成木块',stonedrop:'最终落点生成石块',tntdrop:'停稳1秒后爆炸',tntwait:'留场 · 命中或爆炸引爆',shield:'核心承伤 '+fmt(100*.35**n)+'% · 下次受击',armor:'建筑承伤 '+fmt(100*.65**n)+'% · 下次受击',heal:'开炮时恢复18点核心生命',coreteleport:'全地图落点附近瞬移核心',gunteleport:'全地图落点附近瞬移炮台 · 无位置退回',heavy:'降低飞行能力',vanish:'炮弹可能提前消失',wobble:'弹道不稳定',fart:'炮弹产生异常推进'})[k]||'';
 }
 function updateV24Stock(){
  const active=canAim(),inv={...(room.buffs[room.seat]||{})};const recipes=compoundInventory();for(const recipe of recipes){const k='compound:'+recipe;inv[k]=(inv[k]||0)+1}const keys=siegeV24Keys.flatMap(k=>k==='compound'?[...new Set(recipes)].map(r=>'compound:'+r):[k]).filter(k=>inv[k]>0&&(room.trial||!siegeV24Negatives.includes(k)));const base=k=>k.startsWith('compound:')?'compound':k,groupOf=k=>siegeV24Group(base(k));
@@ -529,6 +529,8 @@ function drawBlastPulse(x,y,age,radius,heavy=true){
  ctx.restore()
 }
 function drawPayloadBlasts(events,t){
+ for(const e of (events||[]).filter(e=>e[0]==='blackholeHit'&&t>=e[1]&&t-e[1]<.23).slice(-36)){const q=(t-e[1])/.23;ctx.save();ctx.globalAlpha=1-q;ctx.strokeStyle='#d6bcff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e[2],e[3],18-9*q,0,7);ctx.stroke();for(let i=0;i<4;i++){const a=i*Math.PI/2+q*2;rect(e[2]+Math.cos(a)*(16-8*q),e[3]+Math.sin(a)*(16-8*q),3,3,'#e8c7ff')}ctx.restore()}
+ for(const e of (events||[]).filter(e=>e[0]==='pushHit'&&t>=e[1]&&t-e[1]<.3).slice(-24)){const q=(t-e[1])/.3;ctx.save();ctx.globalAlpha=1-q;ctx.strokeStyle='#bce8fa';ctx.lineWidth=3;ctx.beginPath();ctx.arc(e[2],e[3],5+30*q,0,7);ctx.stroke();ctx.restore()}
  for(const e of (events||[]).filter(e=>e[0]==='bounceHit'&&t>=e[1]&&t-e[1]<.35).slice(-24)){const q=(t-e[1])/.35;ctx.save();ctx.strokeStyle='#f5d797';ctx.globalAlpha=1-q;ctx.lineWidth=3;ctx.beginPath();ctx.arc(e[2],e[3],5+22*q,0,7);ctx.stroke();ctx.restore()}
  for(const e of (events||[]).filter(e=>e[0]==='salvage'&&t>=e[1]&&t-e[1]<.55)){const q=(t-e[1])/.55;ctx.save();ctx.strokeStyle='#78d9be';ctx.globalAlpha=1-q;ctx.lineWidth=3;ctx.beginPath();ctx.arc(e[2],e[3],e[4]*(1-.75*q),0,7);ctx.stroke();ctx.restore()}
  for(const e of (events||[]).filter(e=>e[0]==='bounceBlast'&&t>=e[1]&&t-e[1]<.58).slice(-24))drawBlastPulse(e[2],e[3],t-e[1],e[4]||28);
