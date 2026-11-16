@@ -798,3 +798,33 @@ assert captured and 0<=captured[0][0]<360
 plan=captured[0][2]
 assert not (any(plan.get(k) for k in ('wooddrop','stonedrop')) and any(plan.get(k) for k in ('pierce','through','big','splitshot','repeat')))
 print('Core penetration, varied zombie roster/rewards and bot payload separation PASS')
+
+# All rigid body types can receive immediate upward and directional knockback.
+for kind in ('wood','stone','core','cannon','zombie','tnt','tnt_wait'):
+    b=dict(id=901,kind=kind,x=400,y=350,w=36,h=44,hp=100,max=100,vx=0.,vy=0.,fixed=True)
+    g._siege_v24_push(b,400,80,1)
+    assert b['vx']>150 and b['vy']<0 and not b.get('fixed') and b['pushTime']>0,(kind,b)
+# Coop guidance is time-gated, not tied to a world X coordinate.
+r=v24('zombie');g._siege_field(r);core=g._siege_core_body(r['bodies'],0)
+z=dict(id=999,kind='zombie',zombieType='walker',x=90,y=250,w=32,h=42,hp=100,max=100,vx=0.,vy=0.,side=2)
+bs=[core,z]
+assert g._siege_v24_guidance(100.,-200.,170.,250.,1/60,0,bs,.19)==(100.,-200.)
+vx,vy=g._siege_v24_guidance(100.,-200.,170.,250.,1/60,0,bs,.2)
+assert vx!=100. and vy!=-200.
+assert g._siege_v24_guidance(100.,-200.,170.,250.,1/60,0,[core],.5)==(100.,-200.)
+# A real blackhole shot releases a previously fixed zombie and damages it over time.
+r=v24('zombie');g._siege_field(r);core=g._siege_core_body(r['bodies'],0);gun=g._siege_cannon(r,0)
+z=dict(id=999,kind='zombie',zombieType='walker',x=gun['x'],y=240,w=32,h=42,hp=1000,max=1000,vx=0.,vy=0.,side=2,fixed=True)
+r['bodies']=[core,gun,z];r['buffs'][0]['blackhole']=1
+g._siege_fire(r,90,55,{'blackhole':1},config=g._siege_public_config({}))
+e=r['event'];assert len([v for v in e['behaviorEvents'] if v[0]=='blackholeHit'])>=2
+assert e['visualEnd']>=e['holes'][0][2]+1.9 and z['hp']<940,(z,e['visualEnd'],e['holes'])
+# A high core cannot be protected indefinitely by a fragile load-bearing block.
+r=v24('zombie');g._siege_field(r);core=g._siege_core_body(r['bodies'],0);core.update(x=480,y=346.)
+wood=dict(id=997,kind='wood',side=0,x=480,y=394,w=36,h=44,hp=1,max=42,vx=0.,vy=0.)
+z=dict(id=998,kind='zombie',zombieType='walker',side=2,x=420,y=395,w=32,h=42,hp=100,max=100,vx=0.,vy=0.,fixed=True)
+r['bodies']=[core,wood,z];r['zombie']['spawned']=1;r['turn']=1
+assert wood in g._siege_zombie_supports(r,core)
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+assert wood['hp']==0 and core['y']>356,(wood,core,r['event']['behaviorEvents'])
+print('Entity knockback, time-gated zombie guidance, blackhole DOT and elevated support collapse PASS')
