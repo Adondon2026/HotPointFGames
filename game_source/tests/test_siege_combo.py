@@ -726,3 +726,25 @@ core['hp']=10;r['turn']=1
 g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
 assert r['phase']=='over' and not r['zombie']['won'] and g._siege_core(r['bodies'],1)==0
 print('Siege zombie coop: shared core, same direction, alternating turns, enemy action, six waves, defeat and rematch PASS')
+
+# Cooperative loot respects the room whitelist, wave gate and enemy strength.
+r=v24('zombie');r['allowedBuffs']=['big','repeat','homing'];g._siege_field(r)
+assert set(g._siege_allowed(r))=={'big','repeat','homing'}
+assert all(i['kind']=='big' for i in r['items'])
+assert all(not n or k=='big' for inv in r['buffs'] for k,n in inv.items())
+assert g._siege_zombie_draw(r,'giant')=='big'
+r['zombie']['wave']=3
+assert g._siege_zombie_draw(r,'heavy')=='repeat'
+r['zombie']['wave']=5
+assert g._siege_zombie_draw(r,'giant')=='homing'
+z=next(b for b in r['bodies'] if b['kind']=='zombie');z['hp']=0
+n=len(r['items']);g._siege_zombie_drops(r);g._siege_zombie_drops(r)
+assert len(r['items'])==n+1 and r['items'][-1]['kind']=='big' and 'slot' not in r['items'][-1]
+r['allowedBuffs']=[];assert g._siege_zombie_draw(r) is None
+# Difficulty scales real spawned enemies, and higher difficulties give larger drops.
+r=v24('zombie');r['zombieDifficulty']='hell';g._siege_field(r)
+z=next(b for b in r['bodies'] if b['kind']=='zombie')
+assert z['hp']==round(44*1.55,1) and r['zombie']['difficulty']=='hell'
+z['hp']=0;g._siege_zombie_drops(r)
+assert r['items'][-1]['amount']==2
+print('Siege coop progression: whitelist, rarity gates, single enemy drops and difficulty PASS')
