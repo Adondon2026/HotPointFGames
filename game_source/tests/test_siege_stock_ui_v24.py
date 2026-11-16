@@ -110,6 +110,12 @@ try:
         page.get_by_role('button',name='增加复合·攻坚').tap()
         assert page.evaluate('selection')=={'compound:ricochet':2,'compound:siegebreak':1}
         page.get_by_role('button',name='清空',exact=True).tap()
+        page.evaluate("""()=>{room.trial=true;room.compoundRecipes=[Object.keys(compoundLabels).flatMap(k=>[k,k,k]),[]];stockKey='';update()}""")
+        expect(page.locator('.compound-row')).to_have_count(5)
+        page.get_by_role('button',name='复合·爆跳选满').tap()
+        expect(page.get_by_role('button',name='增加复合·追甲')).to_be_disabled()
+        page.get_by_role('button',name='清空',exact=True).tap()
+        page.evaluate("""()=>{room.trial=false;room.compoundRecipes=[['siegebreak','ricochet','ricochet'],[]];stockKey='';update()}""")
         print('Siege single shell pan and debris-independent plan:',pan)
         # Exercise the actual requestAnimationFrame renderer, not just the planner.
         # During preroll no projectile is visible; once playback starts every

@@ -47,6 +47,7 @@ def _siege_compound_recipe(value=None):
 _SIEGE_REPLAY_PREROLL=.38
 _SIEGE_REPLAY_HANDOFF=.48
 def _siege_replay_timing(frames,duration,hit_at=None,sync=False,bodies=(),events=()):
+    if not frames:return dict(shellEnd=0.,handoffAt=1.,visualEnd=0.,playbackDuration=1.48)
     # Never accelerate simulation time. Trim only a visually quiet tail.
     last=0.;action=0.;prev=None;meta={b['id']:b for b in bodies}
     for i,f in enumerate(frames):
@@ -260,7 +261,7 @@ def _siege_normalize_buffs(r):
         for i,b in enumerate(r['buffs']):
             raw=recipes[i];raw=[raw] if isinstance(raw,str) else raw if isinstance(raw,list) else []
             raw=[k for k in raw if k in _SIEGE_COMPOUND_RECIPES];n=b.get('compound',0)
-            recipes[i]=(raw+['burst']*n)[:n]
+            recipes[i]=[k for k in _SIEGE_COMPOUND_RECIPES for _ in range(3)] if r.get('trial') and i==0 else (raw+['burst']*n)[:n]
     for it in (*r.get('items',[]),*r.get('respawns',[])):
         if it.get('kind')=='vision':it['kind']='power'
         if it.get('kind') in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE):it['amount']=1
@@ -769,7 +770,7 @@ def _siege_trial_stock(r):
     # Trial inventory is refilled after each shot; ordinary rooms never enter here.
     r['buffs'][0]={k:_SIEGE_V24_CAPS.get(k,0) if _siege_v24(r) else max(1,_SIEGE_HARD_CAPS[k]) if k in _SIEGE_ACTIVE_ITEMS else 0 for k in _SIEGE_ITEMS}
     r['buffs'][1]={k:0 for k in _SIEGE_ITEMS}
-    if _siege_v24(r):r['compoundRecipes']=[['burst']*3,[]]
+    if _siege_v24(r):r['compoundRecipes']=[[k for k in _SIEGE_COMPOUND_RECIPES for _ in range(3)],[]]
 
 def _siege_trial_reset(r,mode=None):
     if mode is not None:

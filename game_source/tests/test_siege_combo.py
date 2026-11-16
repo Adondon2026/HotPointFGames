@@ -397,6 +397,14 @@ for recipe,effects in g._SIEGE_COMPOUND_RECIPES.items():
     g._siege_fire(r,75,40,{'compound':1},config=g._siege_public_config({}))
     assert r['event']['compoundRecipe']==recipe and tuple(r['event']['compoundEffects'])==effects and r['buffs'][0]['compound']==0 and r['compoundRecipes'][0]==[]
     assert all(r['buffs'][0][k]==0 for k in effects)
+# Trial mode permits every recipe while keeping the total per-shot cap of 3.
+r=v24();g._siege_trial_reset(r,'classic')
+assert all(r['compoundRecipes'][0].count(k)==3 for k in g._SIEGE_COMPOUND_RECIPES)
+try:g._siege_selection(r,{'compound:burst':3,'compound:seek':1},0);assert False
+except ValueError:pass
+assert g._siege_selection(r,{'compound:burst':2,'compound:seek':1},0)=={'compound:burst':2,'compound:seek':1}
+g._siege_fire(r,75,40,{'compound:burst':2,'compound:seek':1},config=g._siege_public_config({}))
+assert r['event']['compoundRecipesUsed']==['burst','burst','seek'] and r['buffs'][0]['compound']==3
 # Mixed compound selection consumes only selected recipes, shares the cap of 3.
 r=v24();r['buffs'][0]['compound']=3;r['compoundRecipes']=[['burst','breach','ricochet'],[]]
 g._siege_fire(r,75,40,{'compound:burst':1,'compound:breach':1},config=g._siege_public_config({}))
@@ -425,6 +433,13 @@ for owner in (0,1,-1):
     b=dict(id=99,side=owner,x=235,y=350,w=36,h=38,kind='stone',hp=75,max=75,vx=0.,vy=0.)
     r['bodies'].append(b);g._siege_fire(r,90,40,{'salvage':1},config=g._siege_public_config({}))
     assert b['hp']==0 and r['buffs'][0]['salvage']==0 and r['buffs'][0]['stonedrop']==1 and r['event']['cores']==[100,100],(owner,b,r['event']['impact'])
+# Actual opponent-half material contact, not just an enemy ownership label.
+r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];g._siege_fire(r,45,70,{},config=g._siege_public_config({}))
+pt=next(f[1] for f in r['event']['frames'] if f[1] and 530<f[1][0]<620)
+r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];r['buffs'][0]['salvage']=1
+b=dict(id=99,side=1,x=pt[0],y=pt[1],w=42,h=42,kind='wood',hp=42,max=42,vx=0.,vy=0.,fixed=True)
+r['bodies'].append(b);g._siege_fire(r,45,70,{'salvage':1},config=g._siege_public_config({}))
+assert b['hp']==0 and r['buffs'][0]['wooddrop']==1 and r['buffs'][0]['salvage']==0
 # Three demolition charges widen the first impact and consume all three.
 r=v24();r['buffs'][0]['demolish']=3;g._siege_fire(r,90,40,{'demolish':3},config=g._siege_public_config({}))
 assert r['buffs'][0]['demolish']==0 and any(e[0]=='bounceBlast' and e[4]==160 for e in r['event']['behaviorEvents'])
