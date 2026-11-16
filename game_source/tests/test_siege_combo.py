@@ -549,6 +549,7 @@ for theme in ('classic','art'):
     r=v24(theme);r.update(mode='random',itemCount=13);g._siege_field(r)
     assert len(r['items'])==13 and set(i['kind'] for i in r['items'])<=set(g._siege_allowed(r))
     assert any(i['zone']=='center' for i in r['items'])
+    assert all(i['kind'] in ('compound','demolish') for i in r['items'] if i['zone'] in ('center','side'))
     if theme=='art':assert any(b['kind']=='barrel' for b in r['bodies']) and 'heal' not in g._siege_allowed(r)
     it=next(i for i in r['items'] if i['zone']=='center');r['items'].remove(it)
     r['respawns']=[{**it,'readyAt':0}];r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
@@ -562,7 +563,7 @@ r=v24('classic',['heavy','splitshot'])
 g._siege_v24_setup(r,'classic',{'heavy':'precious','splitshot':'rare'})
 assert 'heavy' not in r['rarities']
 for zone in ('side','center'):
-    assert all(g._siege_v24_draw(r,zone)=='splitshot' for _ in range(30))
+    assert all(g._siege_v24_draw(r,zone) is None for _ in range(30))
 r=v24('classic',['heavy'])
 assert g._siege_v24_draw(r,'air')=='heavy' and g._siege_v24_draw(r,'center') is None
 r.update(mode='random',itemCount=13);g._siege_field(r)
