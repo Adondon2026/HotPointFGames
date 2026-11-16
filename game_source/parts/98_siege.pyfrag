@@ -810,10 +810,14 @@ def _siege_wall_damage(speed):
     return min(85.,85.*(max(0.,min(650.,speed)-120.)/530.)**1.5)
 
 def _siege_v24_push(body,vx,vy,layers,share=1.):
-    if body.get('platform') or body['kind'] in _SIEGE_TNT_KINDS or layers<=0:return
+    if body['hp']<=0 or layers<=0:return
     mag=max(1.,math.hypot(vx,vy))
+    mass=_siege_body_mass(body)
+    strength=(290+105*(layers-1))*share/max(.75,mass**.5)
+    body['vx']+=vx/mag*strength
+    body['vy']+=min(-170*share,vy/mag*strength-220*share)
     forces=body.setdefault('pushForces',[])
-    forces.append([vx/mag*240.*share,vy/mag*240.*share,min(10.,2.*layers)])
+    forces.append([vx/mag*300.*share, min(0.,vy/mag)*180.*share,min(1.1,.35+.15*layers)])
     body['pushTime']=max(f[2] for f in forces)
     for key in ('fixed','motionY','floatFort','baseY'):body.pop(key,None)
 
@@ -953,11 +957,11 @@ def _siege_release_interval(level,base):
 def _siege_dive_strike(level):
     return 1+.2*max(0,level)
 
-def _siege_v24_guidance(vx,vy,x,y,dt,side,bodies):
-    """Strong continuous steering only inside the opposing half; no teleport or collision bypass."""
+def _siege_v24_guidance(vx,vy,x,y,dt,side,bodies,age=0.):
+    """Coop acquires nearest living zombie after .2s; classic keeps its midfield gate."""
     coop=any(b.get('shared') for b in bodies)
     if coop:
-        if x<300:return vx,vy
+        if age<.2-1e-8:return vx,vy
         target=min((b for b in bodies if b['kind']=='zombie' and b['hp']>0),key=lambda b:math.hypot(b['x']-x,b['y']-y),default=None)
     else:
         if (side==0 and x<480.) or (side==1 and x>480.):return vx,vy
@@ -984,7 +988,7 @@ def _siege_motion_delta(vx,vy,x,y,age,dt,counts,config,side,bodies,dived=False):
     folds=int((max(0,age)+1e-8)/.65);previous=int((max(0,age-dt)+1e-8)/.65)
     if counts.get('pingpong') and previous<folds<=counts['pingpong'] and not dived:vx=-vx
     if counts.get('homing') and config.get('autoHomingV24'):
-        vx,vy=_siege_v24_guidance(vx,vy,x,y,dt,side,bodies)
+        vx,vy=_siege_v24_guidance(vx,vy,x,y,dt,side,bodies,age)
     elif counts.get('homing'):
         target=next((b for b in bodies if b['kind']=='core' and b['side']==1-side and b['hp']>0),None)
         if target and math.hypot(target['x']-x,target['y']-y)<=100+20*counts['homing']:
@@ -1574,7 +1578,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             generated_counts[k]+=1
         if k in _SIEGE_OBJECT_LIMITS and generated_counts[k]:triggered.add(k)
     def dispatch_event(event,x,y,svx,svy,parent=None,target=None):
-        nonlocal split_done,impact,hit_at,last_hit,px,py,teleport_target,main_split_at
+        nonlocal split_done,impact,hit_at,last_hit,px,py,teleport_target,main_split_at,settled
         if not unified:return False
         counts=root_counts if parent is None or parent.get('kind') in ('repeat','clone') else child_counts
         scale=parent.get('scale',1.) if parent else 1.
@@ -1584,7 +1588,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if target['kind'] in _SIEGE_TNT_KINDS:_siege_tnt_arm(target,world_now(),side)
             if counts.get('push'):
                 _siege_v24_push(target,svx,svy,counts['push'],scale)
-                if target.get('pushTime',0)>0:target['impactSource']=side
+                if target.get('pushTime',0)>0:
+                    target['impactSource']=side;settled=0
+                    behavior_events.append(['pushHit',round(t,3),round(x,1),round(y,1),target['id']])
         for k in _SIEGE_PAYLOADS:
             if v24 and k in ('wooddrop','stonedrop',*_SIEGE_TNT_KEYS):continue
             if k=='splitshot' or not counts.get(k) or (event not in ('bounce','through','end') if v24 else _siege_event_for(config,k)!=event):continue
@@ -1791,20 +1797,24 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             # Sum continuous forces and preserve already applied explosion impulses.
             fields=list(active_fields())
             for b in bodies:
-                if b['hp']<=0 or b.get('platform'):continue
-                ax=ay=0.;field_force=0.
+                if b['hp']<=0:continue
+                ax=ay=0.;field_force=0.;dot=0.;dot_owner=side
                 for hx,hy,level,share,owner in fields:
                     dx,dy=hx-b['x'],hy-b['y'];dist=math.hypot(dx,dy);reach=120+22*level
-                    if dist>reach or dist<1:continue
-                    if b.get('fixed'):
-                        if b['kind']=='core' or not b.get('floatFort'):continue
-                        b.pop('fixed',None);b.pop('motionY',None);b.pop('floatFort',None)
-                    accel=(130+105*level)*(1-dist/reach)*share/_siege_body_mass(b)
+                    if dist>=reach:continue
+                    for key in ('fixed','motionY','floatFort','baseY'):b.pop(key,None)
+                    falloff=1-dist/reach
+                    accel=(550+200*level)*falloff*share/max(.75,_siege_body_mass(b))
                     ax+=dx/max(14.,dist)*accel;ay+=dy/max(14.,dist)*accel
                     if accel>field_force:field_force=accel;b['impactSource']=owner
-                if b.get('fixed'):continue
+                    if b['kind']=='zombie':
+                        dot+=(12+8*level)*(.35+.65*falloff)*share;dot_owner=owner
+                if dot>0:
+                    hurt(b,min(70.,dot)*dt,dot_owner)
+                    if round(t*60)%12==0:behavior_events.append(['blackholeHit',round(t,3),round(b['x'],1),round(b['y'],1),b['id']])
+                if b.get('fixed') or b['hp']<=0:continue
                 force=math.hypot(ax,ay)
-                if force>540:ax*=540/force;ay*=540/force
+                if force>1050:ax*=1050/force;ay*=1050/force
                 if b.get('pushTime',0)>0:
                     forces=b.get('pushForces')
                     if forces is None:
