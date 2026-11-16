@@ -695,3 +695,25 @@ g._siege_fire(r,90,40,{'tntwait':1},config=g._siege_public_config({}))
 assert r['event']['generatedCounts'].get('tntwait',0)==0 and r['buffs'][0]['tntwait']==1
 assert sum(b['kind']=='tnt_wait' and b['hp']>0 for b in r['bodies'])==12
 print('Siege physical combinations: directional TNT, blackhole TNT, actual 32-shell budget and persistent trap cap PASS')
+
+# Cooperative zombie theme: two guns face the same direction, one shared core,
+# server-authoritative alternating shots and enemy phase after both shots.
+r=v24('zombie');g._siege_field(r)
+assert r['combatMode']=='turn' and r['ammo']==0 and len([b for b in r['bodies'] if b['kind']=='core'])==1
+assert g._siege_core(r['bodies'],0)==g._siege_core(r['bodies'],1)==100
+assert g._siege_muzzle(1,r,45)[0]>r['launchers'][1][0]
+z=next(b for b in r['bodies'] if b['kind']=='zombie');x=z['x']
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+assert r['turn']==1 and z['x']==x and r['zombie']['round']==1
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+assert r['turn']==0 and r['zombie']['round']==2 and z['x']<x and r['event']['zombiePhase']>=0
+assert g._siege_public(r,'a',-1)['zombie']['wave']==1
+# Advance all waves, win together, and restart without stale enemy state.
+for wave in range(1,7):
+    for b in r['bodies']:
+        if b['kind']=='zombie':b['hp']=0
+    r['turn']=1;g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+    if wave<6:assert r['zombie']['wave']==wave+1 and r['phase']=='play'
+assert r['phase']=='over' and r['zombie']['won']
+g._siege_rematch(r);assert r['zombie']['wave']==1 and not r['zombie']['won']
+print('Siege zombie coop: shared core, same direction, alternating turns, enemy action, six waves and rematch PASS')

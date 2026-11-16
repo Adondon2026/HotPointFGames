@@ -118,7 +118,7 @@ def _room_start_siege(player,solo=False):
         r['allowedBuffs']=list(_SIEGE_V24_KEYS) if allowed is None else list(allowed)
         _siege_v24_setup(r,STATE['settings'].get('siegeTheme','classic'),STATE['settings'].get('siegeRarities',{}));_siege_field(r)
     r.update(code=_ROOM_ACTIVE['code'],players=[{'name':p['name'],'key':p['id']} for p in seats],phase='play')
-    r.update(combatMode='sync' if STATE['settings'].get('siegeCombatMode')=='live' else STATE['settings'].get('siegeCombatMode','turn'),reloadSeconds=STATE['settings'].get('siegeReload',15) if type(STATE['settings'].get('siegeReload',15)) is int and 0<=STATE['settings'].get('siegeReload',15)<=120 else 15)
+    r.update(combatMode='turn' if r.get('theme')=='zombie' else 'sync' if STATE['settings'].get('siegeCombatMode')=='live' else STATE['settings'].get('siegeCombatMode','turn'),reloadSeconds=STATE['settings'].get('siegeReload',15) if type(STATE['settings'].get('siegeReload',15)) is int and 0<=STATE['settings'].get('siegeReload',15)<=120 else 15)
     _ROOM_ACTIVE['runtime'].pop('siegeLive',None);_ROOM_ACTIVE['runtime'].pop('siegeSync',None)
     STATE.update(siege=r,phase='siege_play',matchId=secrets.token_hex(16),turnPlayerId=seats[0]['id'],roundNo=1);_room_save_settings(player);bump();return {},200
 
@@ -157,7 +157,7 @@ def _room_action(self,player,action,data):
             if fort not in ('normal','sturdy','fortified'):return {'error':'堡垒强度无效'},400
             if data.get('rulesVersion')==24:
                 theme=data.get('theme','classic');rarities=data.get('rarities',{})
-                if theme not in ('classic','art') or not isinstance(rarities,dict) or any(k not in _SIEGE_V24_KEYS or not isinstance(v,str) or v not in _SIEGE_V24_WEIGHTS for k,v in rarities.items()):return {'error':'稀有度设置无效'},400
+                if theme not in ('classic','art','zombie') or not isinstance(rarities,dict) or any(k not in _SIEGE_V24_KEYS or not isinstance(v,str) or v not in _SIEGE_V24_WEIGHTS for k,v in rarities.items()):return {'error':'稀有度设置无效'},400
                 STATE['settings'].update(siegeRulesVersion=24,siegeTheme=theme,siegeRarities={k:v for k,v in rarities.items() if k not in _SIEGE_NEGATIVE})
             STATE['settings'].update(siegeAllowedBuffs=allowed,siegeStackCaps=caps,siegeFortStrength=fort,siegeItemCount=count,siegeAmmo=ammo,siegeMode=mode,siegeWind=wind,siegeBuffMode=buff_mode,siegeCombatMode=combat,siegeReload=reload);_room_save_settings(player);bump();return {},200
         if action in ('start','solo_start'):return _room_start_siege(player,action=='solo_start')
