@@ -77,12 +77,32 @@ function siegeSettingsView(){siegeMapPreview();const zombie=$('siegeTheme').valu
  for(const x of choices){const negative=zombie&&siegeV24Negatives.includes(x.dataset.kind);x.disabled=!state.isHost||art||negative;x.closest('.siege-buff-row').classList.toggle('hidden',negative);}
  for(const id of ['siegeCombatMode','siegeBuffMode','siegeWind','siegeFortStrength'])for(const b of $(id).parentElement.querySelectorAll('.siege-choice')){b.classList.toggle('active',b.dataset.value===$(id).value);b.disabled=!state.isHost;}
 }
+// Independent named presets; saved on this device, not tied to an individual room.
+function siegePresetBar(kind,mount,readCurrent,apply){
+ const storageKey='siege_presets_v1_'+kind,bar=document.createElement('div');
+ bar.className='siege-preset-bar';bar.style.cssText='display:grid;gap:6px;margin:10px 0;padding:10px;border:1px solid #354640;border-radius:10px';
+ const label=document.createElement('strong');label.textContent=kind==='buffs'?'增益组合预设':'稀有度组合预设';
+ const select=document.createElement('select');select.setAttribute('aria-label',label.textContent);
+ const name=document.createElement('input');name.type='text';name.placeholder='预设名称（如：爆破流）';name.maxLength=24;name.setAttribute('aria-label','预设名称');
+ const buttons=document.createElement('div');buttons.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+ const message=document.createElement('small');message.className='muted';message.setAttribute('aria-live','polite');
+ const get=()=>{try{const a=JSON.parse(localStorage.getItem(storageKey)||'[]');return Array.isArray(a)?a:[]}catch(_){return []}};
+ const put=a=>localStorage.setItem(storageKey,JSON.stringify(a));
+ function refresh(selected){select.replaceChildren(new Option('选择已保存预设',''));for(const p of get())if(p&&typeof p.name==='string')select.add(new Option(p.name,p.name));select.value=selected||'';load.disabled=remove.disabled=!select.value}
+ function button(title,fn){const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=title;b.onclick=fn;buttons.append(b);return b}
+ const save=button('保存当前',()=>{if(!state?.isHost)return;const n=name.value.trim();if(!n){message.textContent='请输入预设名称';name.focus();return}const a=get(),at=a.findIndex(p=>p.name===n),value=readCurrent();if(at>=0){if(!confirm('覆盖预设「'+n+'」？'))return;a[at]={name:n,value}}else{if(a.length>=30){message.textContent='最多保存30组预设，请删除不再使用的预设';return}a.push({name:n,value})}try{put(a);refresh(n);message.textContent='已保存'}catch(_){message.textContent='保存失败，请检查设备存储空间'}});
+ const load=button('加载',()=>{if(!state?.isHost)return;const p=get().find(p=>p.name===select.value);if(p){apply(p.value);message.textContent='已加载「'+p.name+'」';name.value=p.name}});
+ const remove=button('删除',()=>{if(!state?.isHost)return;const n=select.value;if(!n||!confirm('删除预设「'+n+'」？'))return;try{put(get().filter(p=>p.name!==n));refresh();message.textContent='已删除'}catch(_){message.textContent='删除失败'}});
+ select.onchange=()=>{name.value=select.value;load.disabled=remove.disabled=!select.value};bar.append(label,select,name,buttons,message);mount.prepend(bar);refresh();return bar
+}
+const buffPresetBar=siegePresetBar('buffs',$('siegeAllowedConfig'),()=>siegeChoices().filter(x=>x.checked).map(x=>x.dataset.kind),value=>{if(!Array.isArray(value))return;const allowed=new Set(value);for(const x of siegeChoices())x.checked=allowed.has(x.dataset.kind);saveSiegeSettings()});
 function initSiegeSettings(){const s=state.settings;$('siegeTheme').value=s.siegeTheme||'classic';const mode=s.siegeMode==='dynamic'?'random':s.siegeMode||'random';setSiegeMapSize(Object.keys(siegeMapGroups).find(k=>siegeMapGroups[k].includes(mode))||'all',mode);
  for(const [id,v] of Object.entries({siegeItemCount:s.siegeItemCount??13,siegeAmmo:s.siegeAmmo??0,siegeMode:s.siegeMode==='dynamic'?'random':s.siegeMode??'random',siegeWind:s.siegeWind??'medium',siegeBuffMode:s.siegeBuffMode??'auto',siegeCombatMode:s.siegeCombatMode==='live'?'sync':s.siegeCombatMode??'turn',siegeReload:s.siegeReload??15,siegeFortStrength:s.siegeFortStrength??'normal',siegeZombieDifficulty:s.siegeZombieDifficulty??'medium',siegeZombieMap:s.siegeZombieMap??'front'})){$(id).value=v;$(id).disabled=!state.isHost;}
  const allowed=new Set(s.siegeAllowedBuffs??siegeBuffList.map(x=>x[0]));$('siegeBuffChoices').innerHTML=siegeBuffGroups.map(([group,keys])=>`<div class="siege-buff-group"><strong>${group}</strong><button type="button" data-buff-group="${group}" data-buff-on="1">全选</button><button type="button" data-buff-group="${group}" data-buff-on="0">取消</button></div>`+siegeBuffList.filter(([k])=>keys.includes(k)).map(([k,n])=>`<div class="siege-buff-row"><label><input type="checkbox" data-kind="${k}" ${allowed.has(k)?'checked':''}>${siegeIcon(k,18)}${n}</label><span class="muted">上限 ${siegeHard(k)}</span></div>`).join('')).join('');
  for(const btn of document.querySelectorAll('[data-buff-group]')){btn.disabled=!state.isHost;btn.onclick=()=>{const ks=siegeBuffGroups.find(g=>g[0]===btn.dataset.buffGroup)[1];for(const x of siegeChoices())if(ks.includes(x.dataset.kind))x.checked=btn.dataset.buffOn==='1';siegeSettingsView();saveSiegeSettings()}}
  for(const x of siegeChoices()){x.disabled=!state.isHost;x.onchange=saveSiegeSettings;}
  for(const id of ['siegeBuffAll','siegeBuffNone','siegeBuffInvert'])$(id).disabled=!state.isHost;
+ buffPresetBar.classList.toggle('hidden',!state.isHost);
  siegeSettingsView();
 }
 function saveSiegeSettings(){if(!state.isHost)return;siegeSettingsView();let valid=true;
@@ -99,6 +119,8 @@ for(const [id,fn] of [['siegeBuffAll',()=>true],['siegeBuffNone',()=>false],['si
 $('liteGameRules').onclick=liteRules;$('liteInGameRules').onclick=liteRules;$('liteGameSettings').onclick=liteSettings;$('liteSiegeTrial').onclick=()=>location.href='/trial/siege?from='+encodeURIComponent(location.pathname);$('liteProfileEntry').onclick=()=>liteStats();$('liteAddBot').onclick=()=>action('add_bot');const rarityModal=liteHTML('siegeRarityMount',`<div class="modal lite-modal hidden" id="siegeRarityModal"><div class="sheet" style="max-height:88dvh;display:flex;flex-direction:column;overflow:hidden"><div class="sheet-head"><h2>开局 · 道具稀有度</h2><button class="icon-btn" id="siegeRarityClose">×</button></div><p class="muted">已设置默认等级，可直接开始。负面效果不参与稀有度设置。</p><div id="siegeRarityRows" style="display:grid;gap:6px;overflow:auto;min-height:0;flex:1;overscroll-behavior:contain;padding-right:3px"></div><div style="display:flex;gap:8px;margin-top:12px;flex-shrink:0;padding-top:8px;border-top:1px solid #354640"><button class="secondary" id="siegeRarityReset">默认等级</button><button class="green full" id="siegeRarityGo">开始游戏</button></div></div></div>`);document.body.append(rarityModal);
 let rarityStart=null;
 const rarityLevels=[['common','常见'],['uncommon','进阶'],['rare','稀有'],['precious','珍贵']];
+const rarityPresetMount=document.createElement('div');rarityPresetMount.style.flexShrink='0';$('siegeRarityRows').before(rarityPresetMount);
+siegePresetBar('rarities',rarityPresetMount,()=>Object.fromEntries(siegeV24Keys.filter(k=>!siegeV24Negatives.includes(k)).map(k=>[k,rarityStart?.levels[k]||siegeRarity(k)])),value=>{if(!rarityStart||!value||typeof value!=='object')return;rarityStart.levels=Object.fromEntries(Object.entries(value).filter(([k,v])=>siegeV24Keys.includes(k)&&!siegeV24Negatives.includes(k)&&rarityLevels.some(([l])=>l===v)));renderRarityRows()});
 function openSiegeStart(kind){
  const st=state.settings,theme=st.siegeTheme||'classic',enabled=siegeV24Keys.filter(k=>siegeRoomAllowed(st).includes(k));
  rarityStart={kind,theme,enabled,levels:Object.fromEntries(Object.entries(st.siegeRarities||{}).filter(([k])=>!siegeV24Negatives.includes(k)))};if(theme==='art'||!enabled.some(k=>!siegeV24Negatives.includes(k))||(theme!=='zombie'&&st.siegeItemCount===0)){commitSiegeStart();return}
