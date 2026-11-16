@@ -357,6 +357,7 @@ def _siege_field(r):
     if _siege_v24(r):
         if r.get('theme')=='zombie':_siege_zombie_world(r)
         else:_siege_v24_world(r)
+        _siege_install_cannons(r)
 
 # Cooperative theme: one authoritative shared core, both guns point right,
 # and zombies only act after both players have fired.
@@ -487,7 +488,7 @@ def _siege_zombie_round(r,t,frames,snap,events):
             close=abs(z['x']-core['x'])<=(z['w']+core['w'])/2+8
             target=core if close else None
             if not flying and not target:
-                obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait') and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
+                obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait','cannon') and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
                 if obstacles:target=min(obstacles,key=lambda b:abs(b['x']-z['x']))
                 if target and z['zombieType']=='climber' and target['h']<=44:
                     top=target['y']-target['h']/2-z['h']/2
@@ -496,8 +497,13 @@ def _siege_zombie_round(r,t,frames,snap,events):
             if target:
                 if z['id'] not in attacked:
                     attacked.add(z['id']);amount=damage*(.35**shield if target is core else .65**armor)
-                    target['hp']=max(0.,target['hp']-amount)
+                    if target['kind']!='cannon':target['hp']=max(0.,target['hp']-amount)
                     events.append(['zombieAttack',round(t,3),z['id'],target['id'],round(amount,1)])
+                if target['kind']=='cannon':
+                    # Advance the movable gun with the enemy, unless backed by a live body.
+                    xx=max(target['w']/2,min(960-target['w']/2,target['x']+d*speed/12))
+                    if not any(b is not target and b is not z and b['hp']>0 and abs(xx-b['x'])<(target['w']+b['w'])/2 and abs(target['y']-b['y'])<(target['h']+b['h'])/2 for b in bodies):
+                        target['x']=xx;z['x']=nx
                 continue
             if not flying:
                 # Walk on the ground or on top of a climbed barrier.
@@ -598,8 +604,22 @@ def _siege_rematch(r):
 def _siege_pos(b):return [b['id'],round(b['x'],1),round(b['y'],1),max(0,round(b['hp'],1))]
 def _siege_core_body(bodies,side):return next(b for b in bodies if b['kind']=='core' and (b['side']==side or b.get('shared')))
 def _siege_core(bodies,side):return _siege_core_body(bodies,side)['hp']
+def _siege_cannon(r,side):
+    return next((b for b in r.get('bodies',[]) if b['kind']=='cannon' and b['side']==side),None)
+def _siege_install_cannons(r):
+    # Canonical physical body, with barrel pivot at body top.
+    for side in range(1 if r.get('zombieSolo') else 2):
+        x,y=_siege_launcher(side,r,0)
+        r['bodies'].append(dict(id=r['nextBodyId'],kind='cannon',side=side,x=x,y=y+24,w=46,h=48,hp=75,max=75,vx=0.,vy=0.))
+        r['nextBodyId']+=1
+    r['gunMotion']=[]
+    for b in r['bodies']:
+        if b['kind']=='core':
+            for k in ('fixed','motionY','floatFort','baseY'):b.pop(k,None)
 def _siege_direction(r,side):return 1 if side==0 or (r or {}).get('theme')=='zombie' else -1
 def _siege_launcher(side,r=None,t=None):
+    b=_siege_cannon(r,side) if r else None
+    if b is not None:return b['x'],b['y']-24
     if r and r.get("launchers"):
         x,y=r['launchers'][side]
         if r.get('gunMotion'):
@@ -641,7 +661,7 @@ def _siege_launch_check(r,side,angle,selection=None,t=None,force=False):
     x,y=_siege_muzzle(side,r,angle,radius,t)
     if y+radius>=min(_siege_floor(r,z) for z in (x-radius,x,x+radius)):
         raise ValueError('巨型弹炮口接触地面，请提高角度或减少巨型弹层数')
-    blocked=next((b for b in r['bodies'] if b['hp']>0 and abs(x-b['x'])<b['w']/2+radius and abs(y-(b['baseY']+b['motionY']*math.sin(t*.8+b.get('phase',0)) if b.get('motionY') and t is not None else b['y']))<b['h']/2+radius),None)
+    blocked=next((b for b in r['bodies'] if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side) and abs(x-b['x'])<b['w']/2+radius and abs(y-(b['baseY']+b['motionY']*math.sin(t*.8+b.get('phase',0)) if b.get('motionY') and t is not None else b['y']))<b['h']/2+radius),None)
     if blocked is not None and not force:raise ValueError('巨型弹炮口被建筑挡住，可强制开炮（可能误伤己方）')
     return blocked
 
@@ -716,7 +736,7 @@ def _siege_wall_damage(speed):
     return min(85.,85.*(max(0.,min(650.,speed)-120.)/530.)**1.5)
 
 def _siege_v24_push(body,vx,vy,layers,share=1.):
-    if body.get('platform') or body['kind'] in ('core',*_SIEGE_TNT_KINDS) or layers<=0:return
+    if body.get('platform') or body['kind'] in _SIEGE_TNT_KINDS or layers<=0:return
     mag=max(1.,math.hypot(vx,vy))
     forces=body.setdefault('pushForces',[])
     forces.append([vx/mag*240.*share,vy/mag*240.*share,min(10.,2.*layers)])
@@ -772,6 +792,7 @@ def _siege_support_surface(r,x,width,feet,ignore=None):
 def _siege_gun_gravity(r,dt):
     """After cannon teleport, its support may be destroyed on later shots."""
     for side in range(2):
+        if _siege_cannon(r,side) is not None:continue
         if not r.get('launchers') or not r.get('gunGravity',[False,False])[side]:continue
         if r.get('gunMotion') and r['gunMotion'][side].get('amplitude'):continue
         x,y=r['launchers'][side]
@@ -1122,6 +1143,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         nonlocal trial_damage
         if b.get('platform') or (v24 and b['kind'] in _SIEGE_TNT_KINDS):return
         if b.get('shared') and r.get('theme')=='zombie':return
+        # Keep the gun operable; its body can still receive collision impulses.
+        if b['kind']=='cannon':return
         if b['kind']=='zombie':damage*=.70 if b.get('zombieType')=='shield' else .80 if b.get('zombieType')=='heavy' else 1.
         if b['kind']!='core' and b['side'] in (0,1):damage*= {'normal':1.,'sturdy':.75,'fortified':.55}.get(r.get('fortStrength'),1.)
         source=source if v24 and source in (0,1) else side
@@ -1824,7 +1847,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     px,py=contact;vy=-vy*.88;vx*=.97;bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 collect(x,y,rr,t)
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
-                target=next((b for b in bodies if b['hp']>0 and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
+                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
                 if target and root_counts.get('through') and len(passed)<root_counts['through'] and target['kind']!='core' and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_scale*(1+1.5*root_counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     passed.add(target['id']);penetrated=target;target=None
@@ -1902,7 +1925,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     f['x'],f['y']=contact;f['vy']=-f['vy']*.88;f['vx']*=.97;bounces.append([round(contact[0],1),round(contact[1],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 collect(x,y,fr,t)
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
-                target=next((b for b in bodies if b['hp']>0 and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
+                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and counts.get('through') and len(f['passed'])<counts['through'] and target['kind']!='core' and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42)*(1+1.5*counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     f['passed'].add(target['id']);penetrated=target;target=None
@@ -2013,20 +2036,23 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if core['hp']>0:
                 lo,hi=35,925
                 for lx,ly in own_landings:
-                    w,h=(50,96) if kind=='gunteleport' else (core['w'],core['h'])
+                    gun=_siege_cannon(r,side) if kind=='gunteleport' else None
+                    w,h=(gun['w'],gun['h']) if gun else (50,96) if kind=='gunteleport' else (core['w'],core['h'])
                     x=max(w/2,min(960-w/2,lx))
                     # Use the landing column, including the top of a block or platform.
                     # No empty-ground search and no artificial side boundary.
                     top=_siege_floor(r,x)
                     for b in bodies:
-                        if b is core and kind=='coreteleport' or b['hp']<=0:continue
+                        if (b is core and kind=='coreteleport') or b is gun or b['hp']<=0:continue
                         if abs(b['x']-x)<(b['w']+w)/2 and b['y']-b['h']/2>=ly- max(h,80):
                             top=min(top,b['y']-b['h']/2)
-                    destination=(x,top-h/2);break
+                    destination=(x,top-h/2-(24 if gun else 0));break
             if destination is None:
                 r['buffs'][side][kind]=min(1,r['buffs'][side][kind]+1);continue
             x,y=destination
             if kind=='gunteleport':
+                gun=_siege_cannon(r,side)
+                if gun is not None:gun.update(x=x,y=y+24,vx=0.,vy=0.)
                 r.setdefault('launchers',[list(_siege_launcher(i,r,motion_start+t)) for i in (0,1)])
                 r['launchers'][side]=[x,y]
                 if r.get('gunMotion'):r['gunMotion'][side]={'amplitude':0,'phase':0}
