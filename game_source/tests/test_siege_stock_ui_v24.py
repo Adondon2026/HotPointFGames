@@ -112,7 +112,7 @@ try:
         page.get_by_role('button',name='增加复合·破障').tap()
         assert page.evaluate("selection['compound:ricochet']===2&&selection['compound:breach']===1")
         page.get_by_role('button',name='清空',exact=True).tap()
-        assert page.locator('.compound-row .buff-effect').evaluate("e=>e.scrollHeight<=e.clientHeight+1")
+        assert page.locator('.compound-row .buff-effect').evaluate_all("es=>es.every(e=>e.scrollHeight<=e.clientHeight+1)")
         print('Siege single shell pan and debris-independent plan:',pan)
         # Exercise the actual requestAnimationFrame renderer, not just the planner.
         # During preroll no projectile is visible; once playback starts every
