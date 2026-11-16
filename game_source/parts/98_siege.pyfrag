@@ -474,10 +474,11 @@ def _siege_box_bounce(b,ox,oy,x,y,vx,vy,radius):
 
 def _siege_robot(r,side):return bool(r.get('bot') and side==1)
 
+def _siege_shell_radius(r,n):return 6+(4 if _siege_v24(r) else 6)*n
 def _siege_launch_check(r,side,angle,selection=None,t=None,force=False):
     # Protect the entire shell footprint against raised ground, even for forced fire.
     chosen=_siege_selection(r,selection,side)
-    radius=6+6*(chosen.get('big',0) if r.get('buffMode','auto')=='stock' else int(r['buffs'][side].get('big',0)>0))
+    radius=_siege_shell_radius(r,chosen.get('big',0) if r.get('buffMode','auto')=='stock' else int(r['buffs'][side].get('big',0)>0))
     if radius<=6:return None
     x,y=_siege_muzzle(side,r,angle,radius,t)
     if y+radius>=min(_siege_floor(r,z) for z in (x-radius,x,x+radius)):
@@ -918,14 +919,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         live['dropQueues'][side]=drop_queue;live.setdefault('fieldSources',{})[side]=holes;live.setdefault('fieldStarts',{})[side]=motion_start;live.setdefault('defenseSources',{})[side]=dict(defense_counts);live.setdefault('shotShields',{}).pop(side,None)
     launchers_before=[list(r['launchers'][i]) if r.get('launchers') else list(_siege_launcher(i,r,motion_start)) for i in (0,1)];gun_motion_before=[dict(m) for m in r.get('gunMotion',[])]
     _siege_motion(r,motion_start)
-    n=attack_counts.get('big',0);radius=6+6*n;blast_radius=52 if v24 else 52+36*n
+    n=attack_counts.get('big',0);radius=_siege_shell_radius(r,n);blast_radius=52+(10 if v24 else 36)*n
     px,py=_siege_muzzle(side,r,actual_angle,radius,motion_start)
     draw_radius=radius
     # The actual shot angle is recorded for the remote cannon animation.
     fragment_radius=radius
     
     # Push is an almost non-damaging manipulation shell: roughly 14% direct damage.
-    def damage_for(counts):return (1+.70*counts.get('power',0))*shell_scale*(.14 if counts.get('push') and not v24 else 1.)
+    def damage_for(counts):return (1+.70*counts.get('power',0))*shell_scale*(1+.18*counts.get('big',0) if v24 else 1.)*(.14 if counts.get('push') and not v24 else 1.)
     damage_scale=damage_for(root_counts);impulse_scale=1+2.2*root_counts.get('shock',0)
     # Delayed extra rounds retain angle/power; total damage grows while each shell weakens.
     for j in range(repeat_n):
@@ -1181,9 +1182,21 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         spawn_children(x,y,svx,svy,rule['count'],'fan',parent)
         return True
     def bounce_effect(x,y,svx,svy,parent=None,target=None,incident=None):
-        nonlocal larpa_left,bounce_blast_left,last_hit
+        nonlocal larpa_left,bounce_blast_left,last_hit,settled
         if unified:
             evx,evy=incident if v24 and incident is not None else (svx,svy)
+            # Ricochets transfer kinetic damage to the contacted body, without
+            # consuming the shell or creating the separate blast buff's AoE.
+            if v24 and target and target['hp']>0 and not target.get('platform') and not engineering:
+                counts=root_counts if parent is None or parent.get('kind') in ('repeat','clone') else child_counts
+                scale=parent.get('scale',1.) if parent else 1.
+                travel=parent.get('travel',0.) if parent else flight_distance
+                damage=28*damage_for(counts)*scale*_siege_v20_vanish(travel,negatives)
+                if target['kind']=='stone':damage*=1+1.5*counts.get('pierce',0)
+                if target['kind']=='core':damage*=.83
+                if target['kind'] not in _SIEGE_TNT_KINDS:
+                    hurt(target,damage);last_hit=t;settled=0
+                    behavior_events.append(['bounceHit',round(t,3),round(x,1),round(y,1),target['id']])
             dispatch_event('bounce',x,y,evx,evy,parent,target);return
         # Only source shells trigger replication; a copied shell cannot recurse.
         if parent is not None:
