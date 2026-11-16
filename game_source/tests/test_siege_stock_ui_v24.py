@@ -23,6 +23,7 @@ try:
     # no selected buffs. Include every positive buff, including armor and shield.
     keys = [k for k in g._SIEGE_V24_KEYS if k not in g._SIEGE_NEGATIVE]
     r['buffs'][0].update({k:min(2,g._SIEGE_V24_CAPS[k]) for k in keys})
+    r['compoundRecipes']=[['burst','burst'],[]]
     data = g._siege_public(r,'a',-1)
     with sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH') or shutil.which('google-chrome') or shutil.which('chromium'),args=['--no-sandbox'])
@@ -96,16 +97,22 @@ try:
         }""",event)
         assert result['ok'] and result['count']>5 and result['max']>=8,result
         assert result['maxZoomRate']<.001,result # fixed focal length
-        assert page.evaluate("""()=>{const d={shellEnd:.1,handoffAt:1,playbackDuration:1.48,duration:6};return replayClock(d,.1)===.1&&replayClock(d,1)<.8&&replayClock(d,1.48)===6}""")
+        assert page.evaluate("""()=>{const d={shellEnd:.1,handoffAt:1,playbackDuration:1.48,duration:6};return replayClock(d,.1)===.1&&replayClock(d,1)===1&&replayClock(d,1.48)===1.48}""")
         assert page.evaluate("""()=>compoundHint('ricochet').includes('弹跳 +1')&&compoundHint('seek').includes('制导 +1')&&compoundHint('siegebreak').includes('爆炸 +1')""")
         # A single shell traversing the map must actually pan; stationary debris
         # and late explosions must not change its camera plan or handoff.
         pan=page.evaluate("""()=>{const frames=Array.from({length:61},(_,i)=>[i/20,i<60?[60+i*14,220]:null,[],[],6,[]]);const ev={frames,hitAt:3,duration:3};const a=cameraPlan(ev,[]),b=cameraPlan({...ev,duration:9,frames:frames.concat([[9,null,[[1,930,300,100]],[],6,[]]]),behaviorEvents:[['bounceBlast',8,930,300,100]]},[{id:1,kind:'core'}]);return {pan:a.at(-1).x-a[0].x,zoom:new Set(a.map(c=>c.w)).size,same:JSON.stringify(a)===JSON.stringify(b)}}""")
         assert pan['pan']>300 and pan['zoom']==1 and pan['same'],pan
-        page.evaluate("""()=>{room.compoundRecipes=['siegebreak',null];stockKey='';update()}""")
+        page.evaluate("""()=>{room.compoundRecipes=[['siegebreak'],[]];stockKey='';update()}""")
         page.get_by_role('button',name='全部',exact=True).tap()
         expect(page.locator('.compound-row .buff-effect')).to_have_text('攻坚 · 穿透 +1 · 破甲 +1 · 爆炸 +1')
-        assert page.locator('.compound-row .buff-effect').evaluate("e=>e.scrollHeight<=e.clientHeight+1")
+        page.evaluate("""()=>{room.buffs[0].compound=3;room.compoundRecipes=[['breach','ricochet','ricochet'],[]];stockKey='';update()}""")
+        expect(page.locator('.compound-row')).to_have_count(2)
+        page.get_by_role('button',name='复合·爆跳选满').tap()
+        page.get_by_role('button',name='增加复合·破障').tap()
+        assert page.evaluate("selection['compound:ricochet']===2&&selection['compound:breach']===1")
+        page.get_by_role('button',name='清空',exact=True).tap()
+        assert page.locator('.compound-row .buff-effect').evaluate_all("es=>es.every(e=>e.scrollHeight<=e.clientHeight+1)")
         print('Siege single shell pan and debris-independent plan:',pan)
         # Exercise the actual requestAnimationFrame renderer, not just the planner.
         # During preroll no projectile is visible; once playback starts every
