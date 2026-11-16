@@ -413,7 +413,7 @@ def _siege_zombie_drops(r):
             b['rewarded']=True
             _siege_zombie_pickup(r,_siege_zombie_draw(r,b['zombieType']),b['x'],b['y']-b['h']/2,enemy=True)
 def _siege_zombie_supply(r):
-    for side,inv in enumerate(r['buffs']):
+    for side,inv in enumerate(r['buffs'][:1] if r.get('zombieSolo') else r['buffs']):
         k=_siege_zombie_draw(r)
         if k is not None and inv[k]<_siege_cap(r,k):
             inv[k]+=1
@@ -440,7 +440,8 @@ def _siege_zombie_spawn(r):
 def _siege_zombie_world(r):
     r.update(field='zombie',fieldLabel='丧尸围城',mode='classic',combatMode='turn',ammo=0,rise=0,offset=0,gunShift=0,wind=0,windPair=0,windLevel='off',reflectors=[],gunMotion=[],launchers=[[170,368],[270,368]],nextBodyId=100)
     r['bodies']=[dict(id=0,side=0,kind='core',shared=True,x=80,y=390,w=50,h=52,hp=100,max=100,vx=0.,vy=0.)]
-    for ident,x,y,w,h,kind,hp in ((1,360,394,32,44,'stone',75),(2,360,350,32,44,'stone',75),(3,400,397,36,38,'wood',42),(4,400,359,36,38,'wood',42)):
+    # Leave the firing lane open. Building is a player choice.
+    for ident,x,y,w,h,kind,hp in ((1,120,397,36,38,'wood',42),):
         r['bodies'].append(dict(id=ident,side=0,kind=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.))
     r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,difficulty=r.get('zombieDifficulty','medium'))
     r['items']=[];r['respawns']=[]
@@ -471,8 +472,8 @@ def _siege_zombie_round(r,t,frames,snap,events):
         events.append(['zombieWave',round(t,3),state['wave']])
         frames.append(snap(t,None))
         return t+.5
-    shield=max((b.get('shield',0) for b in r['armed']),default=0)
-    armor=max((b.get('armor',0) for b in r['armed']),default=0)
+    shield=min(_siege_cap(r,'shield'),sum(b.get('shield',0) for b in r['armed']))
+    armor=min(_siege_cap(r,'armor'),sum(b.get('armor',0) for b in r['armed']))
     attacked=set()
     for step in range(1,13):
         t=start+step/12
@@ -995,9 +996,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     angle_offset=0.
     if negatives.get('wobble'):
         magnitude=random.uniform(14.,24.);sign=random.choice((-1,1))
-        if not 5.<=angle+sign*magnitude<=175.:sign=-sign
         angle_offset=sign*magnitude
-    actual_angle=max(5.,min(175.,angle+angle_offset))
+    actual_angle=(angle+angle_offset)%360
     angle_offset=actual_angle-angle
     a=math.radians(actual_angle);speed=power*8.0;px,py=sx,sy;vx=direction*speed*math.cos(a);vy=-speed*math.sin(a)
     bodies=r['bodies'];bodies[:]=[b for b in bodies if not b.get('generated') or b['hp']>0]; dt=1/60;frames=[];impact=None;hit_at=None;settled=0;hit_id=None
@@ -1027,7 +1027,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     if v24 and not trial:
         for k in negatives:r['buffs'][side][k]=max(0,r['buffs'][side].get(k,0)-1)
     if stock:
-        if live is not None and any(armed[side].get(k,0)+n>_siege_cap(r,k) for k,n in chosen.items() if k in _SIEGE_DEFENSE):raise ValueError('已有防御待命，请等待对方开炮后再启用')
+        if (live is not None or r.get('theme')=='zombie') and any(armed[side].get(k,0)+n>_siege_cap(r,k) for k,n in chosen.items() if k in _SIEGE_DEFENSE):raise ValueError('已有防御待命，请等待对方开炮后再启用')
         attack_counts={k:n for k,n in chosen.items() if k not in _SIEGE_DEFENSE}
         defense_counts={} if r.get('theme')=='zombie' else dict(armed[1-side])
         if r.get('theme')!='zombie':armed[1-side]={}
@@ -2013,16 +2013,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if core['hp']>0:
                 lo,hi=35,925
                 for lx,ly in own_landings:
-                    # Use the nearest legal empty ground within 60 world units of the landing.
-                    for x in sorted(range(lo,hi+1,5),key=lambda x:abs(x-lx)):
-                        if abs(x-lx)>60:break
-                        w,h=(50,96) if kind=='gunteleport' else (core['w'],core['h'])
-                        y=_siege_floor(r,x)-h/2
-                        if abs(x-old[0])<5:continue
-                        if any(b['hp']>0 and (kind=='gunteleport' or b is not core) and abs(b['x']-x)<(b['w']+w)/2 and abs(b['y']-y)<(b['h']+h)/2 for b in bodies):continue
-                        if any(abs(x-_siege_launcher(i,r,motion_start+t)[0])<w/2+25 for i in (0,1) if i!=side or kind=='coreteleport'):continue
-                        destination=(x,y);break
-                    if destination is not None:break
+                    w,h=(50,96) if kind=='gunteleport' else (core['w'],core['h'])
+                    x=max(w/2,min(960-w/2,lx))
+                    # Use the landing column, including the top of a block or platform.
+                    # No empty-ground search and no artificial side boundary.
+                    top=_siege_floor(r,x)
+                    for b in bodies:
+                        if b is core and kind=='coreteleport' or b['hp']<=0:continue
+                        if abs(b['x']-x)<(b['w']+w)/2 and b['y']-b['h']/2>=ly- max(h,80):
+                            top=min(top,b['y']-b['h']/2)
+                    destination=(x,top-h/2);break
             if destination is None:
                 r['buffs'][side][kind]=min(1,r['buffs'][side][kind]+1);continue
             x,y=destination
@@ -2082,7 +2082,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if b['kind']=='zombie':b['fixed']=True;b['vx']=b['vy']=0.
         _siege_zombie_drops(r)
         r['zombie']['kills']=r['zombie']['spawned']-sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)
-        if side==1 and _siege_core(bodies,0)>0:
+        if (side==1 or r.get('zombieSolo')) and _siege_core(bodies,0)>0:
             # Preserve meaningful action at normal speed; discard only quiet tail.
             timing=_siege_replay_timing(frames,t,hit_at,bodies=bodies,events=behavior_events)
             end=timing['visualEnd'];frames[:]=[f for f in frames if f[0]<end];t=end;frames.append(snap(t,None))
@@ -2097,7 +2097,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['turn']=0;r['phase']='play';r['winner']=None;r['trialDamage']=round(trial_damage,1)
     elif r.get('theme')=='zombie':
         if cores[0]<=0 or r['zombie']['won']:r['phase']='over';r['winner']=None
-        else:r['turn']=1-side
+        else:r['turn']=0 if r.get('zombieSolo') else 1-side
     elif min(cores)<=0 or (ammo and all(n>=ammo for n in r['shots'])):
         r['phase']='over';r['winner']=None if abs(cores[0]-cores[1])<.01 else int(cores[1]>cores[0])
     else:
@@ -2236,7 +2236,7 @@ def _siege_sync_plan(r,rt,side,data,lock=False):
     if r['phase']!='play' or rt['replay'] or rt.get('activeEngine') or rt['locked'][side]:raise ValueError('当前不能调整炮击')
     if data.get('round')!=rt['round']:raise ValueError('准备阶段已切换')
     a,p=data.get('angle'),data.get('power')
-    if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):raise ValueError('角度或力度无效')
+    if type(a) not in (int,float) or type(p) not in (int,float) or not (0<=a<360 and 15<=p<=100):raise ValueError('角度或力度无效')
     chosen=_siege_selection(r,data.get('selection'),side)
     force=data.get('force') is True
     if lock:_siege_launch_check(r,side,a,chosen,max(0,time.time()-r.get('motionEpoch',time.time())),force)
@@ -2419,7 +2419,7 @@ def _siege_public(r,key,last):
     _siege_migrate_catalog(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
     v={'rulesVersion':r.get('rulesVersion',23),'theme':r.get('theme','classic'),'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'compoundRecipes':r.get('compoundRecipes',[None,None]),'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in (0,1)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
-    if r.get('theme')=='zombie':v['zombie']={**r['zombie'],'remaining':sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])}
+    if r.get('theme')=='zombie':v['zombie']={**r['zombie'],'solo':bool(r.get('zombieSolo')),'remaining':sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])}
     return _siege_manual_view(r,v,time.time())
 
 def siege_request(data):
@@ -2465,7 +2465,7 @@ def siege_request(data):
     elif kind=='fire':
         if r['phase']!='play' or r['turn']!=seat or now<r['until'] or data.get('rev')!=r['rev']:return {'ok':False,'error':'当前不能发射，请等待回合'}
         a,p=data.get('angle'),data.get('power')
-        if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
+        if type(a) not in (int,float) or type(p) not in (int,float) or not (0<=a<360 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
         try:
             cfg=_siege_public_config(data.get('config'));sel=data.get('selection');force=data.get('force') is True
             if _siege_has_controls(r,sel,seat,cfg):_siege_manual_start(r,seat,a,p,sel,force,cfg,now)
@@ -2474,7 +2474,7 @@ def siege_request(data):
     elif kind=='trialPreview' and r.get('trial') and seat==0:
         if now<r['until']:return {'ok':False,'error':'请等待本炮结束'}
         a,p=data.get('angle'),data.get('power')
-        if type(a) not in (int,float) or type(p) not in (int,float) or not (5<=a<=175 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
+        if type(a) not in (int,float) or type(p) not in (int,float) or not (0<=a<360 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
         import copy
         shadow=copy.deepcopy(r);rng=random.getstate()
         try:
