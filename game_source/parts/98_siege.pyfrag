@@ -1726,7 +1726,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             elif k=='ignite':
                 event_counts[k]+=1;ignite_at(x,y,55+12*counts[k],counts[k]);triggered.add(k)
         n=counts.get('splitshot',0)
-        split_event='launch' if v24 else _siege_event_for(config,'splitshot')
+        split_event=config['triggers'].get('splitshot','launch') if v24 else _siege_event_for(config,'splitshot')
         if v24 and n:n=2**n
         if not n or (split_event!=event and not (event=='bounceRelease' and split_event=='bounce')) or (split_done if parent is None else parent.get('splitDone',False)):return False
         if event=='bounce' and config['delayedSplit']:
