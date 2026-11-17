@@ -780,7 +780,7 @@ r,b=balance_target('core');r['buffs'][0]['through']=1
 g._siege_fire(r,90,55,{'through':1},config=g._siege_public_config({}))
 assert b['id'] in r['event']['passed'] and b['hp']<b['max'],(b,r['event']['passed'])
 # Every special enemy appears in the wave roster; first wave remains approachable.
-assert set(('runner','pole','bomber','priest','dancer','guard','engineer'))<=set(k for wave in g._SIEGE_ZOMBIE_WAVES for k in wave)
+assert set(('runner','pole','bomber','priest','dancer','guard','siegecar'))<=set(k for wave in g._SIEGE_ZOMBIE_WAVES for k in wave)
 assert set(g._SIEGE_ZOMBIE_WAVES[0])=={'walker'}
 # Reward history should avoid identical draws when multiple choices are available.
 r=v24('zombie');r['allowedBuffs']=['big','bounce','wooddrop','stonedrop','push'];g._siege_field(r)
@@ -828,3 +828,65 @@ assert wood in g._siege_zombie_supports(r,core)
 g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
 assert wood['hp']==0 and core['y']>356,(wood,core,r['event']['behaviorEvents'])
 print('Entity knockback, time-gated zombie guidance, blackhole DOT and elevated support collapse PASS')
+
+# Continuous terrain clearance: no walker or flyer should become buried in ridges.
+for kind in ('walker','flyer'):
+    r=v24('zombie');r['zombieMap']='ridge';g._siege_field(r)
+    core=g._siege_core_body(r['bodies'],0)
+    w,h,hp,_,_=g._SIEGE_ZOMBIE_TYPES[kind];x=810
+    z=dict(id=998,kind='zombie',zombieType=kind,side=2,x=x,y=(g._siege_floor_body(r,x,w)-h/2 if kind=='walker' else 185.),w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True)
+    r['bodies']=[core,z];r['zombie']['spawned']=1
+    def snap_terrain(now,p):return [now,p,[[b['id'],b['x'],b['y'],b['hp']] for b in r['bodies']],[],6,[]]
+    for phase in range(3):
+        frames=[];g._siege_zombie_round(r,0,frames,snap_terrain,[])
+        for frame in frames:
+            zz=next((b for b in frame[2] if b[0]==998),None)
+            if zz and zz[3]>0:
+                assert zz[2]+h/2 <=g._siege_floor_body(r,zz[1],w)+1.5,(kind,phase,zz)
+    assert z['x']<x-120,(kind,z)
+# Zombie pressure may move the gun into a gap, but cannot translate a chain of stone blocks.
+r=v24('zombie');g._siege_field(r);core=g._siege_core_body(r['bodies'],0);gun=g._siege_cannon(r,0)
+core.update(x=100,y=390);gun.update(x=420,y=392,vx=0.,vy=0.)
+stones=[dict(id=900+i,kind='stone',side=0,x=375-i*40,y=394,w=36,h=44,hp=75,max=75,vx=0.,vy=0.) for i in range(3)]
+z=dict(id=998,kind='zombie',zombieType='walker',side=2,x=458,y=395,w=32,h=42,hp=44,max=44,vx=0.,vy=0.,fixed=True)
+r['bodies']=[core,gun,*stones,z];r['zombie']['spawned']=1
+start_stones=[b['x'] for b in stones]
+g._siege_zombie_round(r,0,[],lambda t,p:[t,p,[],[],6,[]],[])
+assert [b['x'] for b in stones]==start_stones
+assert gun['x']>=stones[0]['x']+(gun['w']+stones[0]['w'])/2+1.
+# Siege vehicle difficulty changes fire cadence, range, target and armor penetration.
+plans=[]
+for difficulty in ('easy','medium','hard','hell'):
+    r=v24('zombie');r['zombieDifficulty']=difficulty;g._siege_field(r)
+    core=g._siege_core_body(r['bodies'],0);core.update(x=520,y=390)
+    vehicle=dict(id=998,kind='zombie',zombieType='siegecar',side=2,x=360,y=394,w=62,h=44,hp=135,max=135,vx=0.,vy=0.,fixed=True)
+    wall=dict(id=997,kind='stone',side=0,x=440,y=394,w=36,h=44,hp=300,max=300,vx=0.,vy=0.)
+    r['bodies']=[core,vehicle,wall];r['zombie']['round']=2
+    plans.append(g._siege_siegecar_plan(r,vehicle,core))
+assert plans[0] is not None and all(plans)
+assert plans[-1]['damage']>plans[0]['damage']
+r['zombie']['round']=3
+# The vehicle emits a distinct shot event, and damage arrives later in the turn.
+r['zombie']['round']=1
+events=[];frames=[]
+g._siege_zombie_round(r,0,frames,lambda t,p:[t,p,[[b['id'],b['x'],b['y'],b['hp']] for b in r['bodies']],[],6,[]],events)
+shot=next(e for e in events if e[0]=='siegeCarShot')
+impact=next(e for e in events if e[0]=='siegeCarImpact')
+assert impact[1]>shot[1] and wall['hp']<300
+# v24 contact split fires at the first physical body (not the terrain or muzzle).
+r=v24();r['bodies']=[b for b in r['bodies'] if b['kind']=='core']
+r['launchers']=[[235,368],[725,368]]
+target=dict(id=997,side=1,kind='stone',x=235,y=235,w=60,h=30,hp=1000,max=1000,vx=0.,vy=0.,fixed=True)
+r['bodies'].append(target);r['buffs'][0]['splitshot']=1
+g._siege_fire(r,90,55,{'splitshot':1},config=g._siege_public_config({'triggers':{'splitshot':'contact'}}))
+splits=[e for e in r['event']['behaviorEvents'] if e[0]=='split']
+assert splits and splits[0][-1]=='contact' and splits[0][1]>.01,splits
+# Demolition breaches zombies and strips the guard's damage-transfer ability.
+r=v24('zombie');g._siege_field(r)
+core=g._siege_core_body(r['bodies'],0);gun=g._siege_cannon(r,0)
+guard=dict(id=998,kind='zombie',zombieType='guard',side=2,x=gun['x'],y=240,w=44,h=54,hp=500,max=500,vx=0.,vy=0.,fixed=True)
+r['bodies']=[core,gun,guard];r['buffs'][0]['demolish']=1
+g._siege_fire(r,90,55,{'demolish':1},config=g._siege_public_config({}))
+assert guard['hp']<500 and guard.get('sunderRounds',0)>0
+assert any(e[0]=='sunder' for e in r['event']['behaviorEvents'])
+print('Sloped enemy clearance, non-propagating cannon push, siegecar, contact split and demolition anti-armor PASS')
