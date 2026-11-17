@@ -612,12 +612,25 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                     attacked.add(z['id']);amount=damage*(.35**shield if target is core else .65**armor)
                     if target['kind']!='cannon':target['hp']=max(0.,target['hp']-amount)
                     events.append(['zombieAttack',round(t,3),z['id'],target['id'],round(amount,1)])
-                if target['kind']=='cannon' or (z['zombieType']=='engineer' and target['kind'] in ('wood','stone')):
-                    # Advance the movable gun with the enemy, unless backed by a live body.
-                    xx=max(target['w']/2,min(960-target['w']/2,target['x']+d*speed/12*(.55 if target['kind']=='stone' else 1)))
-                    if not any(b is not target and b is not z and b['hp']>0 and abs(xx-b['x'])<(target['w']+b['w'])/2 and abs(target['y']-b['y'])<(target['h']+b['h'])/2 for b in bodies):
-                        target['x']=xx;target['y']=min(target['y'],_siege_floor(r,xx)-target['h']/2);z['x']=nx
-                    elif target['kind']=='cannon':z['x']=max(z['w']/2,min(960-z['w']/2,nx)) # pass a blocked cannon, never stall the wave
+                if target['kind']=='cannon':
+                    # A zombie may push one cannon, never a train of stones behind it.
+                    # Solve free clearance BEFORE moving; leave a physical gap and
+                    # discard the pressure impulse so no velocity propagates downstream.
+                    step_dx=speed/12
+                    clearance=min(
+                        [max(0.,(b['x']-target['x'])*d-(target['w']+b['w'])/2-1.5)
+                         for b in bodies if b is not target and b is not z and b['hp']>0
+                         and b['kind']!='zombie' and (b['x']-target['x'])*d>=0
+                         and abs(target['y']-b['y'])<(target['h']+b['h'])/2]+
+                        [max(0.,(960-target['w']/2-target['x']) if d>0 else (target['x']-target['w']/2))])
+                    distance=min(step_dx,clearance)
+                    if distance>.01:
+                        target['x']+=d*distance
+                        target['y']=min(target['y'],_siege_floor_body(r,target['x'],target['w'])-target['h']/2)
+                        target['vx']=target['vy']=0.
+                        z['x']=max(z['w']/2,min(960-z['w']/2,z['x']+d*distance))
+                    # If blocked, this is an obstruction to attack or bypass,
+                    # not permission to shove the entire rear masonry chain.
                 continue
             if not flying:
                 # Walk on the ground or on top of a climbed barrier.
