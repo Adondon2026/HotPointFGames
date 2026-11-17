@@ -46,10 +46,12 @@ try:
         assert page.evaluate("siegeZombieMirror('siegecar',250,480)") is False
         assert page.evaluate("siegeZombieMirror('siegecar',710,480)") is True
         page.locator('#stockRows .stock-row[data-buff-kind="splitshot"] button').nth(1).tap()
-        expect(page.locator('#stockModeRail .stock-mode-card')).to_have_count(2)
-        expect(page.get_by_role('button',name='分裂时机：击发分裂')).to_have_attribute('aria-pressed','true')
-        page.get_by_role('button',name='分裂时机：落点分裂').tap()
-        expect(page.get_by_role('button',name='分裂时机：落点分裂')).to_have_attribute('aria-pressed','true')
+        expect(page.locator('#stockModeRail .stock-mode-card')).to_have_count(1)
+        expect(page.locator('#stockModeRail button')).to_have_count(2)
+        assert '\\n' not in page.locator('#stockModeRail').inner_text()
+        expect(page.get_by_role('button',name='分裂方式：击发分裂')).to_have_attribute('aria-pressed','true')
+        page.get_by_role('button',name='分裂方式：落点分裂').tap()
+        expect(page.get_by_role('button',name='分裂方式：落点分裂')).to_have_attribute('aria-pressed','true')
         assert page.evaluate("shotConfig.triggers.splitshot")=='contact'
         for width in (320,390,480):
             page.set_viewport_size({'width':width,'height':844})
@@ -68,6 +70,15 @@ try:
         page.set_viewport_size({'width':390,'height':844})
         page.locator('#stockRows .stock-row[data-buff-kind="splitshot"] button').nth(0).tap()
         expect(page.locator('#stockModeRail .stock-mode-card')).to_have_count(0)
+        assert page.evaluate("""()=>getComputedStyle(document.querySelector('#stockModeRail')).display==='none'&&
+            !document.querySelector('#stockPaneBody').classList.contains('has-split')&&
+            document.querySelector('#stockRows').getBoundingClientRect().width>
+            document.querySelector('#stockPaneBody').getBoundingClientRect().width-1""")
+        # Repeated shots and blackhole are not allowed to add extra controls.
+        page.locator('#stockRows .stock-row[data-buff-kind="repeat"] button').nth(1).tap()
+        page.locator('#stockRows .stock-row[data-buff-kind="blackhole"] button').nth(1).tap()
+        expect(page.locator('#stockModeRail button')).to_have_count(0)
+        page.get_by_role('button',name='清空',exact=True).tap()
         # Every row has the same quantity controls, not just a heading.
         assert rows.locator('input[type=number]').count()==len(keys)
         assert rows.locator('button').count()==3*len(keys)

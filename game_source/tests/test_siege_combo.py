@@ -909,3 +909,54 @@ assert gun['x']==before and gun['hp']==75 and not gun.get('fixed'),gun
 g._siege_v24_push(gun,400,-80,1)
 assert gun['vx']>0 and gun['vy']<0 and not gun.get('fixed'),gun
 print('Zombie walks through cannon; cannon stays dynamic and can be knocked back PASS')
+
+# Zombie action plays at normal speed, but cannot add a two-second waiting tail.
+r=v24('zombie');g._siege_field(r)
+r['zombie']['spawned']=sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])
+r['turn']=1
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+ev=r['event']
+phase=ev.get('zombiePhase')
+assert phase is not None,(r['zombie'],ev.get('behaviorEvents'))
+assert ev['duration']-phase<=1.501,(ev['duration'],phase)
+assert ev['playbackDuration']-ev['duration']<=.181,(ev['playbackDuration'],ev['duration'])
+print('Zombie phase: one second of action plus <=0.5s physical tail and <=0.18s hold PASS')
+
+# Dense waves may overlap but must not permanently block each other's progress.
+r=v24('zombie');g._siege_field(r);core=g._siege_core_body(r['bodies'],0)
+core.update(x=110.,y=g._siege_floor_body(r,110,core['w'])-core['h']/2)
+dense=[]
+for j,kind in enumerate(('walker','walker','flyer')):
+    w,h,hp,_,_=g._SIEGE_ZOMBIE_TYPES[kind];x=780.
+    dense.append(dict(id=940+j,kind='zombie',zombieType=kind,side=2,x=x,
+                      y=g._siege_floor_body(r,x,w)-h/2 if kind!='flyer' else 180.,
+                      w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
+r['bodies']=[core,*dense];r['zombie']['spawned']=len(dense)
+g._siege_zombie_round(r,1.,[],lambda now,p:[now,p,[],[],6,[]],[])
+assert all(z['x']<755 for z in dense),dense
+
+# A zombie must not stall to fight a block already behind its direction of travel.
+r=v24('zombie');g._siege_field(r);core=g._siege_core_body(r['bodies'],0)
+core.update(x=110.,y=g._siege_floor_body(r,110,core['w'])-core['h']/2)
+w,h,hp,_,_=g._SIEGE_ZOMBIE_TYPES['walker'];x=760.
+z=dict(id=991,kind='zombie',zombieType='walker',side=2,x=x,
+       y=g._siege_floor_body(r,x,w)-h/2,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True)
+b=dict(id=992,kind='stone',side=0,x=x+30,y=z['y'],w=36,h=44,hp=500,max=500,vx=0.,vy=0.)
+r['bodies']=[core,z,b];r['zombie']['spawned']=1
+g._siege_zombie_round(r,1.,[],lambda now,p:[now,p,[],[],6,[]],[])
+assert z['x']<x-30 and b['hp']==500,(z,b)
+
+# A knocked-back zombie resting on a roof must regain walking AI even though
+# the terrain is lower. A flyer can regain powered flight while airborne.
+for kind in ('walker','flyer'):
+    r=v24('zombie');g._siege_field(r);core=g._siege_core_body(r['bodies'],0)
+    core.update(x=110.,y=g._siege_floor_body(r,110,core['w'])-core['h']/2)
+    w,h,hp,_,_=g._SIEGE_ZOMBIE_TYPES[kind];x=760.
+    roof=dict(id=993,kind='stone',side=0,x=x,y=300.,w=90,h=50,hp=1000,max=1000,vx=0.,vy=0.)
+    y=roof['y']-roof['h']/2-h/2 if kind=='walker' else 200.
+    z=dict(id=994,kind='zombie',zombieType=kind,side=2,x=x,y=y,
+           w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=False)
+    r['bodies']=[core,roof,z];r['zombie']['spawned']=1
+    g._siege_zombie_round(r,1.,[],lambda now,p:[now,p,[],[],6,[]],[])
+    assert z.get('fixed') and z['x']<x-25,(kind,z)
+print('Dense zombie crowd, obstacle behind and airborne/roof AI recovery PASS')
