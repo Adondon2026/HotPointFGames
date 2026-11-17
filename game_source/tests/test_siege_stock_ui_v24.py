@@ -195,8 +195,44 @@ try:
         g._siege_fire(coop,90,25,{},config=g._siege_public_config({}))
         d=g._siege_public(coop,'a',-1)
         page.evaluate('d=>{apply(d);overview=null;update()}',d)
+        # Use the actual two-player zombie replay, and also the shorter wave
+        # transition. At 60Hz the camera must have no discrete scale/position
+        # jump when entering the phase, beginning the return, or unlocking.
+        smooth=page.evaluate("""()=>{
+            const source=playing.event,plan=cameraPlan(source,room.bodies);
+            const final=home(room.turn),out=[];
+            for(const wave of [false,true]){
+                const ev=wave?{...source,duration:source.zombiePhase+.5,
+                    playbackDuration:source.zombiePhase+.68}:source;
+                const s=zombieCameraSchedule(ev);
+                let maxWidth=0,maxCenter=0,maxBoundary=0,previous=null;
+                for(let t=s.start;t<=ev.playbackDuration+.03;t+=1/60){
+                    const v=zombieCameraPose(ev,plan,t,final);
+                    if(previous){
+                        maxWidth=Math.max(maxWidth,Math.abs(v.w-previous.w));
+                        const c=[v.x+v.w/2,v.y+v.w/ASPECT/2];
+                        const p=[previous.x+previous.w/2,previous.y+previous.w/ASPECT/2];
+                        maxCenter=Math.max(maxCenter,Math.hypot(c[0]-p[0],c[1]-p[1]));
+                    }
+                    previous=v;
+                }
+                for(const at of [s.start,s.enterEnd,s.exitStart,s.exitEnd,ev.playbackDuration]){
+                    const before=zombieCameraPose(ev,plan,at-.00001,final);
+                    const after=zombieCameraPose(ev,plan,at+.00001,final);
+                    maxBoundary=Math.max(maxBoundary,Math.hypot(before.x-after.x,before.y-after.y, before.w-after.w));
+                }
+                const last=zombieCameraPose(ev,plan,ev.playbackDuration-.002,final);
+                const error=Math.hypot(last.x-final.x,last.y-final.y,last.w-final.w);
+                out.push({wave,maxWidth,maxCenter,maxBoundary,error,
+                          enter:s.enterEnd-s.start,exit:s.exitEnd-s.exitStart,
+                          spare:ev.playbackDuration-s.exitEnd});
+            }
+            return out
+        }""")
+        assert len(smooth)==2 and all(v['maxWidth']<45 and v['maxCenter']<75 and v['maxBoundary']<.3 and v['error']<.05 and v['exit']>=.35 and v['spare']>.02 for v in smooth),smooth
         page.wait_for_function('playing===null',timeout=15000)
         assert not errors,errors
+        print('Siege zombie cinematic camera 60Hz continuity, short wave, complete return before unlock:',smooth)
         print('Siege zombie coop real browser: shared core, seat 1 right-facing, enemy phase replay PASS')
         print('Siege camera actual replay coverage:',result)
         print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')

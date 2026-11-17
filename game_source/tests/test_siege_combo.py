@@ -1005,3 +1005,13 @@ events=[]
 g._siege_zombie_round(r,0,[],lambda t,p:[t,p,[],[],6,[]],events)
 assert core['hp']<100 and next(e for e in events if e[0]=='siegeCarImpact')[4]==core['id']
 print('Siegecar projectile terrain/solid first hit, visual impact and damage consistency PASS')
+
+# Zombie replay duration no longer inherits a redundant projectile camera
+# handoff. Full physical movement is preserved, followed by only .18s of hold.
+r=v24('zombie');g._siege_field(r)
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+e=r['event']
+assert e['zombiePhase'] is not None and e['duration']>=e['zombiePhase'],e
+assert abs(e['playbackDuration']-e['duration']-.18)<.002,(e['playbackDuration'],e['duration'])
+print('Zombie replay keeps normal-speed physical action without a redundant camera pause PASS')

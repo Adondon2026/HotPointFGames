@@ -2427,7 +2427,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['event'].update(_siege_replay_timing(frames,t,hit_at,bodies=bodies,events=behavior_events),compoundRecipe=compound_recipe,compoundRecipesUsed=compound_selected,compoundEffects=compound_effects)
         if r.get('theme')=='zombie':
             phase=next((e[1] for e in behavior_events if e[0]=='zombiePhase'),None)
-            if phase is not None:r['event'].update(zombiePhase=phase,visualEnd=t,playbackDuration=max(r['event']['playbackDuration'],t+.18))
+            if phase is not None:
+                # The zombie camera returns to the active cannon WITHIN the
+                # final action/settling interval. The generic projectile
+                # handoff must not add a second, inactive camera wait.
+                r['event'].update(zombiePhase=phase,visualEnd=t,playbackDuration=round(t+.18,3))
         r['until']=time.time()+_SIEGE_REPLAY_PREROLL+r['event']['playbackDuration']+.10
     else:r['until']=time.time()+(.35 if control is not None else t+.35)
 
