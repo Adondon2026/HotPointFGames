@@ -975,7 +975,7 @@ for left in (False,True):
     core.update(x=xcore,y=390.,hp=100.,max=100.)
     car=dict(id=998,kind='zombie',zombieType='siegecar',side=2,x=xcar,y=394.,
              w=62,h=44,hp=135,max=135,vx=0.,vy=0.,fixed=True)
-    wall=dict(id=997,kind='stone',side=0,x=(xcar+xcore)/2+(-85 if left else 85),
+    wall=dict(id=997,kind='stone',side=0,x=470. if left else 430.,
               y=390.,w=36,h=44,hp=300,max=300,vx=0.,vy=0.)
     r['bodies']=[core,car,wall];r['zombie']['round']=2;r['zombie']['spawned']=1
     plan=g._siege_siegecar_plan(r,car,core)
