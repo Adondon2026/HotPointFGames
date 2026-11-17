@@ -45,7 +45,7 @@ try:
         assert page.evaluate("siegeZombieMirror('walker',710,480)") is False
         assert page.evaluate("siegeZombieMirror('siegecar',250,480)") is False
         assert page.evaluate("siegeZombieMirror('siegecar',710,480)") is True
-        page.get_by_role('button',name='增加分裂弹').tap()
+        page.locator('#stockRows .stock-row[data-buff-kind="splitshot"] button').nth(1).tap()
         expect(page.locator('#stockModeRail .stock-mode-card')).to_have_count(2)
         expect(page.get_by_role('button',name='分裂时机：击发分裂')).to_have_attribute('aria-pressed','true')
         page.get_by_role('button',name='分裂时机：落点分裂').tap()
@@ -66,7 +66,7 @@ try:
             }""")
             assert regions['gap']>=3 and regions['railLeft']>=regions['panelLeft'] and regions['rowWidth']>160 and regions['badButtons']==0 and regions['oldInline']==0,(width,regions)
         page.set_viewport_size({'width':390,'height':844})
-        page.get_by_role('button',name='减少分裂弹').tap()
+        page.locator('#stockRows .stock-row[data-buff-kind="splitshot"] button').nth(0).tap()
         expect(page.locator('#stockModeRail .stock-mode-card')).to_have_count(0)
         # Every row has the same quantity controls, not just a heading.
         assert rows.locator('input[type=number]').count()==len(keys)
