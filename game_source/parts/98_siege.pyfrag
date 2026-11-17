@@ -673,9 +673,11 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                 z['x']=max(z['w']/2,min(960-z['w']/2,nx))
         if physics:physics(t)
         frames.append(snap(t,None))
-    # Let a destroyed support actually collapse before returning control.
+    # Show only the immediate post-attack collapse; the former 24 samples
+    # added up to two seconds of waiting even when attacks were finished.
+    # Bodies retain their actual position and velocity for the next round.
     if physics:
-        for j in range(1,25):
+        for j in range(1,7):
             if not any(b['hp']>0 and not b.get('fixed') and b['kind']!='zombie' and (math.hypot(b['vx'],b['vy'])>20 or not _siege_body_supported(b,bodies,_siege_floor(r,b['x']))) for b in bodies):break
             t=start+1+j/12;physics(t);frames.append(snap(t,None))
     r['zombiePhasePhysics']=False
@@ -1181,7 +1183,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     v24=_siege_v24(r)
     if v24:
         split_trigger=config['triggers'].get('splitshot','launch')
-        config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={'splitshot':split_trigger} if split_trigger in ('launch','contact') else {},build='attack')
+        config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={'splitshot':split_trigger} if split_trigger in ('launch','contact') else {},splitPattern='fan',burstMode='serial',build='attack')
     unified=config['unified'];trial=bool(r.get('trial'));trial_damage=0.
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
     side=r['turn'] if side is None else side; direction=_siege_direction(r,side); motion_start=max(0,(live['clock'] if live is not None else time.time())-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get('windPair',0)*direction if live is not None else r.get('wind',0)
@@ -2352,7 +2354,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['event'].update(_siege_replay_timing(frames,t,hit_at,bodies=bodies,events=behavior_events),compoundRecipe=compound_recipe,compoundRecipesUsed=compound_selected,compoundEffects=compound_effects)
         if r.get('theme')=='zombie':
             phase=next((e[1] for e in behavior_events if e[0]=='zombiePhase'),None)
-            if phase is not None:r['event'].update(zombiePhase=phase,visualEnd=t,playbackDuration=max(r['event']['playbackDuration'],t+.48))
+            if phase is not None:r['event'].update(zombiePhase=phase,visualEnd=t,playbackDuration=max(r['event']['playbackDuration'],t+.18))
         r['until']=time.time()+_SIEGE_REPLAY_PREROLL+r['event']['playbackDuration']+.10
     else:r['until']=time.time()+(.35 if control is not None else t+.35)
 
