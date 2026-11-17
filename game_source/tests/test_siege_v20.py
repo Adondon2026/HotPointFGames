@@ -1,78 +1,47 @@
-"""v0.20.0 integration: server-authoritative new buffs, negatives and walls."""
-import importlib.util, math, os, pathlib, random, tempfile, time
-os.environ['GAMEHALL_DATA_DIR']=tempfile.mkdtemp(prefix='zmz_v20_')
-spec=importlib.util.spec_from_file_location('v20',pathlib.Path(__file__).resolve().parents[1]/'dist/game_hall_lan_v6_2.py')
-g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
-positives={'spiral','repeat','push','clone'}
-negatives={'heavy','vanish','wobble','fart'}
-assert positives<=set(g._SIEGE_ITEMS) and negatives==set(g._SIEGE_NEGATIVE)
-assert positives<=set(g._SIEGE_SELECTABLE) and not (negatives&set(g._SIEGE_SELECTABLE))
-assert len(g._SIEGE_ITEMS)==24
-def fresh():
-    r=g._siege_new('A','a',True,0,'standard','off',0,'stock')
-    r['turn']=0;r['items']=[];r['wind']=0
-    return r
-def fire(r,power=85,angle=42,select=None):
-    r['turn']=0;r['phase']='play';g._siege_fire(r,angle,power,select)
-    assert r['event'] and r['shots'][0]>=1
-    return r['event']
-# Diverse item pools generate BOTH good and bad new pickups.
-kinds=set()
-for seed in range(32):
-    random.seed(seed)
-    f=g._SIEGE_FIELDS['standard']
-    kinds.update(i['kind'] for i in g._siege_items(25,f,allowed=g._SIEGE_ITEMS))
-assert kinds>=positives|negatives,kinds
-# Negative effects are forced only on the NEXT own shot; repeated same kind is unique.
-r=fresh();x,y=g._siege_muzzle(0,r,42)
-r['items']=[dict(id=k,kind='heavy',amount=1,x=x+15*k,y=y,r=18) for k in (1,2)]
-e=fire(r);assert 'heavy' not in e['negativeActive'] and r['negativePending'][0]=={'heavy':1}
-r['items']=[];e=fire(r);assert e['negativeActive']==['heavy'] and not r['negativePending'][0]
-base=fresh();baseline=fire(base)
-heavy=fresh();heavy['negativePending'][0]['heavy']=1;eh=fire(heavy)
-assert eh['impact'][0]<baseline['impact'][0]-120,(eh['impact'],baseline['impact'])
-vanish=fresh();vanish['negativePending'][0]['vanish']=1;ev=fire(vanish)
-sizes=[f[4] for f in ev['frames'] if f[1]]
-assert sizes[0]>sizes[-1] and min(sizes)>=2.5
-fart=fresh();fart['negativePending'][0]['fart']=1;ep=fire(fart)
-assert len(ep['puffs'])>3 and ep['impact'][1]<baseline['impact'][1]-50
-wobble=fresh();wobble['negativePending'][0]['wobble']=1;ew=fire(wobble)
-assert 'wobble' in ew['negativeActive'] and ew['frames'][10][1]!=baseline['frames'][10][1]
-combo=fresh()
-for kind in negatives:combo['negativePending'][0][kind]=1
-mix=fire(combo)
-assert set(mix['negativeActive'])==negatives and not combo['negativePending'][0]
-# The centre follows gravity but the spiral modulation changes as stack rises.
-one=fresh();one['buffs'][0]['spiral']=1;e1=fire(one,select={'spiral':1})
-three=fresh();three['buffs'][0]['spiral']=3;e3=fire(three,select={'spiral':3})
-assert e1['frames'][6][1]!=e3['frames'][6][1]
-# Additional shells appear at delayed frames; 3 stacks produce 4 total shell paths.
-rep=fresh();rep['buffs'][0]['repeat']=3;er=fire(rep,select={'repeat':3})
-assert max(len(frame[3]) for frame in er['frames'])>=3
-assert len(er['frames'][0][3])==0
-# Clone expires after two further owner shots and adds independently damaging projectiles.
-cl=fresh();cl['buffs'][0]['clone']=1;ec=fire(cl,select={'clone':1})
-assert len(cl['clones'])==1 and cl['clones'][0]['remaining']==2
-ec2=fire(cl);assert cl['clones'][0]['remaining']==1 and any(p[0]>=300 for f in ec2['frames'] for p in f[3])
-ec3=fire(cl);assert not cl['clones'] and any(p[0]>=300 for f in ec3['frames'] for p in f[3])
-ec4=fire(cl);assert not any(p[0]>=300 for f in ec4['frames'] for p in f[3])
-# Wall = invulnerable physical contact with explosion, and bounce uses side wall.
-wall=fresh();wall['bodies']=[b for b in wall['bodies'] if b['kind']=='core'];ewall=fire(wall)
-assert ewall['hitAt']>0 and ewall['impact'] and ewall['impact'][0]>=949
-bb=fresh();bb['bodies']=[b for b in bb['bodies'] if b['kind']=='core'];bb['buffs'][0]['bounce']=2
-eb=fire(bb,select={'bounce':2})
-assert any(x>=940 for x,y,*_ in eb['bounces']),eb['bounces']
-# All effects stack without changing attack-selection validation.
-stack=fresh()
-for kind in positives:stack['buffs'][0][kind]=2
-stack['negativePending'][0].update({k:1 for k in negatives})
-es=fire(stack,select={k:2 for k in positives})
-assert positives<=set(es['attacks']) and negatives==set(es['negativeActive'])
-# Two simultaneous shots use one server-authoritative common physics world.
-sync=fresh();sync['bot']=False;sync['buffs'][0].update(spiral=2,repeat=2,clone=1);sync['negativePending'][1]['heavy']=1
-sync['buffs'][1]['push']=1;sync['combatMode']='sync';sync['reloadSeconds']=0
-rt=g._siege_sync_runtime(sync,time.time())
-rt['plans']=[(42,80,{'spiral':2,'repeat':2,'clone':1}),(42,80,{'push':1})];rt['locked']=[True,True]
-g._siege_sync_compute(sync,rt,time.time())
-assert sync['shots']==[1,1] and rt['replay']['frames']
-print('ZMZ v0.20.0: new buffs, negative next-shot triggers, compound physics, wall bounce, clones and sync PASS')
+"""Room-wide per-kind stack caps, allowlist, custom numbers and fort strength."""
+import importlib.util, pathlib, time, json, tempfile, os, threading, urllib.request, urllib.error, random
+os.environ['GAMEHALL_DATA_DIR']=tempfile.mkdtemp()
+spec=importlib.util.spec_from_file_location('g',pathlib.Path(__file__).resolve().parents[1]/'dist/game_hall_lan_v6_2.py');g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
+random.seed(40412)
+# Friend's whitelist regression, expanded to all maps, disabled and rare kinds.
+ALL=set(g._SIEGE_ACTIVE_ITEMS)
+for allowed in ([],['big'],['splitshot','shock'],['gunteleport','heal'],['blackhole'],list(ALL)):
+ for mode in g._SIEGE_MODES:
+  r=g._siege_new('A','a',True,13,mode,'off',0,'stock',allowed)
+  assert set(g._siege_allowed(r))==set(allowed)
+  assert len(r['items'])==(13 if allowed else 0),(mode,allowed,len(r['items']))
+  assert all(x['kind'] in allowed for x in r['items'])
+  if allowed:
+   r['items'].clear();r['respawns']=[dict(id=1,kind='shield',x=250,y=200,r=15,slot=1,readyAt=0)];g._siege_refill(r)
+   assert len(r['items'])==1 and r['items'][0]['kind'] in allowed
+  g._siege_rematch(r);assert all(x['kind'] in allowed for x in r['items'])
+r=g._siege_new('A','a',True,0,'classic','off',0,'stock',None,{'bounce':20,'power':3,'through':10});r['buffs'][0].update(bounce=20,power=20,through=20)
+assert g._siege_selection(r,{'bounce':20,'power':3,'through':10})=={'bounce':20,'power':3,'through':10}
+for bad in [{'power':4},{'bounce':21},{'through':11}]:
+ try:g._siege_selection(r,bad);raise AssertionError(bad)
+ except ValueError:pass
+# Vertical shot on empty ground has time for all twenty actual bounces.
+r['bodies']=[b for b in r['bodies'] if b['kind']=='core'];g._siege_fire(r,90,15,{'bounce':20});assert len([x for x in r['event']['bounces'] if x[3]==-1])==20,r['event']['bounces'];assert r['buffs'][0]['bounce']==0
+# Fort resistance applies to pieces, leaves core HP/starting health unchanged.
+loss=[]
+for fort in ('normal','sturdy','fortified'):
+ r=g._siege_new('A','a',True,0,'classic','off',0,'stock',fort_strength=fort)
+ r['bodies']=[dict(id=0,side=0,x=100,y=400,w=30,h=32,kind='core',hp=100,max=100,vx=0.,vy=0.,fixed=True),dict(id=1,side=1,x=850,y=400,w=30,h=32,kind='core',hp=100,max=100,vx=0.,vy=0.,fixed=True),dict(id=2,side=1,x=300,y=350,w=30,h=30,kind='stone',hp=75,max=75,vx=0.,vy=0.,fixed=True)]
+ r['launchers']=[[235,368],[725,368]];g._siege_fire(r,15,25);loss.append(75-r['bodies'][2]['hp']);assert g._siege_core(r['bodies'],0)==100 and g._siege_core(r['bodies'],1)==100
+assert loss[0]>loss[1]>loss[2]>0,loss
+# HTTP authority, settings persistence, actual new round parameters.
+s=g.ReliableThreadingHTTPServer(('127.0.0.1',0),g.Handler);threading.Thread(target=s.serve_forever,daemon=True).start();url=f'http://127.0.0.1:{s.server_address[1]}'
+def api(path,data=None):
+ req=urllib.request.Request(url+path,data=json.dumps(data).encode() if data is not None else None,headers={'Content-Type':'application/json'})
+ try:res=urllib.request.urlopen(req,timeout=15)
+ except urllib.error.HTTPError as e:res=e
+ with res:return json.loads(res.read())
+try:
+ r=api('/api/rooms',{'name':'A','guestPref':'b'*48});base='/r/'+r['code']+'/api/';t=r['token'];u=api(base+'join',{'name':'B','seatKey':g.secrets.token_hex(12)})['token']
+ def act(kind,token=t,**kw):return api(base+'action',dict(token=token,type=kind,requestId=g.secrets.token_hex(12),**kw))
+ assert act('set_mode',mode='siege')['ok'];cfg=dict(itemCount=13,mode='standard',wind='off',ammo=17,buffMode='stock',combatMode='sync',reloadSeconds=27,allowedBuffs=['bounce'],stackCaps={'bounce':20,'power':3},fortStrength='sturdy')
+ assert not act('siege_settings',token=u,**cfg)['ok'];assert not act('siege_settings',**{**cfg,'stackCaps':{'power':20}})['ok'];assert act('siege_settings',**cfg)['ok'];assert act('start')['ok']
+ d=api(base+'siege',dict(token=t,type='state'));assert d['ammo']==17 and 20<d['remaining']<=27 and d['stackCaps']['bounce']==20 and d['stackCaps']['power']==3 and d['fortStrength']=='sturdy' and all(x['kind']=='bounce' for x in d['items'])
+ fresh=api('/api/rooms',{'name':'A','guestPref':'b'*48});v=api('/r/'+fresh['code']+'/api/state?token='+fresh['token'])['state']['settings'];assert v['siegeAmmo']==17 and v['siegeReload']==27 and v['siegeAllowedBuffs']==['bounce'] and v['siegeStackCaps']['bounce']==20 and v['siegeFortStrength']=='sturdy'
+finally:s.shutdown();s.server_close()
+print('v0.20: whitelist, per-item caps, 20 actual bounces, fort resistance, custom numeric settings, permissions and persistence PASS',loss)

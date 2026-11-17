@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:name="com.chuanmahjong.nearby.GameHallApplication"
+        android:name=".GameHallApplication"
         android:allowBackup="true"
         android:label="${gameHallLabel}"
         android:supportsRtl="true"
@@ -18,12 +18,12 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name="com.chuanmahjong.nearby.GameActivity"
+            android:name=".GameActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="false" />
 
         <activity
-            android:name="com.chuanmahjong.nearby.MainActivity"
+            android:name=".MainActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="true">
             <intent-filter>
@@ -33,7 +33,7 @@
         </activity>
 
         <service
-            android:name="com.chuanmahjong.nearby.GameServerService"
+            android:name=".GameServerService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice"
             android:stopWithTask="false" />

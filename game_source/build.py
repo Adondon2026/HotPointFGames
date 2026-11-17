@@ -2,8 +2,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-# Single source for Web game version; regenerated with every online game update.
-GAME_DISPLAY_VERSION = "ZMZ v0.20.2"
+GAME_DISPLAY_VERSION = "ZMZ v0.24.1"
 
 def read(rel):
     return (ROOT / rel).read_text(encoding="utf-8").replace("@@ZMZ_GAME_VERSION@@", GAME_DISPLAY_VERSION)
@@ -28,6 +27,7 @@ def build_html():
         read("web/games/draw_guess.js"),
         read("web/table_games.js"),
         read("web/90_common.js"),
+        read("web/games/siege_catalog.js"),
         read("web/lite.js"),
         read("web/feedback.js"),
         read("web/games/army.js"),
@@ -51,7 +51,7 @@ def build_release():
         read("parts/00_header.pyfrag"),
         "HTML_PAGE = " + repr(html) + "\n\n",
         "HUB_PAGE = " + repr(read("web/hub.html")) + "\n\n",
-        "SIEGE_PAGE = " + repr(read("web/games/siege.html").replace("<script>", "<script>\n" + read("web/games/siege_audio.js") + "\n", 1)) + "\n\n",
+        "SIEGE_PAGE = " + repr(read("web/games/siege.html").replace("<script>", "<script>\n" + read("web/games/siege_catalog.js") + "\n" + read("web/games/siege_audio.js") + "\n", 1)) + "\n\n",
         read("parts/01_draw_constants.pyfrag"),
         read("parts/games/doudizhu_backend.pyfrag"),
         read("parts/games/chuanma_backend.pyfrag"),

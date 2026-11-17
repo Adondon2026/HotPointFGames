@@ -23,7 +23,7 @@ for seed in range(30):
 assert set(g._SIEGE_SINGLE_ITEMS)<=seen
 choice=g.random.choice
 for k in g._SIEGE_SINGLE_ITEMS:
-    r=new();r['respawns']=[dict(id=0,kind='big',x=300,y=200,r=15,slot=0,readyAt=0,amount=5)];g.random.choice=lambda seq,k=k:k;g._siege_refill(r);assert r['items'][0]['amount']==1
+    r=new();r['allowedBuffs']=[k];r['respawns']=[dict(id=0,kind='big',x=300,y=200,r=15,slot=0,readyAt=0,amount=5)];g.random.choice=lambda seq,k=k:k;g._siege_refill(r);assert r['items'][0]['amount']==1
     if k=='heal':continue
     for mode in ('auto','stock'):
         r=new();r['buffMode']=mode;x,y=g._siege_muzzle(0,r,75);r['items']=[dict(id=i,kind=k,amount=5,x=x,y=y,r=20) for i in range(2)];g._siege_fire(r,75,35);assert r['buffs'][0][k]==1 and [p['gained'] for p in r['event']['pickups']]==[1,0]

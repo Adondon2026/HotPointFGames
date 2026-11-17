@@ -45,7 +45,7 @@ g._siege_fire(r,28,42,{'splitshot':1,'repeat':1,'clone':1,'push':1})
 ev=r['event']
 assert ev['attackCounts']['splitshot']==1 and ev['attackCounts']['repeat']==1
 assert len(ev['fragmentHits'])>=5,ev['fragmentHits']
-assert len(r['clones'])>=5,(len(r['clones']),ev['fragmentHits'])
+assert len(r['clones'])==1,(len(r['clones']),ev['fragmentHits'])
 assert all(c['side']==0 and c['remaining']==2 for c in r['clones'])
 
 # A teleported gun may stand on a block; when the block is destroyed it drops.

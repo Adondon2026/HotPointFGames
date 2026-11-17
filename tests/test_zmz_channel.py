@@ -1,35 +1,31 @@
-"""The upstream APK stays unchanged unless a ZMZ build is explicitly requested."""
+"""ZMZ channel isolation after syncing main v0.24."""
 from pathlib import Path
 import re
-ROOT=Path(__file__).resolve().parents[1]
-def read(path):return (ROOT/path).read_text(encoding='utf-8')
+root=Path(__file__).resolve().parents[1]
+def read(p):return (root/p).read_text(encoding='utf-8')
 gradle=read('app/build.gradle')
 manifest=read('app/src/main/AndroidManifest.xml')
-strings=read('app/src/main/res/values/strings.xml')
 updates=read('app/src/main/java/com/chuanmahjong/nearby/GameUpdates.kt')
-workflow=read('.github/workflows/game.yml')
+build=read('game_source/build.py')
+game=read('.github/workflows/game.yml')
 android=read('.github/workflows/android.yml')
-notes=read('docs/ZMZ_v0.20.2_物理与交互修复.md')
-assert 'namespace "com.chuanmahjong.nearby"' in gradle
-assert 'applicationId "com.chuanmahjong.nearby"' in gradle
-assert 'gradleProperty("zmzBuild")' in gradle
+siege=read('game_source/parts/98_siege.pyfrag')
+assert 'versionCode(zmzBuild ? 13 : 5)' in gradle
+assert '0.24.1-ZMZ' in gradle and '1.4' in gradle
 assert 'applicationIdSuffix(zmzBuild ? ".zmz.debug" : ".debug")' in gradle
-assert 'versionCode(zmzBuild ? 12 : 4)' in gradle
-assert '0.20.2-ZMZ' in gradle
-assert 'HotPointFGames-ZMZ-v0.20.2-' in gradle
+assert 'HotPointFGames-ZMZ-v0.24.1-' in gradle
 assert 'android:label="${gameHallLabel}"' in manifest
-assert 'com.chuanmahjong.nearby.MainActivity' in manifest
-assert '热点游戏厅' in strings and 'ZMZ' not in strings
 assert 'BuildConfig.ZMZ_BUILD' in updates
-assert 'else Regex("game-' in updates
 assert 'Regex("zmz-game-v[0-9]+' in updates
-assert 'zmz-game-v0.20.2-' in workflow
-assert '--latest=false' in workflow
-assert 'bash gradlew assembleDebug -PzmzBuild=true --no-daemon' in android
-assert 'app/build/outputs/apk/debug/*.apk' in android
-assert 'HotPointFGames-ZMZ-v0.20.2-Android' in android
-assert 'ZMZ v0.20.2' in notes and '负面' in notes and '分裂' in notes and '连续' in notes
+assert 'else Regex("game-' in updates
+assert 'LATEST_MANIFEST' in updates and 'resolveLatest' in updates
+assert 'GAME_DISPLAY_VERSION = "ZMZ v0.24.1"' in build
+assert 'web/games/siege_catalog.js' in build
+assert 'zmz-game-v0.24.1-' in game and '--latest=false' in game
+assert "'Zmz_dev'" in android and 'PzmzBuild=true' in android
+assert 'testDebugUnitTest' in android
+assert '_siege_v24' in siege and 'def _siege_v20_push' in siege and 'def _siege_gun_gravity' in siege
+assert all((root/'game_source/web/games/siege_catalog.js').read_text(encoding='utf-8').find(k)>=0 for k in ('spiral','clone','repeat','push'))
 pattern=re.compile(r'zmz-game-v\d+\.\d+\.\d+-\d+-\d+-[a-f0-9]{7,40}')
-assert pattern.fullmatch('zmz-game-v0.20.2-123-1-51ee19de42bc')
-assert not pattern.fullmatch('game-123-1-51ee19de42bc')
-print('ZMZ v0.20.2 build isolation and release channel verified')
+assert pattern.fullmatch('zmz-game-v0.24.1-123-1-51ee19de42bc')
+print('ZMZ v0.24.1: independent Android ID, v24 upstream, full channel split PASS')

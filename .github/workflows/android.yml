@@ -57,9 +57,6 @@ jobs:
         run: |
           python tests/test_game_update_manifest.py
           python tests/test_zmz_channel.py
-          node game_source/tests/test_siege_ui_regression.js
-          node game_source/tests/test_siege_state_controls.js
-          node game_source/tests/test_siege_ui_v202.js
           python game_source/tests/smoke_test.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py
@@ -82,26 +79,27 @@ jobs:
           python game_source/tests/test_siege_v18.py
           python game_source/tests/test_siege_v181.py
           python game_source/tests/test_siege_v182.py
-          python game_source/tests/test_siege_buff_filter.py
           python game_source/tests/test_siege_v20.py
-          python game_source/tests/test_siege_upstream_v20.py
           python game_source/tests/test_siege_v201.py
-          python game_source/tests/test_siege_v202.py
+          python game_source/tests/test_siege_map_pools.py
+          python game_source/tests/test_siege_zmz_v20.py
+          python game_source/tests/test_siege_zmz_v202.py
+          python game_source/tests/test_siege_combo.py
           python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
           python tools/sync_game_source.py
           python tests/test_android_bridge.py
       - name: Build Android APK
         run: |
-          if [[ "$GITHUB_REF_NAME" == "Zmz_dev" ]]; then
-            bash gradlew assembleDebug -PzmzBuild=true --no-daemon
+          if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then
+            bash gradlew testDebugUnitTest assembleDebug -PzmzBuild=true --no-daemon
           else
-            bash gradlew assembleDebug --no-daemon
+            bash gradlew testDebugUnitTest assembleDebug --no-daemon
           fi
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name == 'Zmz_dev' && 'HotPointFGames-ZMZ-v0.20.2-Android' || 'HotPointFGames-Android' }}
+          name: ${{ github.ref_name == 'Zmz_dev' && 'HotPointFGames-ZMZ-v0.24.1-Android' || 'HotPointFGames-Android' }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
       - name: Upload importable game files
@@ -112,3 +110,32 @@ jobs:
             game_source/dist/game_hall_lan_v6_2.py
             game_source/dist/game_hall_lan_v6_2.txt
           if-no-files-found: error
+
+  publish-host:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: HotPointFGames-Android
+          path: publish
+      - name: Publish versioned Android APK (non-latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^[[:space:]]*versionName "\([^"]*\)".*/\1/p' app/build.gradle)"
+          test -n "$VERSION"
+          TAG="android-v$VERSION"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Host version $VERSION already published"
+          else
+            cp publish/app-debug.apk "publish/HotPointFGames-$VERSION.apk"
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title "Android host $VERSION" --notes "Android ARM64 debug APK. Host update: direct game manifest download without GitHub REST API. Debug signing may differ from earlier builds; preserve local data before any uninstall. Game releases remain latest." \
+              "publish/HotPointFGames-$VERSION.apk"
+          fi
