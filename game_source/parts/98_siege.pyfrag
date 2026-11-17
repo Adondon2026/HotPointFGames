@@ -600,12 +600,26 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
         for z in alive:
             if z['hp']<=0:continue
             ground=_siege_floor_body(r,z['x'],z['w'])
-            # Let an airborne zombie complete its ballistic movement first.
+            # Restore AI after physics settles on *any* real support, not just
+            # terrain. Previously zombies standing on a wood/stone roof stayed
+            # non-fixed forever because their feet were above terrain level.
+            # Flyers can resume powered flight in midair once the impulse fades.
             if not z.get('fixed'):
-                if z['y']+z['h']/2 < ground-6 or math.hypot(z.get('vx',0),z.get('vy',0))>65:
+                feet=z['y']+z['h']/2
+                blocks=[b for b in bodies if b is not z and b['hp']>0
+                        and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait')
+                        and abs(z['x']-b['x'])<(z['w']+b['w'])/2
+                        and abs(feet-(b['y']-b['h']/2))<=6]
+                on_ground=feet>=ground-6
+                flying_recovered=z['zombieType']=='flyer' and z.get('pushTime',0)<=0
+                if math.hypot(z.get('vx',0),z.get('vy',0))>85 if flying_recovered else math.hypot(z.get('vx',0),z.get('vy',0))>65:
+                    continue
+                if not (on_ground or blocks or flying_recovered):
                     continue
                 z['fixed']=True;z['vx']=z['vy']=0.
-                z['y']=ground-z['h']/2
+                if on_ground:z['y']=ground-z['h']/2
+                elif blocks and not flying_recovered:
+                    z['y']=min(b['y']-b['h']/2 for b in blocks)-z['h']/2
             _,_,_,speed,damage=_SIEGE_ZOMBIE_TYPES[z['zombieType']]
             _,speed_scale,damage_scale,_=_siege_zombie_difficulty(r);speed*=speed_scale;damage*=damage_scale
             d=1 if core['x']>z['x'] else -1
