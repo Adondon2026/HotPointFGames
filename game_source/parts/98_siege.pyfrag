@@ -698,6 +698,8 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
             if not any(b['hp']>0 and not b.get('fixed') and b['kind']!='zombie' and (math.hypot(b['vx'],b['vy'])>20 or not _siege_body_supported(b,bodies,_siege_floor(r,b['x']))) for b in bodies):break
             t=start+1+j/12;physics(t);frames.append(snap(t,None))
     r['zombiePhasePhysics']=False
+    for b in bodies:
+        if b['kind']=='zombie' and b.get('sunderRounds',0)>0:b['sunderRounds']-=1
     r['armed']=[{},{}]
     _siege_zombie_supply(r)
     return t
@@ -1031,7 +1033,7 @@ def _siege_config(config=None):
     if not isinstance(config,dict) or set(config)-{'build','fuseMode','fuseTime','splitMode','splitTime','parentEnd','scopes','childFuseTime','diveTime','copyMode','childSplit','blackholeMode','simple','unified','triggers','splitPattern','burstMode','manual','delayedSplit'}:raise ValueError('炮弹配置无效')
     out={'build':config.get('build','attack'),'fuseMode':config.get('fuseMode','strict'),'fuseTime':config.get('fuseTime',3),'splitMode':config.get('splitMode','air'),'splitTime':config.get('splitTime',1.5),'parentEnd':config.get('parentEnd','continue'),'scopes':config.get('scopes',{}),'childFuseTime':config.get('childFuseTime',0),'diveTime':config.get('diveTime',1.2),'copyMode':config.get('copyMode','bounce'),'childSplit':config.get('childSplit',False),'blackholeMode':config.get('blackholeMode','fixed'),'simple':config.get('simple',False),'unified':config.get('unified',False),'triggers':config.get('triggers',{}),'splitPattern':config.get('splitPattern','fan'),'burstMode':config.get('burstMode','serial'),'manual':config.get('manual',False),'delayedSplit':config.get('delayedSplit',False)}
     if out['build'] not in ('safe','attack') or out['fuseMode'] not in ('strict','either','delay') or out['splitMode'] not in ('air','hit','timer','bounce','expire') or out['parentEnd'] not in ('continue','vanish','explode'):raise ValueError('炮弹行为无效')
-    if type(out['unified']) is not bool or not isinstance(out['triggers'],dict) or any(k not in _SIEGE_PAYLOADS or v not in _SIEGE_EVENT_KINDS for k,v in out['triggers'].items()) or out['splitPattern'] not in ('fan','down','radial') or out['burstMode'] not in ('serial','volley'):raise ValueError('触发设置无效')
+    if type(out['unified']) is not bool or not isinstance(out['triggers'],dict) or any(k not in _SIEGE_PAYLOADS or (v not in _SIEGE_EVENT_KINDS and not (k=='splitshot' and v=='contact')) for k,v in out['triggers'].items()) or out['splitPattern'] not in ('fan','down','radial') or out['burstMode'] not in ('serial','volley'):raise ValueError('触发设置无效')
     if type(out['manual']) is not bool or type(out['delayedSplit']) is not bool:raise ValueError('操纵配置无效')
     if type(out['simple']) is not bool:raise ValueError('炮弹配置无效')
     if out['blackholeMode'] not in ('fixed','attached'):raise ValueError('引力场行为无效')
@@ -1338,10 +1340,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         # Keep the gun operable; its body can still receive collision impulses.
         if b['kind']=='cannon':return
         if b['kind']=='zombie':
-            if b.get('zombieType')!='guard':
+            if b.get('zombieType')!='guard' and not b.get('sunderRounds',0):
                 guard=min((q for q in bodies if q['hp']>0 and q.get('zombieType')=='guard' and math.hypot(q['x']-b['x'],q['y']-b['y'])<=105),key=lambda q:math.hypot(q['x']-b['x'],q['y']-b['y']),default=None)
                 if guard is not None:b=guard
-            damage*=.70 if b.get('zombieType')=='shield' else .80 if b.get('zombieType')=='heavy' else 1.
+            damage*=(.70 if b.get('zombieType')=='shield' else .80 if b.get('zombieType')=='heavy' else 1.) if not b.get('sunderRounds',0) else 1.
         if b['kind']!='core' and b['side'] in (0,1):damage*= {'normal':1.,'sturdy':.75,'fortified':.55}.get(r.get('fortStrength'),1.)
         source=source if v24 and source in (0,1) else side
         source_defense=attack_defense(source)
@@ -1774,10 +1776,25 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         # Each elite charge triggers at most once per shot, not per fragment.
         if attack_counts.get('demolish') and 'demolish' not in elite_used:
             elite_used.add('demolish');level=attack_counts['demolish'];reach=100+30*(level-1);behavior_events.append(['bounceBlast',round(t,3),round(x,1),round(y,1),reach])
+            in_range=[]
             for b in bodies:
-                if b['hp']<=0 or b.get('platform') or b['kind'] not in ('wood','stone') or b['side']==side:continue
+                if b['hp']<=0 or b.get('platform'):continue
                 dist=math.hypot(max(0.,abs(b['x']-x)-b['w']/2),max(0.,abs(b['y']-y)-b['h']/2))
-                if dist<reach:hurt(b,125*level*(1-dist/(reach+25)),side)
+                if dist>=reach:continue
+                if b['kind'] in ('wood','stone') and b['side']!=side:
+                    hurt(b,125*level*(1-dist/(reach+25)),side)
+                if r.get('theme')=='zombie' and b['kind']=='zombie':
+                    in_range.append((b,dist))
+            if in_range:
+                # Structural demolition strips the shield-carrier redirect and
+                # heavy armor BEFORE applying its specialized breaching damage.
+                for b,_ in in_range:b['sunderRounds']=max(2,b.get('sunderRounds',0))
+                for b,dist in in_range:
+                    if b['hp']<=0:continue
+                    reinforced=b.get('zombieType') in ('guard','shield','heavy','giant','siegecar','engineer')
+                    damage=(38+28*level)*(1-dist/(reach+25))*(1.75 if reinforced else .65)
+                    hurt(b,damage,side)
+                behavior_events.append(['sunder',round(t,3),round(x,1),round(y,1),reach])
         recover_material(x,y)
         if 0<=x<=960:own_landings.append((x,y))
         counts=root_counts if parent is None or parent.get('kind')=='repeat' else child_counts
@@ -2052,6 +2069,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 collect(x,y,rr,t)
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
+                if target and unified and dispatch_event('contact',x,y,vx,vy,target=target):break
                 if target and root_counts.get('through') and len(passed)<root_counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_scale*(1+1.5*root_counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     passed.add(target['id']);penetrated=target;target=None
@@ -2130,6 +2148,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 collect(x,y,fr,t)
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
+                if target and unified and dispatch_event('contact',x,y,f['vx'],f['vy'],f,target):break
                 if target and counts.get('through') and len(f['passed'])<counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42)*(1+1.5*counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
                     f['passed'].add(target['id']);penetrated=target;target=None
