@@ -510,7 +510,7 @@ function updateV24Stock(){
   const kind=groupOf(k),recipe=k.startsWith('compound:')?k.split(':')[1]:null,name=recipe?'复合·'+compoundLabels[recipe]:siegeV24Names[k],hint=n=>recipe?compoundHint(recipe):v24EffectHint(k,n),maxQty=()=>Math.min(inv[k],Math.max(0,siegeV24Cap(base(k))-(recipe?Object.entries(selection).reduce((s,[q,v])=>s+(q!==k&&q.startsWith('compound:')?v:0),0):['armor','shield'].includes(k)&&!room.trial?(room.armed?.[room.seat]?.[k]||0):0))),limit=maxQty(),n=Math.min(selection[k]||0,limit);if(n)selection[k]=n;else delete selection[k];
   const sub=kind;
   if((stockCat==='全部'||stockCat==='技能')&&sub!==group){group=sub;const heading=document.createElement('div');heading.className='stock-group-label';heading.textContent=sub;rows.append(heading)}
-  const r=document.createElement('div');r.className='stock-row'+(n?' is-selected':'')+(recipe?' compound-row':'');
+  const r=document.createElement('div');r.className='stock-row'+(n?' is-selected':'')+(recipe?' compound-row':'');r.dataset.buffKind=k;
   const label='<div class="buff-label" title="'+hint(n||1)+'">'+siegeIcon(base(k),20)+'<span class="buff-info"><strong>'+name+' <small>×'+inv[k]+'</small></strong><span class="buff-effect">'+hint(n||1)+'</span></span></div>';
   r.innerHTML=label+'<button type="button" aria-label="减少'+name+'">−</button><input type="number" inputmode="numeric" min="0" max="'+limit+'" step="1" value="'+n+'" aria-label="'+name+'使用数量"><button type="button" aria-label="增加'+name+'">+</button><button type="button" aria-label="'+name+'选满">满</button>';
   const [minus,plus,full]=r.querySelectorAll('button'),input=r.querySelector('input'),detail=r.querySelector('.buff-effect');
