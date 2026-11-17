@@ -17,7 +17,7 @@ assert(game.includes('siegeCatalog'),'must retain upstream v24 gameplay');
 
 let webview=true,open=true,visible=true,sheetScroll=105,listScroll=0,top=230;
 const handlers=new Map;
-const node=(id,extra={})=>({addEventListener:(name,fn,opts)=>{handlers.set(id+':'+name,{fn,opts})},...extra});
+const node=(id,extra={})=>Object.defineProperties({addEventListener:(name,fn,opts)=>{handlers.set(id+':'+name,{fn,opts})}},Object.getOwnPropertyDescriptors(extra));
 const grid=node('grid',{get scrollTop(){return listScroll},set scrollTop(v){listScroll=Math.max(0,Math.min(650,v))},scrollHeight:900,clientHeight:250});
 const details=node('details',{get open(){return open},set open(v){open=v},getBoundingClientRect:()=>({top})});
 const sheet={get scrollTop(){return sheetScroll},set scrollTop(v){sheetScroll=v},getBoundingClientRect:()=>({top:120})};
