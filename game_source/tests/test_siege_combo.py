@@ -890,3 +890,22 @@ g._siege_fire(r,90,55,{'demolish':1},config=g._siege_public_config({}))
 assert guard['hp']<500 and guard.get('sunderRounds',0)>0
 assert any(e[0]=='sunder' for e in r['event']['behaviorEvents'])
 print('Sloped enemy clearance, non-propagating cannon push, siegecar, contact split and demolition anti-armor PASS')
+
+# Zombies must ignore movable cannon bodies during pathing and contact.
+# A cannon still obeys gravity, explosions and solid stone-block collisions.
+r=v24('zombie');g._siege_field(r)
+core=g._siege_core_body(r['bodies'],0);gun=g._siege_cannon(r,0)
+core.update(x=110.,y=g._siege_floor_body(r,110,core['w'])-core['h']/2)
+gun.update(x=420.,y=g._siege_floor_body(r,420,gun['w'])-gun['h']/2,vx=0.,vy=0.)
+z=dict(id=998,kind='zombie',zombieType='walker',side=2,
+       x=505.,y=g._siege_floor_body(r,505,32)-21.,w=32,h=42,hp=44,max=44,
+       vx=0.,vy=0.,fixed=True)
+r['bodies']=[core,gun,z];r['zombie']['spawned']=1
+before=gun['x']
+snapshot=lambda t,p:[t,p,[],[],6,[]]
+for _ in range(2):g._siege_zombie_round(r,1.,[],snapshot,[])
+assert z['x']<before-(z['w']+gun['w'])/2,(z,gun)
+assert gun['x']==before and gun['hp']==75 and not gun.get('fixed'),gun
+g._siege_v24_push(gun,400,-80,1)
+assert gun['vx']>0 and gun['vy']<0 and not gun.get('fixed'),gun
+print('Zombie walks through cannon; cannon stays dynamic and can be knocked back PASS')
