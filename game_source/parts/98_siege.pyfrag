@@ -252,6 +252,11 @@ def _siege_floor(r,x):
         return terrain[-1][1]
     return _SIEGE_G-r.get('rise',0) if x<=300 or x>=660 else _SIEGE_G
 
+def _siege_floor_body(r,x,width=0):
+    # Rectangles must clear the highest point under their feet on a slope.
+    half=max(0.,width/2)
+    return min(_siege_floor(r,xx) for xx in (x-half,x,x+half))
+
 def _siege_buffs():return [{k:0 for k in _SIEGE_ITEMS} for _ in range(2)]
 def _siege_normalize_buffs(r):
     # Existing v0.6 saved matches remain playable; preserve their pending single charges.
@@ -473,7 +478,8 @@ def _siege_zombie_spawn(r):
         left=r.get('zombieBothSides') and j%2==0
         rank=j//2 if r.get('zombieBothSides') else j
         x=30+rank*62 if left else 930-rank*62
-        y=min(220-j%2*45,_siege_floor(r,x)-h/2) if kind=='flyer' else _siege_floor(r,x)-h/2
+        floor=_siege_floor_body(r,x,w)
+        y=min(220-j%2*45,floor-h/2-14) if kind=='flyer' else floor-h/2
         ident=r['nextBodyId'];r['nextBodyId']+=1
         bodies.append(dict(id=ident,side=2,kind='zombie',zombieType=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
     state['spawned']+=len(_SIEGE_ZOMBIE_WAVES[wave-1])
@@ -535,6 +541,7 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     shield=min(_siege_cap(r,'shield'),sum(b.get('shield',0) for b in r['armed']))
     armor=min(_siege_cap(r,'armor'),sum(b.get('armor',0) for b in r['armed']))
     attacked=set()
+    r['zombiePhasePhysics']=True
     # Support enemies act once per enemy phase, never once per simulation tick.
     living=[b for b in bodies if b['kind']=='zombie' and b['hp']>0]
     for z in living:
@@ -547,22 +554,31 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
             w,h,hp,_,_=_SIEGE_ZOMBIE_TYPES['walker']
             for offset in (48,88,126,-48,-88):
                 x=max(16,min(944,z['x']-d*offset))
-                if any(b['hp']>0 and abs(b['x']-x)<(b['w']+w)/2 and abs(b['y']-(_siege_floor(r,x)-h/2))<(b['h']+h)/2 for b in bodies):continue
+                if any(b['hp']>0 and abs(b['x']-x)<(b['w']+w)/2 and abs(b['y']-(_siege_floor_body(r,x,w)-h/2))<(b['h']+h)/2 for b in bodies):continue
                 z['summoned']=True
                 ident=r['nextBodyId'];r['nextBodyId']+=1;hp=round(hp*_siege_zombie_difficulty(r)[0],1)
-                bodies.append(dict(id=ident,side=2,kind='zombie',zombieType='walker',x=x,y=_siege_floor(r,x)-h/2,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
+                bodies.append(dict(id=ident,side=2,kind='zombie',zombieType='walker',x=x,y=_siege_floor_body(r,x,w)-h/2,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
                 state['spawned']+=1;break
     for step in range(1,13):
         t=start+step/12
         alive=sorted((b for b in bodies if b['kind']=='zombie' and b['hp']>0),key=lambda b:abs(b['x']-core['x']))
         for z in alive:
             if z['hp']<=0:continue
+            ground=_siege_floor_body(r,z['x'],z['w'])
+            # Let an airborne zombie complete its ballistic movement first.
+            if not z.get('fixed'):
+                if z['y']+z['h']/2 < ground-6 or math.hypot(z.get('vx',0),z.get('vy',0))>65:
+                    continue
+                z['fixed']=True;z['vx']=z['vy']=0.
+                z['y']=ground-z['h']/2
             _,_,_,speed,damage=_SIEGE_ZOMBIE_TYPES[z['zombieType']]
             _,speed_scale,damage_scale,_=_siege_zombie_difficulty(r);speed*=speed_scale;damage*=damage_scale
             d=1 if core['x']>z['x'] else -1
             flying=z['zombieType']=='flyer'
             nx=z['x']+d*speed/12
-            if flying:z['y']+=max(-speed/12,min(speed/12,core['y']-z['y']))
+            if flying:
+                z['y']+=max(-speed/12,min(speed/12,core['y']-z['y']))
+                z['y']=min(z['y'],_siege_floor_body(r,nx,z['w'])-z['h']/2-14)
             close=abs(z['x']-core['x'])<=(z['w']+core['w'])/2+8 and abs(z['y']-core['y'])<=(z['h']+core['h'])/2+8
             target=core if close else None
             # Ground enemies that cannot reach an elevated core attack accessible
@@ -605,8 +621,8 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                 continue
             if not flying:
                 # Walk on the ground or on top of a climbed barrier.
-                support=min([_siege_floor(r,nx)]+[b['y']-b['h']/2 for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone') and abs(nx-b['x'])<(z['w']+b['w'])/2 and b['y']-b['h']/2>=z['y']+z['h']/2-2])
-                z['y']=min(support-z['h']/2,z['y']+18)
+                support=min([_siege_floor_body(r,nx,z['w'])]+[b['y']-b['h']/2 for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone') and abs(nx-b['x'])<(z['w']+b['w'])/2 and b['y']-b['h']/2>=z['y']+z['h']/2-2])
+                z['y']=support-z['h']/2
             if not any(q is not z and q['hp']>0 and abs(nx-q['x'])<(z['w']+q['w'])/2 and abs(z['y']-q['y'])<(z['h']+q['h'])/2 for q in alive):
                 z['x']=max(z['w']/2,min(960-z['w']/2,nx))
         if physics:physics(t)
@@ -616,6 +632,7 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
         for j in range(1,25):
             if not any(b['hp']>0 and not b.get('fixed') and b['kind']!='zombie' and (math.hypot(b['vx'],b['vy'])>20 or not _siege_body_supported(b,bodies,_siege_floor(r,b['x']))) for b in bodies):break
             t=start+1+j/12;physics(t);frames.append(snap(t,None))
+    r['zombiePhasePhysics']=False
     r['armed']=[{},{}]
     _siege_zombie_supply(r)
     return t
@@ -1742,7 +1759,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for _ in range(4):
             for b in live:
                 if b['hp']<=0 or b.get('fixed'):continue
-                floor=_siege_floor(r,b['x'])-b['h']/2
+                floor=_siege_floor_body(r,b['x'],b['w'])-b['h']/2
                 if b['y']>floor:
                     if b['vy']>115:hurt(b,(b['vy']-115)*.08,b.get('impactSource'))
                     b['y']=floor;b['vy']=0
@@ -1758,6 +1775,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if b['hp']<=0:continue
                 for c in live[i+1:]:
                     if c['hp']<=0:continue
+                    if r.get('zombiePhasePhysics') and (b['kind']=='zombie' or c['kind']=='zombie'):continue
                     dx=c['x']-b['x'];dy=c['y']-b['y'];ox=(b['w']+c['w'])/2-abs(dx);oy=(b['h']+c['h'])/2-abs(dy)
                     if ox<=0 or oy<=0:continue
                     axis='x' if ox<oy else 'y';v='v'+axis;delta=dx if axis=='x' else dy;sign=1 if delta>=0 else -1;depth=ox if axis=='x' else oy
@@ -1817,7 +1835,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if not b.get('falling') or b['hp']<=0:continue
             if v24:
                 feet=b['y']+b['h']/2
-                if feet>=_siege_floor(r,b['x'])-.8 or any(c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and abs(c['y']-c['h']/2-feet)<1.5 for c in bodies):b['falling']=False
+                if feet>=_siege_floor_body(r,b['x'],b['w'])-.8 or any(c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and abs(c['y']-c['h']/2-feet)<1.5 for c in bodies):b['falling']=False
                 continue
             bottom=b['y']+b['h']/2;next_bottom=bottom+(b['vy']+_SIEGE_GRAV*dt)*dt
             contacts=[c for c in bodies if c is not b and c['hp']>0 and abs(c['x']-b['x'])<(c['w']+b['w'])/2 and bottom<=c['y']-c['h']/2+1 and next_bottom>=c['y']-c['h']/2]
@@ -1869,7 +1887,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 collide()
             # Apply ground friction once per physical tick, not per solver pass.
             for b in bodies:
-                if b['hp']>0 and not b.get('fixed') and abs(b['y']+b['h']/2-_siege_floor(r,b['x']))<1.5:
+                if b['hp']>0 and not b.get('fixed') and abs(b['y']+b['h']/2-_siege_floor_body(r,b['x'],b['w']))<1.5:
                     b['vx']=math.copysign(max(0.,abs(b['vx'])-105.*dt),b['vx'])
             tick_tnt();tick_barrels();_siege_gun_gravity(r,dt)
             # Supported stacks can retain tiny solver velocities from gravity.
