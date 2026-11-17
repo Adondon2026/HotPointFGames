@@ -612,8 +612,8 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                         and abs(feet-(b['y']-b['h']/2))<=6]
                 on_ground=feet>=ground-6
                 flying_recovered=z['zombieType']=='flyer' and z.get('pushTime',0)<=0
-                if math.hypot(z.get('vx',0),z.get('vy',0))>85 if flying_recovered else math.hypot(z.get('vx',0),z.get('vy',0))>65:
-                    continue
+                speed_now=math.hypot(z.get('vx',0),z.get('vy',0))
+                if speed_now>(85 if flying_recovered else 65):continue
                 if not (on_ground or blocks or flying_recovered):
                     continue
                 z['fixed']=True;z['vx']=z['vy']=0.
