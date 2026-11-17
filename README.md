@@ -1,3 +1,7 @@
+## ZMZ v0.24.1 独立开发分支
+
+从最新 `main`（提交 `6aa32a7c914b`）完整同步拆家 v0.24 规则、僵尸协作模式、增益组合、UI 和 Android 宿主修复；保持 ZMZ 独立 APK（`-PzmzBuild=true`）、独立在线更新频道（`zmz-game-v0.24.1-*`），不会修改学长的 `main`。详见 [同步与 WebView 修复说明](docs/ZMZ_v0.24.1_同步与WebView修复.md)。
+
 # 热点游戏厅 HotPointFGames
 
 离线好友联机：房主开启手机热点，APP 启动本机 Python 服务，其他人通过浏览器扫码加入。无需互联网、云服务器或账号。
@@ -5,23 +9,6 @@
 ## 本地电脑预览（无需 Android SDK）
 
 进入 `game_source/`，先执行 `python build.py`，然后双击 `START_GAME.bat` 或执行 `python run_preview.py`。浏览器自动打开本机游戏厅。手机连接同一 Wi-Fi，点击大厅「邀请朋友」扫码加入。账户和历史积分保存在该运行设备，具体规则见 [本地预览说明](game_source/README.md)。
-
-## ZMZ v0.20.2 开发版（战斗物理与负面 HUD 修复）
-
-**本次重点**：拆家战场新增负面状态提示；连续弹各自分裂，所有实际分裂/连续弹保留本发的推进、克隆等效果；不稳定弹改为发射角偏航，重重弹加重；推进弹低伤害并使被击物块按命中速度方向恒速飞行，每层延长 2 秒；修复移动炮台在支撑建筑被毁后浮空。见 [v0.20.2 说明](docs/ZMZ_v0.20.2_物理与交互修复.md)。
-
-## ZMZ v0.20.1 开发版（上游 UI 整合／独立更新）
-
-**当前 v0.20.1**：将学长 `main` 截至 `2c52b822` 的拆家沉浸式 UI、横竖屏适配、设置叠加上限与堡垒强度合入 ZMZ 独立分支，保留 24 种道具、音乐和负面效果。修复 24 种增益展开后难以返回的问题，增加明确的收起按钮与滚动上限。游戏公共大厅/房间/拆家战场使用单一 `GAME_DISPLAY_VERSION` 生成版本号，在线更新后显示当前游戏版本。详见 [v0.20.1 整合说明](docs/ZMZ_v0.20.1_整合说明.md)。
-
-
-**v0.20.0 完整升级**：网页版大厅和拆家战场统一显示当前版本；新增螺旋弹、连续弹、推进弹、克隆增益，以及重重子弹、湮灭子弹、不稳定子弹、屁屁子弹共 8 种，允许全部 24 类道具逐项开启/关闭；左右边界成为无限血量可反弹墙。详见 [v0.20.0 更新说明](docs/ZMZ_v0.20.0_更新说明.md)。
-
-**最新补丁 v0.19.2**：设置中勾选增益时「已选 X / 16」实时变化；重进战场自动恢复上次选择的海浪／像素背景乐，Android WebView 允许随战场自动启动音乐。详情见 [v0.19.2 补丁说明](docs/ZMZ_v0.19.2_补丁说明.md)。
-
-`Zmz_dev` 分支的 Android 调试版使用独立应用包名 `com.chuanmahjong.nearby.zmz.debug`，桌面名称为「热点游戏厅 ZMZ」，可以与师兄的主线 APK 共存，不覆盖原 APP 的账号与存档。输出文件为 `HotPointFGames-ZMZ-v0.19.2-debug.apk`，Actions 产物名为 `HotPointFGames-ZMZ-v0.19.2-Android`。
-
-ZMZ 版在线游戏更新仅接受 `zmz-game-v0.19.2-<run>-<attempt>-<sha>` 发布包，由 `Zmz_dev` 的 **Game files** 工作流构建并发布；主线仍使用 `game-...`，更新通道互相隔离。此次 **v0.19.0** 同时包含拆家大战的增益种类勾选、两首原创合成背景音乐切换与炮击音效，以及 Android 应用独立安装、独立更新机制。完整说明见 [ZMZ v0.19.0 版本更新说明](docs/ZMZ_v0.19.0_更新说明.md)。
 
 ## v0.10 多房间与拆家大战
 
@@ -48,9 +35,9 @@ ZMZ 版在线游戏更新仅接受 `zmz-game-v0.19.2-<run>-<attempt>-<sha>` 发�
 
 在电脑浏览器打开 http://127.0.0.1:8000/；也可以把生成的单文件放到 Termux 测试。修改规则、UI、词库、新游戏后，重新运行第一条命令即可。
 
-## Android APP 1.3：在线一键更新
+## Android APP 1.4：在线一键更新
 
-首次安装 Android build 生成的新版 APK。APP 首页自动检查公开 GitHub Releases；发现新版后点击「下载并更新」。若服务器正在运行，请等朋友结束游戏后手动停止，再确认更新。应用仅从本仓库的 HTTPS 发布地址下载，限制文件大小、校验 SHA-256 和 Python 接口，并原子替换游戏文件。加载失败时尝试恢复上一个导入版本，否则回退内置版。账户和积分文件不参与替换。更新需联网，游戏仍可离线。游戏源码提交 main 后，Game files 测试通过才发布独立游戏 Release；不需要安装新 APK。宿主变更仍需安装 APK；调试签名可能不同，卸载会丢失本地数据。
+首次安装 Android build 生成的新版 APK。APP 首页直接下载官方最新游戏版本清单，不请求 GitHub REST API，因此不受匿名 API 每小时额度影响；发现新版后点击「下载并更新」。若服务器正在运行，请等朋友结束游戏后手动停止，再确认更新。应用仅从本仓库的 HTTPS 发布地址下载，限制文件大小、校验 SHA-256 和 Python 接口，并原子替换游戏文件。加载失败时尝试恢复上一个导入版本，否则回退内置版。账户和积分文件不参与替换。更新需联网，游戏仍可离线。游戏源码提交 main 后，Game files 测试通过才发布独立游戏 Release；不需要安装新 APK。宿主变更仍需安装 APK；调试签名可能不同，卸载会丢失本地数据。
 
 ## Android APP：安装一次，离线导入更新
 
@@ -66,7 +53,7 @@ ZMZ 版在线游戏更新仅接受 `zmz-game-v0.19.2-<run>-<attempt>-<sha>` 发�
 推荐 GitHub Actions：
 
 - 游戏规则、UI 或词库更新：Actions → Game files，构建后在 Artifacts 下载可导入的 .py / .txt，无需编译 Android。
-- 首次安装或 Android 宿主更新：Actions → Android build，构建成功后在 Artifacts 下载 HotPointFGames-Android，解压后安装 app-debug.apk。游戏源码及宿主变更均会自动触发。
+- 首次安装或 Android 宿主更新：[Android 1.4 APK](https://github.com/Adondon2026/HotPointFGames/releases/download/android-v1.4/HotPointFGames-1.4.apk)，或 Actions → Android build → Artifacts 下载 HotPointFGames-Android，解压后安装 app-debug.apk。宿主 APK 发布为独立预发行版本，不改变最新游戏 Release。游戏源码及宿主变更均会自动触发。
 
 两种构建均无需在本机安装 Android SDK。
 

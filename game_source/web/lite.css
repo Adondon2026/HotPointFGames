@@ -97,14 +97,28 @@ body[data-game="ddz"][data-view="game"] #gameCard{background:transparent;border:
 
 #settingsModal .siege-choice,#settingsModal .siege-number-row button,#settingsModal .siege-buff-actions button{background:var(--surface,#20252c);color:var(--text,#e9eadf);border:1px solid var(--line,#45534e);box-shadow:none;font-weight:600}#settingsModal .siege-choice.active,#settingsModal .siege-number-row button.active{background:#2c7564;color:#fff;border-color:#4c9181}#settingsModal .siege-map-setting{display:grid;grid-template-columns:88px minmax(0,1fr);gap:5px 8px;align-items:center}#settingsModal .siege-map-setting>.muted{grid-column:1/-1}#siegeMapPreview svg{max-height:44px;margin:0}#settingsModal .siege-buff-grid{gap:4px 6px}#settingsModal .siege-buff-row input[type=number]{min-height:36px;padding:4px 2px}#settingsModal .siege-choice-row button{min-height:38px}#settingsModal .siege-buff-row input[type=checkbox]{accent-color:#45947e}
 
-/* ZMZ v0.20.1: scrollable settings even on compact phones; one-tap return. */
-#settingsModal .sheet{box-sizing:border-box;display:flex;flex-direction:column;max-height:min(92dvh,calc(100dvh - 18px));overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain}
-#settingsModal .sheet-head{position:sticky;top:0;z-index:15;min-height:46px;padding:9px 3px;background:var(--panel,#17191f)}
-#settingsModal .setting-grid{flex:none;min-width:0}
-#settingsModal #siegeAdvanced{min-width:0}
-#settingsModal #siegeAllowedConfig{max-width:100%;min-width:0;overflow:visible}
-#settingsModal #siegeAllowedConfig[open] #siegeBuffChoices{max-height:min(45dvh,420px);overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-width:thin}
-#settingsModal .siege-buff-row{min-width:0}
-#settingsModal .siege-buff-return{position:sticky;bottom:0;z-index:5;padding:9px 2px;background:var(--panel,#17191f);border-top:1px solid var(--line,#323640)}
-#settingsModal #siegeBuffBack{width:100%;min-height:46px;touch-action:manipulation}
-#settingsModal #siegeAllowedConfig>summary{cursor:pointer;min-height:44px;padding:9px 4px;touch-action:manipulation}
+#settingsModal .siege-buff-group{grid-column:1/-1;display:flex;align-items:center;gap:6px;padding:8px 0 3px;border-top:1px solid var(--line);font-size:12px;color:var(--muted,#b5c5bb)}#settingsModal .siege-buff-group span{flex:1;font-weight:650}#settingsModal .siege-buff-group button{padding:4px 8px;font-size:11px}
+
+#liteCurrent .siege-theme-switch{display:flex;align-items:center;gap:4px;width:max-content;max-width:100%;padding:3px;margin:9px 0 8px;background:#192722;border:1px solid #43554a;border-radius:9px}
+#liteCurrent .siege-theme-switch.hidden{display:none}
+#liteCurrent .siege-theme-switch button{flex:0 0 auto;width:auto;min-width:0;min-height:32px;height:32px;padding:4px 11px;margin:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap;box-shadow:none}
+#liteCurrent .siege-theme-switch button.active{background:#3b5545;border-color:#698471;color:#f0e9d7}
+#liteCurrent .siege-theme-switch button:focus-visible{outline:2px solid var(--green);outline-offset:1px}
+@media(max-width:350px){#liteCurrent .siege-theme-switch button{padding:4px 8px;font-size:11px}}
+
+#liteCurrent .siege-theme-switch{flex-wrap:wrap}#liteCurrent .siege-theme-switch button{flex:0 1 auto}
+
+/* ZMZ v0.24.1: dedicated nested scroll instead of moving the modal underneath. */
+.zmz-version{font-size:11px;color:#e4b966;white-space:nowrap}
+#settingsModal .sheet{box-sizing:border-box;max-height:min(92dvh,calc(100dvh - 18px));overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+#settingsModal .sheet-head{position:sticky;top:0;z-index:12;padding:8px 0;background:var(--surface,#20252c)}
+#settingsModal #siegeAllowedConfig{min-width:0;max-width:100%;overflow:visible}
+#settingsModal #siegeAllowedConfig>summary{min-height:42px;display:list-item;padding:9px 0;cursor:pointer;touch-action:manipulation}
+#settingsModal #siegeAllowedConfig[open] #siegeBuffChoices{max-height:min(45dvh,420px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;min-height:0;scrollbar-width:thin}
+#settingsModal #siegeBuffChoices .siege-buff-row{min-width:0}
+#settingsModal .zmz-buff-footer{position:sticky;bottom:0;z-index:8;background:var(--surface,#20252c);padding:8px 2px;border-top:1px solid var(--line,#45534e)}
+#settingsModal #siegeBuffBack{width:100%;min-height:45px;padding:8px;touch-action:manipulation}
+#settingsModal #siegeBuffChoices:focus-visible{outline:2px solid #90d3be;outline-offset:2px}
+/* Chromium WebView fallback: manual touch scrolling of the inner list only.
+   Regular Chrome/browser retains its native inertial list scroll. */
+.zmz-webview #settingsModal #siegeAllowedConfig[open] #siegeBuffChoices{touch-action:none}

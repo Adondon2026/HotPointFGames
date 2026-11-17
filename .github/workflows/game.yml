@@ -37,10 +37,9 @@ jobs:
         run: |
           python tests/test_game_update_manifest.py
           python tests/test_zmz_channel.py
-          node game_source/tests/test_siege_ui_regression.js
-          node game_source/tests/test_siege_state_controls.js
-          node game_source/tests/test_siege_ui_v202.js
+          node game_source/tests/test_zmz_webview_scroll.js
           python game_source/tests/smoke_test.py
+          python game_source/tests/test_siege_combo.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py
           python game_source/tests/test_table.py
@@ -62,19 +61,22 @@ jobs:
           python game_source/tests/test_siege_v18.py
           python game_source/tests/test_siege_v181.py
           python game_source/tests/test_siege_v182.py
-          python game_source/tests/test_siege_buff_filter.py
           python game_source/tests/test_siege_v20.py
-          python game_source/tests/test_siege_upstream_v20.py
           python game_source/tests/test_siege_v201.py
-          python game_source/tests/test_siege_v202.py
+          python game_source/tests/test_siege_map_pools.py
+          python game_source/tests/test_siege_zmz_v20.py
+          python game_source/tests/test_siege_zmz_v202.py
           python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
+      - name: Browser regression - Siege inventory
+        run: |
+          python -m pip install playwright==1.58.0
+          if ! command -v google-chrome >/dev/null && ! command -v chromium >/dev/null; then python -m playwright install chromium --with-deps; fi
+          python game_source/tests/test_siege_stock_ui_v24.py
       - name: Generate update manifest
         run: |
           TAG="game-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
-          if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then
-            TAG="zmz-game-v0.20.2-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
-          fi
+          if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then TAG="zmz-game-v0.24.1-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"; fi
           python tools/game_update_manifest.py game_source/dist/game_hall_lan_v6_2.py game_source/dist/game-update.json --version "$TAG"
       - name: Upload importable game files
         uses: actions/upload-artifact@v4
@@ -104,18 +106,14 @@ jobs:
           set -euo pipefail
           TAG="game-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
           if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then
-            TAG="zmz-game-v0.20.2-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
-          fi
-          if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then
+            TAG="zmz-game-v0.24.1-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
-              --title "ZMZ v0.20.2 · game build ${GITHUB_RUN_NUMBER}" \
-              --notes "ZMZ v0.20.2 development-channel game update. Branch: Zmz_dev. Source: $GITHUB_SHA. Only the ZMZ APK accepts this channel." \
+              --title "ZMZ v0.24.1 · game build ${GITHUB_RUN_NUMBER}" --notes "ZMZ-only game update; main release channel unchanged. Source: $GITHUB_SHA" \
               publish/game_hall_lan_v6_2.py publish/game-update.json
-            # Keep the global GitHub latest-release pointer on main.
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
-              --title "Game build ${GITHUB_RUN_NUMBER}" --notes "Tested mainline game update. Android host 1.3 or later. Source: $GITHUB_SHA" \
+              --title "Game build ${GITHUB_RUN_NUMBER}" --notes "Tested mainline game update. Android host 1.4 or later. Source: $GITHUB_SHA" \
               publish/game_hall_lan_v6_2.py publish/game-update.json
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           fi
