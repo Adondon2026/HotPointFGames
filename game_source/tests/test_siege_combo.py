@@ -909,3 +909,15 @@ assert gun['x']==before and gun['hp']==75 and not gun.get('fixed'),gun
 g._siege_v24_push(gun,400,-80,1)
 assert gun['vx']>0 and gun['vy']<0 and not gun.get('fixed'),gun
 print('Zombie walks through cannon; cannon stays dynamic and can be knocked back PASS')
+
+# Zombie action plays at normal speed, but cannot add a two-second waiting tail.
+r=v24('zombie');g._siege_field(r)
+r['zombie']['spawned']=sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])
+r['turn']=1
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+ev=r['event']
+phase=ev.get('zombiePhase')
+assert phase is not None,(r['zombie'],ev.get('behaviorEvents'))
+assert ev['duration']-phase<=1.501,(ev['duration'],phase)
+assert ev['playbackDuration']-ev['duration']<=.181,(ev['playbackDuration'],ev['duration'])
+print('Zombie phase: one second of action plus <=0.5s physical tail and <=0.18s hold PASS')
