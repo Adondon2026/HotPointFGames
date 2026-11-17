@@ -960,3 +960,48 @@ for kind in ('walker','flyer'):
     g._siege_zombie_round(r,1.,[],lambda now,p:[now,p,[],[],6,[]],[])
     assert z.get('fixed') and z['x']<x-25,(kind,z)
 print('Dense zombie crowd, obstacle behind and airborne/roof AI recovery PASS')
+
+# Siegecar shells must collide with terrain before any body behind a ridge.
+# Check both approach directions and the actual server impact/damage events.
+for left in (False,True):
+    r=v24('zombie');r['zombieDifficulty']='hell';g._siege_field(r)
+    if left:
+        r['terrain']=[(0,416),(225,416),(300,245),(340,245),(420,416),(960,416)]
+        xcar,xcore=110.,570.
+    else:
+        r['terrain']=[(0,416),(450,416),(525,245),(565,245),(640,416),(960,416)]
+        xcar,xcore=850.,390.
+    core=g._siege_core_body(r['bodies'],0)
+    core.update(x=xcore,y=390.,hp=100.,max=100.)
+    car=dict(id=998,kind='zombie',zombieType='siegecar',side=2,x=xcar,y=394.,
+             w=62,h=44,hp=135,max=135,vx=0.,vy=0.,fixed=True)
+    wall=dict(id=997,kind='stone',side=0,x=(xcar+xcore)/2+(-85 if left else 85),
+              y=390.,w=36,h=44,hp=300,max=300,vx=0.,vy=0.)
+    r['bodies']=[core,car,wall];r['zombie']['round']=2;r['zombie']['spawned']=1
+    plan=g._siege_siegecar_plan(r,car,core)
+    assert plan and plan['ground'] and plan['target'] is None and not plan['penetration'],(left,plan)
+    ax,ay=plan['origin'];bx,by=plan['point']
+    assert abs(by+5-g._siege_floor(r,bx))<.02,(left,plan)
+    # Projectile centre must remain outside the ground for its whole flight.
+    for j in range(100):
+        q=j/100.;xx=ax+(bx-ax)*q;yy=ay+(by-ay)*q
+        assert yy+5<=g._siege_floor(r,xx)+.02,(left,j,xx,yy)
+    events=[];frames=[]
+    g._siege_zombie_round(r,0,frames,lambda t,p:[t,p,[],[],6,[]],events)
+    shots=[e for e in events if e[0]=='siegeCarShot']
+    impacts=[e for e in events if e[0]=='siegeCarImpact']
+    assert shots and impacts and shots[0][7]==-1 and impacts[0][4]==-1,(left,events)
+    assert impacts[0][1]>shots[0][1] and core['hp']==100 and wall['hp']==300,(left,core,wall)
+    assert abs(impacts[0][2]-shots[0][4])<.01 and abs(impacts[0][3]-shots[0][5])<.01
+# Flat unobstructed ground must not incorrectly absorb or disable valid fire.
+r=v24('zombie');r['zombieDifficulty']='hell';g._siege_field(r)
+core=g._siege_core_body(r['bodies'],0);core.update(x=400.,y=390.,hp=100.)
+car=dict(id=998,kind='zombie',zombieType='siegecar',side=2,x=850.,y=394.,
+         w=62,h=44,hp=135,max=135,vx=0.,vy=0.,fixed=True)
+r['bodies']=[core,car];r['zombie']['round']=2;r['zombie']['spawned']=1
+plan=g._siege_siegecar_plan(r,car,core)
+assert plan and plan['target'] is core and not plan['ground'],plan
+events=[]
+g._siege_zombie_round(r,0,[],lambda t,p:[t,p,[],[],6,[]],events)
+assert core['hp']<100 and next(e for e in events if e[0]=='siegeCarImpact')[4]==core['id']
+print('Siegecar projectile terrain/solid first hit, visual impact and damage consistency PASS')
