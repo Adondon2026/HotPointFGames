@@ -107,3 +107,18 @@ body[data-game="ddz"][data-view="game"] #gameCard{background:transparent;border:
 @media(max-width:350px){#liteCurrent .siege-theme-switch button{padding:4px 8px;font-size:11px}}
 
 #liteCurrent .siege-theme-switch{flex-wrap:wrap}#liteCurrent .siege-theme-switch button{flex:0 1 auto}
+
+/* ZMZ v0.24.1: dedicated nested scroll instead of moving the modal underneath. */
+.zmz-version{font-size:11px;color:#e4b966;white-space:nowrap}
+#settingsModal .sheet{box-sizing:border-box;max-height:min(92dvh,calc(100dvh - 18px));overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+#settingsModal .sheet-head{position:sticky;top:0;z-index:12;padding:8px 0;background:var(--surface,#20252c)}
+#settingsModal #siegeAllowedConfig{min-width:0;max-width:100%;overflow:visible}
+#settingsModal #siegeAllowedConfig>summary{min-height:42px;display:list-item;padding:9px 0;cursor:pointer;touch-action:manipulation}
+#settingsModal #siegeAllowedConfig[open] #siegeBuffChoices{max-height:min(45dvh,420px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;min-height:0;scrollbar-width:thin}
+#settingsModal #siegeBuffChoices .siege-buff-row{min-width:0}
+#settingsModal .zmz-buff-footer{position:sticky;bottom:0;z-index:8;background:var(--surface,#20252c);padding:8px 2px;border-top:1px solid var(--line,#45534e)}
+#settingsModal #siegeBuffBack{width:100%;min-height:45px;padding:8px;touch-action:manipulation}
+#settingsModal #siegeBuffChoices:focus-visible{outline:2px solid #90d3be;outline-offset:2px}
+/* Chromium WebView fallback: manual touch scrolling of the inner list only.
+   Regular Chrome/browser retains its native inertial list scroll. */
+.zmz-webview #settingsModal #siegeAllowedConfig[open] #siegeBuffChoices{touch-action:none}

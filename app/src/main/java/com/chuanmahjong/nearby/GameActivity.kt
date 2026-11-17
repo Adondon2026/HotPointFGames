@@ -26,6 +26,13 @@ class GameActivity : Activity() {
             settings.allowContentAccess = false
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    // Pages still use normal HTTP. This marks ONLY the embedded WebView
+                    // so the long settings selector can use its own touch scroll surface.
+                    view?.evaluateJavascript("document.documentElement.classList.add('zmz-webview')", null)
+                }
+
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val host = request.url.host.orEmpty()
                     return host != "127.0.0.1" && host != "localhost"

@@ -57,6 +57,7 @@ jobs:
         run: |
           python tests/test_game_update_manifest.py
           python tests/test_zmz_channel.py
+          node game_source/tests/test_zmz_webview_scroll.js
           python game_source/tests/smoke_test.py
           python game_source/tests/test_lite.py
           python game_source/tests/test_bots.py

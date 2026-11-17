@@ -201,7 +201,28 @@ class MainActivity : Activity() {
                 }
             }
         }
-        content.addView(enterButton, matchWrap(bottom = 18))
+        content.addView(enterButton, matchWrap(bottom = 8))
+
+        // Optional browser fallback for vendor-specific Android System WebView touch bugs.
+        // The server remains hosted by this APP; Chrome opens the same localhost URL.
+        val browserButton = Button(this).apply {
+            text = "在浏览器打开游戏（兼容模式）"
+            textSize = 14f
+            setOnClickListener {
+                val state = ServerPrefs.read(this@MainActivity)
+                if (!state.running) {
+                    Toast.makeText(this@MainActivity, "请先启动游戏服务器", Toast.LENGTH_SHORT).show()
+                } else {
+                    runCatching {
+                        val local = Uri.parse("http://127.0.0.1:${state.port}/")
+                        startActivity(Intent(Intent.ACTION_VIEW, local).addCategory(Intent.CATEGORY_BROWSABLE))
+                    }.onFailure {
+                        Toast.makeText(this@MainActivity, "无法打开浏览器，请继续使用 APP 内游戏", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        content.addView(browserButton, matchWrap(bottom = 18))
 
         gameSourceText = TextView(this).apply {
             textSize = 13f
