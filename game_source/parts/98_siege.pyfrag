@@ -1198,7 +1198,9 @@ def _siege_fire(r,angle,power,selection=None,force=False,config=None):
 def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=False,config=None,control=None):
     config=_siege_config(config)
     v24=_siege_v24(r)
-    if v24:config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={},splitPattern='fan',burstMode='serial',build='attack')
+    if v24:
+        split_trigger=config['triggers'].get('splitshot','launch')
+        config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={'splitshot':split_trigger} if split_trigger in ('launch','contact') else {},splitPattern='fan',burstMode='serial',build='attack')
     unified=config['unified'];trial=bool(r.get('trial'));trial_damage=0.
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
     side=r['turn'] if side is None else side; direction=_siege_direction(r,side); motion_start=max(0,(live['clock'] if live is not None else time.time())-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get('windPair',0)*direction if live is not None else r.get('wind',0)
