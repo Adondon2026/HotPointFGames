@@ -6,13 +6,15 @@ import org.junit.Test
 
 class GameUpdatesTest {
     private val source = "a".repeat(40)
-    private val tag = "game-250-1-aaaaaaaaaaaa"
+    private val tag = if (BuildConfig.ZMZ_BUILD) "zmz-game-v0.24.1-250-1-aaaaaaaaaaaa" else "game-250-1-aaaaaaaaaaaa"
+    private val otherChannelTag = if (BuildConfig.ZMZ_BUILD) "game-250-1-aaaaaaaaaaaa" else "zmz-game-v0.24.1-250-1-aaaaaaaaaaaa"
     private fun manifest(host: Int = 4, epoch: Long = 123L, hash: String = "b".repeat(64), version: String = tag, commit: String = source): String =
         JSONObject().put("schema", 1).put("version", version).put("source", commit)
             .put("sourceEpoch", epoch).put("sha256", hash).put("size", 100).put("minHostVersionCode", host).toString()
 
     @Test fun directManifestSelectsPinnedRelease() {
-        assertEquals("https://github.com/Adondon2026/HotPointFGames/releases/latest/download/game-update.json", GameUpdates.LATEST_MANIFEST)
+        if (!BuildConfig.ZMZ_BUILD)
+            assertEquals("https://github.com/Adondon2026/HotPointFGames/releases/latest/download/game-update.json", GameUpdates.LATEST_MANIFEST)
         val update = GameUpdates.resolveLatest(manifest(), null)!!
         assertEquals(tag, update.tag)
         assertEquals(source, update.info.source)
@@ -26,7 +28,7 @@ class GameUpdatesTest {
     }
 
     @Test fun invalidManifestAndIncompatibleHostRejected() {
-        for (raw in listOf(manifest(host = 6), manifest(version = "android-v1.4"), manifest(commit = "c".repeat(40)), manifest(hash = "not-a-hash"))) {
+        for (raw in listOf(manifest(host = 6), manifest(version = "android-v1.4"), manifest(version = otherChannelTag), manifest(commit = "c".repeat(40)), manifest(hash = "not-a-hash"))) {
             try {
                 GameUpdates.resolveLatest(raw, null)
                 fail("Invalid manifest accepted")
