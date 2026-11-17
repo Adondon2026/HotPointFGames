@@ -148,7 +148,7 @@ try:
         d=g._siege_public(coop,'bot',coop['rev']);d['busy']=False
         page.evaluate('d=>{apply(d);overview=null;update()}',d)
         expect(page.locator('#coopCore')).to_be_visible()
-        expect(page.locator('#coopCoreText')).to_have_text('共享核心 100/100')
+        expect(page.locator('#coopCoreText')).to_have_text('共享子刊 100/100')
         expect(page.locator('#turn')).to_contain_text('轮到你')
         assert page.evaluate('muzzle(1,45,6)[0]>launcher(1)[0]')
         assert page.evaluate('room.bodies.filter(b=>b.kind==="zombie").length')==3
