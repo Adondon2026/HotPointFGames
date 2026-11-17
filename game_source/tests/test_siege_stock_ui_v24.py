@@ -39,6 +39,35 @@ try:
         rows = page.locator('#stockRows .stock-row')
         expect(rows).to_have_count(len(keys))
         expect(page.locator('#stockPanel')).to_be_visible()
+        # A modifier's trigger buttons occupy a dedicated left rail, not a
+        # second row where they can collide with the description below.
+        assert page.evaluate("siegeZombieMirror('walker',250,480)") is True
+        assert page.evaluate("siegeZombieMirror('walker',710,480)") is False
+        assert page.evaluate("siegeZombieMirror('siegecar',250,480)") is False
+        assert page.evaluate("siegeZombieMirror('siegecar',710,480)") is True
+        page.get_by_role('button',name='增加分裂弹').tap()
+        expect(page.locator('#stockModeRail .stock-mode-card')).to_have_count(2)
+        expect(page.get_by_role('button',name='分裂时机：击发分裂')).to_have_attribute('aria-pressed','true')
+        page.get_by_role('button',name='分裂时机：落点分裂').tap()
+        expect(page.get_by_role('button',name='分裂时机：落点分裂')).to_have_attribute('aria-pressed','true')
+        assert page.evaluate("shotConfig.triggers.splitshot")=='contact'
+        for width in (320,390,480):
+            page.set_viewport_size({'width':width,'height':844})
+            regions=page.evaluate("""()=>{
+                const rail=document.querySelector('#stockModeRail').getBoundingClientRect();
+                const rows=document.querySelector('#stockRows').getBoundingClientRect();
+                const panel=document.querySelector('#stockPanel').getBoundingClientRect();
+                return {gap:rows.left-rail.right,railLeft:rail.left,panelLeft:panel.left,
+                    rowWidth:rows.width, railWidth:rail.width,
+                    badButtons:[...document.querySelectorAll('#stockModeRail button')].filter(x=>{
+                      const b=x.getBoundingClientRect();return b.left<rail.left-1||b.right>rail.right+1||b.width<25
+                    }).length,
+                    oldInline:document.querySelectorAll('#stockRows .stock-row > .buff-inline').length}
+            }""")
+            assert regions['gap']>=3 and regions['railLeft']>=regions['panelLeft'] and regions['rowWidth']>160 and regions['badButtons']==0 and regions['oldInline']==0,(width,regions)
+        page.set_viewport_size({'width':390,'height':844})
+        page.get_by_role('button',name='减少分裂弹').tap()
+        expect(page.locator('#stockModeRail .stock-mode-card')).to_have_count(0)
         # Every row has the same quantity controls, not just a heading.
         assert rows.locator('input[type=number]').count()==len(keys)
         assert rows.locator('button').count()==3*len(keys)
