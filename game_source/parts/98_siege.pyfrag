@@ -646,7 +646,7 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                     nx=z['x']+d*speed/12
                     if abs(z['x']-support_target['x'])<=(z['w']+support_target['w'])/2+8:target=support_target
             if not flying and not target:
-                obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait','cannon') and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
+                obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait') and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
                 if obstacles:target=min(obstacles,key=lambda b:abs(b['x']-z['x']))
                 if target and target is not support_target and (z['zombieType']=='climber' and target['h']<=44 or z['zombieType']=='pole' and target['h']<=82 and not z.get('vaulted')):
                     top=target['y']-target['h']/2-z['h']/2
@@ -664,25 +664,6 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                     attacked.add(z['id']);amount=damage*(.35**shield if target is core else .65**armor)
                     if target['kind']!='cannon':target['hp']=max(0.,target['hp']-amount)
                     events.append(['zombieAttack',round(t,3),z['id'],target['id'],round(amount,1)])
-                if target['kind']=='cannon':
-                    # A zombie may push one cannon, never a train of stones behind it.
-                    # Solve free clearance BEFORE moving; leave a physical gap and
-                    # discard the pressure impulse so no velocity propagates downstream.
-                    step_dx=speed/12
-                    clearance=min(
-                        [max(0.,(b['x']-target['x'])*d-(target['w']+b['w'])/2-1.5)
-                         for b in bodies if b is not target and b is not z and b['hp']>0
-                         and b['kind']!='zombie' and (b['x']-target['x'])*d>=0
-                         and abs(target['y']-b['y'])<(target['h']+b['h'])/2]+
-                        [max(0.,(960-target['w']/2-target['x']) if d>0 else (target['x']-target['w']/2))])
-                    distance=min(step_dx,clearance)
-                    if distance>.01:
-                        target['x']+=d*distance
-                        target['y']=min(target['y'],_siege_floor_body(r,target['x'],target['w'])-target['h']/2)
-                        target['vx']=target['vy']=0.
-                        z['x']=max(z['w']/2,min(960-z['w']/2,z['x']+d*distance))
-                    # If blocked, this is an obstruction to attack or bypass,
-                    # not permission to shove the entire rear masonry chain.
                 continue
             if not flying:
                 # Walk on the ground or on top of a climbed barrier.
@@ -1200,7 +1181,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     v24=_siege_v24(r)
     if v24:
         split_trigger=config['triggers'].get('splitshot','launch')
-        config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={'splitshot':split_trigger} if split_trigger in ('launch','contact') else {},splitPattern='fan',burstMode='serial',build='attack')
+        config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={'splitshot':split_trigger} if split_trigger in ('launch','contact') else {},build='attack')
     unified=config['unified'];trial=bool(r.get('trial'));trial_damage=0.
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
     side=r['turn'] if side is None else side; direction=_siege_direction(r,side); motion_start=max(0,(live['clock'] if live is not None else time.time())-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get('windPair',0)*direction if live is not None else r.get('wind',0)
@@ -1860,6 +1841,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 for c in live[i+1:]:
                     if c['hp']<=0:continue
                     if r.get('zombiePhasePhysics') and (b['kind']=='zombie' or c['kind']=='zombie'):continue
+                    # Zombies phase through cannons at all times, including after
+                    # a push/blackhole releases them into rigid-body simulation.
+                    # Cannons retain gravity and collisions against all other bodies.
+                    if (b['kind']=='zombie' and c['kind']=='cannon') or (b['kind']=='cannon' and c['kind']=='zombie'):continue
                     dx=c['x']-b['x'];dy=c['y']-b['y'];ox=(b['w']+c['w'])/2-abs(dx);oy=(b['h']+c['h'])/2-abs(dy)
                     if ox<=0 or oy<=0:continue
                     axis='x' if ox<oy else 'y';v='v'+axis;delta=dx if axis=='x' else dy;sign=1 if delta>=0 else -1;depth=ox if axis=='x' else oy
