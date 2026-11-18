@@ -204,3 +204,21 @@ body[data-game="ddz"][data-view="game"] #gameCard{background:transparent;border:
  #settingsModal.zmz-buff-mode #zmzBuffPager button{font-size:11px;padding:4px}
  #settingsModal.zmz-buff-mode .zmz-buff-numbers button{min-width:26px!important}
 }
+
+/* Extra-short landscape: compress chrome before reducing the per-page count. */
+@media(max-height:400px){
+ #settingsModal.zmz-buff-mode{padding:2px}
+ #settingsModal.zmz-buff-mode .sheet{height:calc(100dvh - 4px);max-height:calc(100dvh - 4px);padding:3px 7px;border-radius:12px}
+ #settingsModal.zmz-buff-mode .sheet-head{min-height:25px;height:25px;padding:0;margin:0 0 2px}
+ #settingsModal.zmz-buff-mode .sheet h2{font-size:14px}
+ #settingsModal.zmz-buff-mode #siegeAllowedConfig{padding:2px 4px;gap:1px}
+ #settingsModal.zmz-buff-mode #siegeAllowedConfig>summary{min-height:24px;padding:2px;font-size:12px}
+ #settingsModal.zmz-buff-mode .siege-buff-actions{margin:0;gap:2px}
+ #settingsModal.zmz-buff-mode .siege-buff-actions button{min-height:24px;padding:2px;font-size:10px}
+ #settingsModal.zmz-buff-mode #siegeBuffChoices .siege-buff-row{height:23px}
+ #settingsModal.zmz-buff-mode #siegeBuffChoices .siege-buff-group{height:17px;min-height:17px;padding:0}
+ #settingsModal.zmz-buff-mode #zmzBuffPager button{min-height:25px;padding:2px 4px}
+ #settingsModal.zmz-buff-mode .zmz-buff-footer{margin:0;padding:1px 0 0}
+ #settingsModal.zmz-buff-mode #siegeBuffBack{min-height:27px;padding:2px}
+ #settingsModal.zmz-buff-mode .zmz-buff-page-summary{font-size:9px}
+}

@@ -73,6 +73,7 @@ jobs:
           python -m pip install playwright==1.58.0
           if ! command -v google-chrome >/dev/null && ! command -v chromium >/dev/null; then python -m playwright install chromium --with-deps; fi
           python game_source/tests/test_siege_stock_ui_v24.py
+          python game_source/tests/test_zmz_buff_pages_browser.py
       - name: Generate update manifest
         run: |
           TAG="game-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"

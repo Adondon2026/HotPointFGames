@@ -15,6 +15,7 @@ assert(css.includes('overflow:hidden!important'),'pager must not rely on scrolli
 assert(!script.includes('list.scrollTop+='),'old touch-driven scroll must be gone');
 assert(script.includes('list.scrollHeight>list.clientHeight+2'),'every page must be measured to fit screen');
 assert(script.includes('pageSize=Math.min(9'),'portrait phone should use 9 items/page (3 pages)');
+assert(script.includes('while(pageSize>1)'),'very short screens may require single-item pages');
 assert(script.includes("classList.toggle('zmz-page-off'"),'visibility only; preserve hidden checkboxes');
 assert(script.includes('list.addEventListener(\'touchmove\''),'suppress swiping');
 assert(script.includes("presets.textContent=showing?'返回增益':'预设'"),'preset entry preserved');

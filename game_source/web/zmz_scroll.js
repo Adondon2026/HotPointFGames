@@ -58,12 +58,18 @@
     pageSize=Math.min(9,Math.max(1,rows.length));
     // Measure EVERY page (including extra category headings), not just page 1.
     // The viewport-height bounded flex layout determines available list height.
-    while(pageSize>2){
+    while(pageSize>1){
       let fits=true;
       const count=pageCount();
       for(let k=0;k<count;k++){
         showRows(k);
-        if(list.scrollHeight>list.clientHeight+2){fits=false;break;}
+        // A flex child can grow to fit its rows while forcing the footer
+        // BELOW the clipped modal: verify the whole panel, not only the list.
+        const footerBottom=back.getBoundingClientRect().bottom;
+        const sheetBottom=sheet.getBoundingClientRect().bottom;
+        if(list.scrollHeight>list.clientHeight+2||
+           details.scrollHeight>details.clientHeight+2||
+           footerBottom>sheetBottom-5){fits=false;break;}
       }
       if(fits)break;
       pageSize--;
