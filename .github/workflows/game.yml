@@ -73,10 +73,11 @@ jobs:
           python -m pip install playwright==1.58.0
           if ! command -v google-chrome >/dev/null && ! command -v chromium >/dev/null; then python -m playwright install chromium --with-deps; fi
           python game_source/tests/test_siege_stock_ui_v24.py
+          python game_source/tests/test_zmz_buff_pages_browser.py
       - name: Generate update manifest
         run: |
           TAG="game-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
-          if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then TAG="zmz-game-v0.24.1-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"; fi
+          if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then TAG="zmz-game-v0.24.2-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"; fi
           python tools/game_update_manifest.py game_source/dist/game_hall_lan_v6_2.py game_source/dist/game-update.json --version "$TAG"
       - name: Upload importable game files
         uses: actions/upload-artifact@v4
@@ -106,9 +107,9 @@ jobs:
           set -euo pipefail
           TAG="game-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
           if [[ "${GITHUB_REF_NAME}" == "Zmz_dev" ]]; then
-            TAG="zmz-game-v0.24.1-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
+            TAG="zmz-game-v0.24.2-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
-              --title "ZMZ v0.24.1 · game build ${GITHUB_RUN_NUMBER}" --notes "ZMZ-only game update; main release channel unchanged. Source: $GITHUB_SHA" \
+              --title "ZMZ v0.24.2 · game build ${GITHUB_RUN_NUMBER}" --notes "ZMZ-only game update; main release channel unchanged. Source: $GITHUB_SHA" \
               publish/game_hall_lan_v6_2.py publish/game-update.json
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
           else
