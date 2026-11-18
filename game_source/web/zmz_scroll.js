@@ -72,7 +72,8 @@
   }
   function sync(){
     const open=active();
-    if(open&&!wasOpen){
+    const was=wasOpen;
+    if(open&&!was){
       startingScroll=sheet?sheet.scrollTop:0;
       page=0;
     }
@@ -81,7 +82,7 @@
     if(!open){
       modal.classList.remove('zmz-buff-presets');
       presets.textContent='预设';presets.setAttribute('aria-pressed','false');
-      if(sheet)sheet.scrollTop=startingScroll;
+      if(was&&sheet)sheet.scrollTop=startingScroll;
       return;
     }
     if(sheet)sheet.scrollTop=0;
