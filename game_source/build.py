@@ -2,7 +2,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-GAME_DISPLAY_VERSION = "ZMZ v0.24.1"
+GAME_DISPLAY_VERSION = "ZMZ v0.24.2"
 
 def read(rel):
     return (ROOT / rel).read_text(encoding="utf-8").replace("@@ZMZ_GAME_VERSION@@", GAME_DISPLAY_VERSION)
