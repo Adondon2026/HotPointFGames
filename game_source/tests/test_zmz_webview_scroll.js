@@ -14,8 +14,10 @@ assert(css.includes('#settingsModal.zmz-buff-mode')&&css.includes('.zmz-page-off
 assert(css.includes('overflow:hidden!important'),'pager must not rely on scrolling');
 assert(!script.includes('list.scrollTop+='),'old touch-driven scroll must be gone');
 assert(script.includes('list.scrollHeight>list.clientHeight+2'),'every page must be measured to fit screen');
+assert(script.includes('details.scrollHeight>details.clientHeight+2'),'the whole dialog must fit, not just its list');
+assert(script.includes('footerBottom>sheetBottom-5'),'the return button must remain on screen');
 assert(script.includes('pageSize=Math.min(9'),'portrait phone should use 9 items/page (3 pages)');
-assert(script.includes('while(pageSize>1)'),'very short screens may require single-item pages');
+assert(script.includes('while(pageSize>1)'),'short screens may need one-item pages');
 assert(script.includes("classList.toggle('zmz-page-off'"),'visibility only; preserve hidden checkboxes');
 assert(script.includes('list.addEventListener(\'touchmove\''),'suppress swiping');
 assert(script.includes("presets.textContent=showing?'返回增益':'预设'"),'preset entry preserved');
@@ -41,7 +43,9 @@ const modal=element('modal',['hidden']),details=element('details',[]),
   numbers=element('numbers',[]),prev=element('prev',[]),
   next=element('next',[]),presets=element('presets',[]),
   summary=element('summary',[]);
-const sheet={scrollTop:75};modal.querySelector=()=>sheet;details.open=false;
+const sheet={scrollTop:75,getBoundingClientRect:()=>({bottom:height+180})};
+modal.querySelector=()=>sheet;details.open=false;
+back.getBoundingClientRect=()=>({bottom:list.scrollHeight+160});
 const groups=['弹药','机制','效果','技能','负面'].map(name=>element(name,['siege-buff-group']));
 const counts=[4,5,3,10,4];
 let j=0;const rows=[];
@@ -51,6 +55,7 @@ groups.forEach((g,i)=>{
 });
 list.querySelectorAll=sel=>sel==='.siege-buff-group'?groups:[];
 let height=300;
+Object.defineProperties(details,{clientHeight:{get:()=>height+30},scrollHeight:{get:()=>list.scrollHeight+80}});
 Object.defineProperty(list,'clientHeight',{get:()=>height});
 Object.defineProperty(list,'scrollHeight',{get(){
  const visible=rows.filter(x=>!x.classList.contains('zmz-page-off')).length;
