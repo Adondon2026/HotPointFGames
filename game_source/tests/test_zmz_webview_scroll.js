@@ -75,7 +75,7 @@ next.dispatch('click');
 assert.equal(rows.filter(x=>!x.classList.contains('zmz-page-off')).length,9);
 assert(list.scrollHeight<=list.clientHeight,'page 2 fits');
 next.dispatch('click');
-assert.equal(rows.filter(x=>!x.classList.contains('zmz-page-off')).length,18);
+assert.equal(rows.filter(x=>x.classList.contains('zmz-page-off')).length,18);
 assert.equal(rows.filter(x=>!x.classList.contains('zmz-page-off')).length,8);
 assert(list.scrollHeight<=list.clientHeight,'page 3 fits');
 assert.deepEqual(rows.map(x=>x.checked),save,'switching pages must preserve all other-page states');
