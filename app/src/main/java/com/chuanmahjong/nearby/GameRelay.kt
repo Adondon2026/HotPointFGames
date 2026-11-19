@@ -132,8 +132,11 @@ object GameRelay {
                                 }
                             }
                             answer
-                        }.getOrElse { Reply(403,"application/json",("{\"ok\":false,\"error\":\""+
-                            (it.message ?: "远程账户未验证").replace("\\","").replace("\"","")+"\"}").toByteArray()) }
+                        }.getOrElse { err ->
+                            val body = JSONObject().put("ok",false)
+                                .put("error",err.message ?: "远程账户未验证").toString()
+                            Reply(403,"application/json",body.toByteArray(Charsets.UTF_8))
+                        }
                         val result = JSONObject().put("id", job.getInt("id")).put("status", response.code)
                             .put("type", response.type).put("body", Base64.encodeToString(response.body, Base64.NO_WRAP))
                         relay("reply", result.toString().toByteArray())
