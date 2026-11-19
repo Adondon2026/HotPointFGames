@@ -66,6 +66,32 @@ try:
  assert siege(a,x,'return')['ok']
  assert state(a,y)['phase']=='lobby' and state(b,z)['mode']=='dice'
  print('LAN zombie coop: two authenticated clients, turn authority, shared state and enemy phase PASS')
+ # Three real players take one shot each before the next zombie wave.
+ q=join(a,'E')['token']
+ assert act(a,x,'set_mode',mode='siege')['ok']
+ assert act(a,x,'siege_settings',rulesVersion=24,theme='zombie',rarities={},itemCount=8,combatMode='turn',ammo=0)['ok']
+ assert state(a,x)['canStart'] and state(a,q)['players'][2]['name']=='E'
+ assert act(a,x,'start')['ok']
+ z3=siege(a,q,'state')
+ assert z3['seat']==2 and len(z3['players'])==len(z3['shots'])==len(z3['buffs'])==len(z3['launchers'])==3
+ assert len([b for b in z3['bodies'] if b['kind']=='cannon'])==3
+ assert not siege(a,q,'fire',rev=z3['rev'],angle=90,power=25)['ok']
+ for player,expected in [(x,1),(y,2),(q,0)]:
+     current=siege(a,player,'state')
+     shot=siege(a,player,'fire',rev=current['rev'],angle=90,power=25)
+     assert shot['ok'] and shot['turn']==expected,(player,shot)
+     assert (shot['zombie']['round']==2)==(player==q)
+     if player==q:assert shot['event']['zombiePhase'] is not None
+     g.ROOMS[a['code']]['state']['siege']['until']=0
+ assert len(siege(a,q,'state')['shots'])==3
+ assert siege(a,x,'return')['ok']
+ assert act(a,x,'set_mode',mode='siege')['ok']
+ # Three participants are not accepted in competitive two-core battles.
+ assert act(a,x,'siege_settings',rulesVersion=24,theme='classic',rarities={},itemCount=8,combatMode='turn',ammo=0)['ok']
+ assert not state(a,x)['canStart'] and not act(a,x,'start')['ok']
+ assert act(a,x,'siege_settings',rulesVersion=24,theme='zombie',rarities={},itemCount=8,combatMode='turn',ammo=0)['ok']
+ assert act(a,q,'leave')['ok']
+ print('LAN zombie three-player turn rotation, 3 cannons, classic two-player limit PASS')
  g.flush_state();saved=json.loads(g.ROOMS_FILE.read_text());assert set(saved)=={a['code'],b['code']};assert saved[b['code']]['state']['phase']!='lobby'
  assert act(a,x,'dissolve')['ok'];assert api(route(a,'state')+'?token='+y)['roomEnded'];assert state(b,z)['mode']=='dice'
  assert act(b,z,'reset')['ok'];assert act(b,z,'leave')['ok'];assert state(b,w)['isHost'];assert act(b,w,'leave')['ok'];assert not api('/api/rooms')['rooms']
