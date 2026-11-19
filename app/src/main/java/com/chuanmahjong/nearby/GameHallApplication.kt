@@ -10,5 +10,7 @@ class GameHallApplication : Application() {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
+        Python.getInstance().getModule("android_bridge").callAttr("use_cloud_registration")
+        CloudAccounts.init(this)
     }
 }

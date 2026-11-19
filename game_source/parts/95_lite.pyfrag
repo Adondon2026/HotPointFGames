@@ -50,6 +50,8 @@ def account_request(data, ip):
     kind = data.get('type'); token = str(data.get('accountToken',''))[:256]
     with _db() as db:
         if kind in ('register','login'):
+            if kind == 'register' and os.environ.get('GAMEHALL_CLOUD_REGISTRATION') == '1':
+                return {'ok':False,'error':'请在 App 的云账号入口使用注册邀请码'}
             now = time.time()
             for k in list(_AUTH_ATTEMPTS):
                 if now-_AUTH_ATTEMPTS[k][0]>60: _AUTH_ATTEMPTS.pop(k,None)

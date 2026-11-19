@@ -1,0 +1,19 @@
+[Unit]
+Description=HotPointFGames private test relay
+After=network.target
+
+[Service]
+DynamicUser=yes
+EnvironmentFile=/etc/hotpoint-game-relay.env
+StateDirectory=hotpoint-game-relay
+StateDirectoryMode=0700
+ExecStart=/usr/bin/node /opt/hotpoint-game-relay/game_relay.mjs
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+MemoryMax=192M
+
+[Install]
+WantedBy=multi-user.target

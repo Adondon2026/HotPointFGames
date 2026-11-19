@@ -25,6 +25,10 @@ PENDING = "gamehall_import.pending"
 FAILED = "gamehall_import.failed.py"
 BACKUP = "gamehall_import.previous.py"
 MAX_BYTES = 4 * 1024 * 1024
+
+
+def use_cloud_registration():
+    os.environ["GAMEHALL_CLOUD_REGISTRATION"] = "1"
 _REQUIRED_CLASSES = {"Handler", "ReliableThreadingHTTPServer"}
 _REQUIRED_FUNCTIONS = {"fresh_state", "flush_state"}
 _REQUIRED_VALUES = {"HOST", "STATE", "LOCK", "TOKENS", "ACTION_CACHE", "SAVE_EVENT"}

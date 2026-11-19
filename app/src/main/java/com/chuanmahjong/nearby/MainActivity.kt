@@ -60,6 +60,7 @@ class MainActivity : Activity() {
     private var currentUrls: List<String> = emptyList()
     private var selectedUrl: String? = null
     private var lastQrUrl: String? = null
+    private lateinit var relayStatus: TextView
 
     private val refreshTask = object : Runnable {
         override fun run() {
@@ -82,6 +83,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        CloudAccounts.syncSoon()
         handler.removeCallbacks(refreshTask)
         handler.post(refreshTask)
     }
@@ -141,6 +143,32 @@ class MainActivity : Activity() {
             }
         }
         content.addView(startStopButton, matchWrap(bottom = 14))
+
+        relayStatus = TextView(this)
+        content.addView(Button(this).apply {
+            text = "开启 / 关闭远程开房"
+            setOnClickListener { toggleRelay() }
+        }, matchWrap(bottom = 4))
+        content.addView(Button(this).apply {
+            text = "服务器设置"
+            setOnClickListener { configureRelay() }
+        }, matchWrap(bottom = 4))
+        content.addView(Button(this).apply {
+            text = "分享远程邀请"
+            setOnClickListener {
+                val url = GameRelay.invitation
+                if (url.isNotBlank()) startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, url)
+                }, "分享远程邀请"))
+                else relayStatus.text = GameRelay.status.ifBlank { "请先连接中继" }
+            }
+        }, matchWrap(bottom = 4))
+        content.addView(relayStatus, matchWrap(bottom = 10))
+        content.addView(Button(this).apply {
+            text = "云账号"
+            setOnClickListener { cloudAccount() }
+        }, matchWrap(bottom = 10))
 
         qrImage = ImageView(this).apply {
             adjustViewBounds = true
@@ -250,7 +278,108 @@ class MainActivity : Activity() {
         })
     }
 
+    private fun cloudField(label: String, secret: Boolean = false) = android.widget.EditText(this).apply {
+        hint = label
+        setSingleLine()
+        if (secret) inputType = android.text.InputType.TYPE_CLASS_TEXT or
+            android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+    }
+
+    private fun cloudPanel(vararg fields: View) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(20), 0, dp(20), 0)
+        fields.forEach { addView(it) }
+    }
+
+    private fun cloudTask(copyInvite: Boolean = false, task: () -> String) {
+        CloudAccounts.execute({ result ->
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) {
+                    refreshUi()
+                    val message = result.getOrElse { it.message ?: "云端操作失败" }
+                    val dialog = AlertDialog.Builder(this).setMessage(message).setPositiveButton("确定", null)
+                    if (copyInvite && result.isSuccess) {
+                        dialog.setTitle("注册邀请码 · 24 小时内使用一次")
+                        dialog.setNeutralButton("复制邀请码") { _, _ ->
+                            getSystemService(ClipboardManager::class.java)
+                                .setPrimaryClip(ClipData.newPlainText("注册邀请码", message))
+                        }
+                    }
+                    dialog.show()
+                }
+            }
+        }, task)
+    }
+
+    private fun configureRelay() {
+        val address = cloudField("手动输入公网 IP:端口")
+        address.setText(CloudAccounts.address.removePrefix("https://"))
+        val password = cloudField("转发密码", secret = true)
+        AlertDialog.Builder(this).setTitle("服务器设置").setView(cloudPanel(address, password))
+            .setNegativeButton("取消", null)
+            .setPositiveButton("保存") { _, _ ->
+                val endpoint = address.text.toString()
+                val value = password.text.toString()
+                cloudTask { CloudAccounts.configure(endpoint, value) }
+            }.show()
+    }
+
+    private fun toggleRelay() {
+        if (GameRelay.active()) {
+            GameRelay.stop()
+            return
+        }
+        val state = ServerPrefs.read(this)
+        if (!state.running || CloudAccounts.address.isBlank()) {
+            Toast.makeText(this, "请先设置服务器并启动游戏厅", Toast.LENGTH_LONG).show()
+            return
+        }
+        runCatching { GameRelay.start(CloudAccounts.address, CloudAccounts.relayToken(), state.port) }
+            .onFailure { Toast.makeText(this, it.message, Toast.LENGTH_LONG).show() }
+    }
+
+    private fun cloudAccount() {
+        if (CloudAccounts.address.isBlank()) {
+            configureRelay()
+            return
+        }
+        if (CloudAccounts.loggedIn) {
+            AlertDialog.Builder(this).setTitle("云账号 · ${CloudAccounts.name}")
+                .setItems(if (CloudAccounts.admin) arrayOf("立即同步", "生成注册邀请码", "重新登录", "退出登录")
+                    else arrayOf("立即同步", "重新登录", "退出登录")) { _, index ->
+                    when {
+                        index == 0 -> CloudAccounts.syncSoon()
+                        CloudAccounts.admin && index == 1 -> cloudTask(copyInvite = true) { CloudAccounts.invite() }
+                        index == (if (CloudAccounts.admin) 2 else 1) -> showCloudLogin()
+                        else -> cloudTask { CloudAccounts.signOut() }
+                    }
+                }.show()
+            return
+        }
+        showCloudLogin()
+    }
+
+    private fun showCloudLogin() {
+        val name = cloudField("昵称")
+        val password = cloudField("账号密码（至少 8 位）", secret = true)
+        val code = cloudField("注册邀请码（登录留空）")
+        fun authenticate(register: Boolean) {
+            val username = name.text.toString().trim()
+            val value = password.text.toString()
+            val invite = if (register) code.text.toString() else null
+            cloudTask { CloudAccounts.authenticate(username, value, invite) }
+        }
+        AlertDialog.Builder(this).setTitle("云账号").setView(cloudPanel(name, password, code))
+            .setNegativeButton("取消", null)
+            .setNeutralButton("用邀请码注册") { _, _ -> authenticate(true) }
+            .setPositiveButton("登录") { _, _ -> authenticate(false) }.show()
+    }
+
     private fun refreshUi() {
+        relayStatus.text = listOfNotNull(
+            GameRelay.status.takeIf { it.isNotBlank() },
+            if (CloudAccounts.loggedIn) "云账号：${CloudAccounts.name} · ${CloudAccounts.status}" else null,
+        ).joinToString("\n")
         val state = ServerPrefs.read(this)
         when {
             state.running -> {

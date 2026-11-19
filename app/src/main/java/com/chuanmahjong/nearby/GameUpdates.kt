@@ -13,7 +13,7 @@ object GameUpdates {
     private const val MAX_GAME = 4 * 1024 * 1024
     private const val MANIFEST = "game-update.json"
     private const val GAME = "game_hall_lan_v6_2.py"
-    private const val HOST_VERSION = 5
+    internal const val HOST_VERSION = 6
     private val allowedHosts = setOf("github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
     internal const val LATEST_MANIFEST = "https://github.com/$REPO/releases/latest/download/$MANIFEST"
     private val releaseTag = Regex("game-[0-9]+-[0-9]+-[a-f0-9]{7,40}")

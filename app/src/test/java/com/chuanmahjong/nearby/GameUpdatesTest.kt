@@ -26,7 +26,7 @@ class GameUpdatesTest {
     }
 
     @Test fun invalidManifestAndIncompatibleHostRejected() {
-        for (raw in listOf(manifest(host = 6), manifest(version = "android-v1.4"), manifest(commit = "c".repeat(40)), manifest(hash = "not-a-hash"))) {
+        for (raw in listOf(manifest(host = GameUpdates.HOST_VERSION + 1), manifest(version = "android-v1.4"), manifest(commit = "c".repeat(40)), manifest(hash = "not-a-hash"))) {
             try {
                 GameUpdates.resolveLatest(raw, null)
                 fail("Invalid manifest accepted")

@@ -130,6 +130,6 @@ jobs:
           else
             cp publish/app-debug.apk "publish/HotPointFGames-$VERSION.apk"
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
-              --title "Android host $VERSION" --notes "Android ARM64 debug APK. Host update: direct game manifest download without GitHub REST API. Debug signing may differ from earlier builds; preserve local data before any uninstall. Game releases remain latest." \
+              --title "Android host $VERSION" --notes "Android ARM64 debug APK. Adds optional remote hosting and invite-only cloud accounts with automatic sync. Debug signing may differ from earlier builds; preserve local data before any uninstall. Game releases remain latest." \
               "publish/HotPointFGames-$VERSION.apk"
           fi

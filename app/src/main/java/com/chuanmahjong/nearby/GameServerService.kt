@@ -51,6 +51,7 @@ class GameServerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP || !ServerPrefs.read(this).desired) {
+            GameRelay.stop()
             stopRequested.set(true)
             startForeground(NOTIFICATION_ID, notification("正在停止服务器…"))
             stopServer()
@@ -112,6 +113,7 @@ class GameServerService : Service() {
             try {
                 Python.getInstance().getModule("android_bridge").callAttr("stop_server", true)
                 ServerPrefs.setStopped(this)
+                CloudAccounts.syncSoon()
             } catch (error: Throwable) {
                 ServerPrefs.setStopped(this, "停止服务器时发生错误：${error.message.orEmpty()}")
             } finally {
@@ -190,6 +192,7 @@ class GameServerService : Service() {
     }
 
     override fun onDestroy() {
+        GameRelay.stop()
         releaseWakeLock()
         worker.shutdownNow()
         super.onDestroy()
