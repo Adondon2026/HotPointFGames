@@ -329,7 +329,7 @@ def _siege_field(r):
     dynamic=r.get('mode','classic')=='dynamic'
     offset=random.randint(-30,55) if dynamic else 0
     layout=random.choice(('tower','wall','split')) if dynamic else 'tower'
-    seats=r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2
+    seats=max(2,r.get('zombiePlayerCount',2)) if r.get('theme')=='zombie' else 2
     r['compoundRecipes']=[[] for _ in range(seats)]
     r.update(offset=offset,layout=layout,bodies=_siege_fort(offset,layout),items=_siege_items(r['itemCount'],allowed=_siege_allowed(r)),buffs=_siege_buffs(seats),windPair=_siege_weather(r.get('windLevel','off')))
     mode=r.get('mode','classic')
