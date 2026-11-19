@@ -184,7 +184,7 @@ const server = http.createServer(async (req, res) => {
     if (!accounts) return send(res,503,'云账号服务未启用');
     const identity = await cloudProfile(req);
     if (!identity) {
-      if (req.method === 'GET' && (path === '/' || /^\\/r\\/[A-Fa-f0-9]{6}(?:\\/|$)/.test(path))) {
+      if (req.method === 'GET' && (path === '/' || new RegExp('^/r/[A-Fa-f0-9]{6}(?:/|$)').test(path))) {
         return send(res,200,remoteAccountPage,'text/html; charset=utf-8');
       }
       return send(res,401,JSON.stringify({error:'请先登录或注册云账号'}),'application/json');
