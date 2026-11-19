@@ -47,7 +47,7 @@ export function cloudAccounts(directory, bootstrapDigest) {
         throw error(400, '昵称限 1～10 字，账号密码至少 8 位');
       }
       const displayName = data.displayName == null ? name.trim() : String(data.displayName).trim();
-      if (action === 'register' && (!displayName || Array.from(displayName).length > 12)) {
+      if (action === 'register' && (!displayName || Array.from(displayName).length > 12 || Array.from(displayName).some(ch => ch.codePointAt(0) < 32 || ch.codePointAt(0) === 127))) {
         throw error(400, '昵称限 1～12 字');
       }
       const existing = db.prepare('SELECT * FROM accounts WHERE name=?').get(name.trim());
@@ -86,7 +86,7 @@ export function cloudAccounts(directory, bootstrapDigest) {
     if (action === 'profile') return publicAccount(user);
     if (action === 'rename') {
       const displayName = typeof data.displayName === 'string' ? data.displayName.trim() : '';
-      if (!displayName || Array.from(displayName).length > 12 || /[\\u0000-\\u001f]/u.test(displayName)) {
+      if (!displayName || Array.from(displayName).length > 12 || Array.from(displayName).some(ch => ch.codePointAt(0) < 32 || ch.codePointAt(0) === 127)) {
         throw error(400, '昵称限 1～12 字，不能包含控制字符');
       }
       db.prepare('UPDATE accounts SET display_name=? WHERE id=?').run(displayName,user.id);
