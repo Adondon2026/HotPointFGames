@@ -2,6 +2,7 @@
 import http from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { cloudAccounts } from './cloud_accounts.mjs';
+import { remoteAccountPage } from './remote_account_page.mjs';
 const accessHash = process.env.GAME_ACCESS_HASH;
 if (!/^[a-f0-9]{64}$/.test(accessHash || '')) throw Error('Missing relay key');
 const limit = 4 * 1024 * 1024;
@@ -46,9 +47,9 @@ function authorize(req) {
   allowAttempt(req, 'access', 30);
   return 403;
 }
-function send(res, status, body = '', type = 'text/plain; charset=utf-8') {
+function send(res, status, body = '', type = 'text/plain; charset=utf-8', headers = {}) {
   res.writeHead(status, {'Content-Type': type, 'Cache-Control': 'no-store',
-    'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff'});
+    'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', ...headers});
   res.end(body);
 }
 async function read(req, maximum = limit * 2) {
@@ -60,6 +61,24 @@ async function read(req, maximum = limit * 2) {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+function cookie(req, name, pattern) {
+  const found = (req.headers.cookie || '').match(new RegExp('(?:^|; *)' + name + '=([^;]+)(?:;|$)'));
+  return found && pattern.test(found[1]) ? found[1] : null;
+}
+function invited(req) {
+  return invitation && Date.now() - lastPoll <= 30_000 &&
+    same(cookie(req, 'game_invite', /^[a-f0-9]{48}$/), invitation);
+}
+const sessionCookie = token => 'cloud_session=' + token +
+  '; Path=/; Max-Age=7776000; HttpOnly; SameSite=Lax; Secure';
+const expireSession = 'cloud_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure';
+async function cloudProfile(req) {
+  if (!accounts) return null;
+  const session = cookie(req,'cloud_session',/^[a-f0-9]{64}$/);
+  if (!session) return null;
+  try { return await accounts({action:'profile',token:session}); }
+  catch { return null; }
 }
 function dispatch() {
   if (!waiter) return;
@@ -76,22 +95,38 @@ const server = http.createServer(async (req, res) => {
     const path = req.url;
     if (path === '/cloud/account') {
       if (!accounts || req.method !== 'POST') return send(res, 404);
-      const code = authorize(req);
-      if (code !== 200) return send(res, code);
+      const owner = access(req), remote = !owner && invited(req);
+      if (!owner && !remote) return send(res,403);
+      if (remote && (req.headers['sec-fetch-site'] === 'cross-site' ||
+        !String(req.headers['content-type']||'').startsWith('application/json'))) return send(res,403);
       const body = await read(req, 128 * 1024);
       const data = JSON.parse(body);
+      if (remote && !['login','register','profile','rename','logout'].includes(data.action)) return send(res,403);
+      if (remote && !['login','register'].includes(data.action)) {
+        data.token = cookie(req,'cloud_session',/^[a-f0-9]{64}$/) || '';
+      }
       const auth = data.action === 'login' || data.action === 'register';
-      if (auth && (authInFlight >= 4 || !allowAttempt(req, 'account', 12))) return send(res, 429);
+      if (auth && (authInFlight >= 4 || !allowAttempt(req, 'account', 12))) return send(res,429);
       if (auth) authInFlight++;
       try {
-        const result = await accounts(data);
-        return send(res, 200, JSON.stringify(result), 'application/json');
+        const result = await accounts(data,{invited: remote});
+        const headers = {};
+        if (remote && auth) {
+          headers['Set-Cookie'] = sessionCookie(result.token);
+          delete result.token;
+        }
+        if (remote && data.action === 'logout') headers['Set-Cookie'] = expireSession;
+        return send(res, 200, JSON.stringify(result), 'application/json', headers);
       } catch (err) {
-        return send(res, err.status || 500,
-          JSON.stringify({error: err.status ? err.message : '云端操作暂时失败'}), 'application/json');
+        return send(res,err.status || 500,JSON.stringify({error:err.status?err.message:'云端操作暂时失败'}),'application/json');
       } finally {
         if (auth) authInFlight--;
       }
+    }
+    if (path === '/cloud/me' && req.method === 'GET') {
+      if (!invited(req)) return send(res,403);
+      const profile = await cloudProfile(req);
+      return send(res,profile?200:401,JSON.stringify(profile || {error:'请登录云账号'}),'application/json');
     }
     if (path === '/relay/poll' || path === '/relay/reply' || path === '/relay/close') {
       if (req.method !== 'POST') return send(res, 405);
@@ -143,8 +178,17 @@ const server = http.createServer(async (req, res) => {
         'Set-Cookie': 'game_invite=' + invitation + '; Path=/; HttpOnly; SameSite=Lax' + secure});
       return res.end();
     }
-    const cookie = (req.headers.cookie || '').match(/(?:^|; *)game_invite=([a-f0-9]{48})(?:;|$)/);
-    if (!same(cookie?.[1], invitation)) return send(res, 403, '请打开房主分享的邀请链接');
+    if (!invited(req)) return send(res,403,'请打开房主分享的邀请链接');
+    // Remote room requests cannot fall back to local guest credentials.
+    // Only the cloud service can establish the identity forwarded to Android.
+    if (!accounts) return send(res,503,'云账号服务未启用');
+    const identity = await cloudProfile(req);
+    if (!identity) {
+      if (req.method === 'GET' && (path === '/' || /^\\/r\\/[A-Fa-f0-9]{6}(?:\\/|$)/.test(path))) {
+        return send(res,200,remoteAccountPage,'text/html; charset=utf-8');
+      }
+      return send(res,401,JSON.stringify({error:'请先登录或注册云账号'}),'application/json');
+    }
     if ((req.method === 'POST' && req.headers['sec-fetch-site'] === 'cross-site') || !['GET', 'POST'].includes(req.method)
       || !path.startsWith('/') || path.startsWith('//') || path.includes('\\')) return send(res, 403);
     if (pending.size >= 12) return send(res, 503, '房间繁忙，请重试');
@@ -155,7 +199,7 @@ const server = http.createServer(async (req, res) => {
     const timer = setTimeout(() => send(res, 504, '房主响应超时'), 12_000);
     res.on('close', () => { clearTimeout(timer); pending.delete(id); });
     pending.set(id, {res, invite, dispatched: false,
-      job: {id, path, method: req.method, body: body.toString('base64')}});
+      job: {id, path, method: req.method, body: body.toString('base64'), identity}});
     dispatch();
   } catch (err) {
     if (!res.headersSent && !res.destroyed) send(res, err.status || 400);
