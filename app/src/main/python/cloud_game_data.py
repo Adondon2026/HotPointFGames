@@ -41,6 +41,8 @@ def prepare(uid, name, local_token):
             raise ValueError("本机已有同名旧账号，请为云端账号换一个昵称")
         db.execute("INSERT OR IGNORE INTO users VALUES(?,?,?,?)",
                    (uid, name, secrets.token_hex(16), secrets.token_hex(32)))
+        # A cloud nickname can change while the permanent cloud UID stays fixed.
+        db.execute("UPDATE users SET name=? WHERE id=?", (name, uid))
         token_hash = hashlib.sha256(local_token.encode()).hexdigest()
         db.execute("INSERT OR REPLACE INTO sessions VALUES(?,?,?)", (token_hash, uid, int(time.time()) + 3650 * 86400))
 
