@@ -36,6 +36,26 @@ try {
   const other = await run({...sync,token:friend.token,settings:null,results:[]});
   assert.deepEqual(other.results, []);
   assert.equal(other.settings, null);
+
+  // Private room invitations grant *only* the right to register; a cloud
+  // account still needs an immutable username and a password.
+  await assert.rejects(run({action:'register',name:'无邀请',password,displayName:'昵称'}), {status:403});
+  const invited = await run({action:'register',name:'person3',password,displayName:'路上同行者'}, {invited:true});
+  assert.equal(invited.username,'person3');
+  assert.equal(invited.name,'路上同行者');
+  assert.equal(invited.admin,false);
+  const profile = await run({action:'profile',token:invited.token});
+  assert.equal(profile.name,'路上同行者');
+  assert.equal(profile.username,'person3');
+  const changed = await run({action:'rename',token:invited.token,displayName:'三号炮手'});
+  assert.equal(changed.name,'三号炮手');
+  assert.equal(changed.username,'person3');
+  assert.equal((await run({action:'login',name:'person3',password})).name,'三号炮手');
+  await assert.rejects(run({action:'rename',token:'invalid',displayName:'冒名修改'}), {status:401});
+  await assert.rejects(run({action:'rename',token:invited.token,displayName:''}), {status:400});
+  await assert.rejects(run({action:'register',name:'same-id',password,displayName:'其他'}, {invited:true})
+    .then(()=>run({action:'register',name:'same-id',password,displayName:'其他'}, {invited:true})), {status:409});
+  assert.equal((await run({action:'profile',token:owner.token})).username,'房主');
   console.log('Cloud accounts: invitations, account isolation, deduplication and device restore PASS');
 } finally {
   accounts?.close();

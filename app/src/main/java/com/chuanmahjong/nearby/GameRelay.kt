@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 
 /** One relay session within the game server foreground service. */
 object GameRelay {
@@ -16,6 +17,7 @@ object GameRelay {
     fun active() = worker != null
 
     private const val LIMIT = 4 * 1024 * 1024
+    private val remoteSeatOwners = ConcurrentHashMap<String, String>()
     internal data class Reply(val code: Int, val type: String, val body: ByteArray)
 
     internal fun request(url: URL, method: String, data: ByteArray?, headers: Map<String, String> = emptyMap()): Reply {
@@ -89,11 +91,52 @@ object GameRelay {
                         val path = job.getString("path")
                         val method = job.getString("method")
                         require(path.startsWith("/") && !path.startsWith("//") && !path.contains('\\'))
+                        val identity = job.getJSONObject("identity")
+                        val uid = identity.getString("id")
+                        val nickname = identity.getString("name")
+                        require(uid.matches(Regex("[a-f0-9]{32}")) && nickname.isNotBlank())
                         val response = runCatching {
                             require(method == "GET" || method == "POST")
-                            request(URL("http://127.0.0.1:$port$path"), method,
-                                if (method == "POST") Base64.decode(job.getString("body"), Base64.DEFAULT) else null)
-                        }.getOrElse { Reply(502, "text/plain", ByteArray(0)) }
+                            require(path.substringBefore('?') != "/api/account") {
+                                "远程用户只能使用云账号"
+                            }
+                            val incoming = if (method == "POST")
+                                Base64.decode(job.getString("body"),Base64.DEFAULT) else null
+                            val endpoint = path.substringBefore('?')
+                            val join = endpoint == "/api/rooms" ||
+                                Regex("/r/[A-Fa-f0-9]{6}/api/join").matches(endpoint)
+                            val payload = if (join && method == "POST") {
+                                val body = JSONObject(incoming!!.toString(Charsets.UTF_8))
+                                // A browser-supplied name/accountToken is untrusted.
+                                // Only the Node relay can authenticate this cloud identity.
+                                body.put("name",nickname)
+                                body.put("accountToken",CloudAccounts.prepareRemotePlayer(uid,nickname))
+                                body.toString().toByteArray(Charsets.UTF_8)
+                            } else incoming
+                            val protected = Regex("/r/[A-Fa-f0-9]{6}/api/(state|action|siege)").matches(endpoint)
+                            if (protected) {
+                                val token = if (method == "GET") {
+                                    val query = path.substringAfter('?', "")
+                                    query.split('&').firstNotNullOfOrNull {
+                                        if (it.startsWith("token=")) java.net.URLDecoder.decode(it.substring(6),"UTF-8") else null
+                                    } ?: ""
+                                } else JSONObject(payload!!.toString(Charsets.UTF_8)).optString("token")
+                                require(remoteSeatOwners[token] == uid) { "请重新通过房间链接加入" }
+                            }
+                            val answer = request(URL("http://127.0.0.1:$port$path"),method,payload)
+                            if (join && answer.code == 200) {
+                                val joined = JSONObject(answer.body.toString(Charsets.UTF_8))
+                                if (joined.optBoolean("ok")) {
+                                    if (remoteSeatOwners.size > 512) remoteSeatOwners.clear()
+                                    remoteSeatOwners[joined.getString("token")] = uid
+                                }
+                            }
+                            answer
+                        }.getOrElse { err ->
+                            val body = JSONObject().put("ok",false)
+                                .put("error",err.message ?: "远程账户未验证").toString()
+                            Reply(403,"application/json",body.toByteArray(Charsets.UTF_8))
+                        }
                         val result = JSONObject().put("id", job.getInt("id")).put("status", response.code)
                             .put("type", response.type).put("body", Base64.encodeToString(response.body, Base64.NO_WRAP))
                         relay("reply", result.toString().toByteArray())
@@ -119,6 +162,7 @@ object GameRelay {
     }
 
     @Synchronized fun stop() {
+        remoteSeatOwners.clear()
         invitation = ""
         status = ""
         worker?.interrupt()

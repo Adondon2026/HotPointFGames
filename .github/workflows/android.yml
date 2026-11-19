@@ -53,6 +53,15 @@ jobs:
       - name: Install Android platform
         run: sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify cloud account and private relay
+        run: |
+          node --check tools/game_relay.mjs
+          node --check tools/remote_account_page.mjs
+          node tools/test_cloud_accounts.mjs
+          node tools/test_game_relay.mjs
       - name: Test and sync game source
         run: |
           python tests/test_game_update_manifest.py

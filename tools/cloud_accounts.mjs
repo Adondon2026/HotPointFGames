@@ -21,6 +21,11 @@ export function cloudAccounts(directory, bootstrapDigest) {
       payload TEXT NOT NULL, UNIQUE(uid, match));
     CREATE INDEX IF NOT EXISTS results_uid_seq ON results(uid,seq);
   `);
+  // Existing installations have no display_name. Keep login IDs permanent
+  // while allowing an independent, editable public nickname.
+  if (!db.prepare('PRAGMA table_info(accounts)').all().some(row => row.name === 'display_name')) {
+    db.exec('ALTER TABLE accounts ADD COLUMN display_name TEXT');
+  }
   function transaction(run) {
     db.exec('BEGIN IMMEDIATE');
     try {
@@ -32,12 +37,18 @@ export function cloudAccounts(directory, bootstrapDigest) {
       throw err;
     }
   }
-  async function handle(data) {
+  const publicAccount = account => ({id: account.id, username: account.name,
+    name: account.display_name || account.name, admin: !!account.admin});
+  async function handle(data, options = {}) {
     const { action, name, password, code, token } = data;
     if (action === 'login' || action === 'register') {
       if (typeof name !== 'string' || !name.trim() || Array.from(name.trim()).length > 10
         || typeof password !== 'string' || password.length < 8 || password.length > 128) {
         throw error(400, '昵称限 1～10 字，账号密码至少 8 位');
+      }
+      const displayName = data.displayName == null ? name.trim() : String(data.displayName).trim();
+      if (action === 'register' && (!displayName || Array.from(displayName).length > 12 || Array.from(displayName).some(ch => ch.codePointAt(0) < 32 || ch.codePointAt(0) === 127))) {
+        throw error(400, '昵称限 1～12 字');
       }
       const existing = db.prepare('SELECT * FROM accounts WHERE name=?').get(name.trim());
       const salt = existing?.salt || random(16);
@@ -54,23 +65,33 @@ export function cloudAccounts(directory, bootstrapDigest) {
         account = transaction(() => {
           const first = !db.prepare('SELECT 1 FROM accounts LIMIT 1').get();
           const valid = first ? hash === bootstrapDigest
-            : db.prepare('DELETE FROM codes WHERE hash=? AND expires>?').run(hash, second()).changes === 1;
+            : options.invited === true || db.prepare('DELETE FROM codes WHERE hash=? AND expires>?').run(hash, second()).changes === 1;
           if (!valid) throw error(403, '注册邀请码无效或已用过');
           const account = { id: random(16), name: name.trim(), admin: first ? 1 : 0 };
-          db.prepare('INSERT INTO accounts(id,name,salt,password,admin) VALUES(?,?,?,?,?)')
-            .run(account.id, account.name, salt, encoded.toString('hex'), account.admin);
+          db.prepare('INSERT INTO accounts(id,name,salt,password,admin,display_name) VALUES(?,?,?,?,?,?)')
+            .run(account.id, account.name, salt, encoded.toString('hex'), account.admin, displayName);
           return account;
         });
       }
       const session = random(32);
       db.prepare('DELETE FROM sessions WHERE expires<=?').run(second());
       db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(digest(session), account.id, second() + 90 * 86400);
-      return { id: account.id, name: account.name, admin: !!account.admin, token: session };
+      const fresh = db.prepare('SELECT * FROM accounts WHERE id=?').get(account.id);
+      return { ...publicAccount(fresh), token: session };
     }
     const user = typeof token === 'string' && token.length === 64 && db.prepare(
       'SELECT a.* FROM accounts a JOIN sessions s ON a.id=s.uid WHERE s.hash=? AND s.expires>?'
     ).get(digest(token), second());
     if (!user) throw error(401, '云账号登录已失效，请重新登录');
+    if (action === 'profile') return publicAccount(user);
+    if (action === 'rename') {
+      const displayName = typeof data.displayName === 'string' ? data.displayName.trim() : '';
+      if (!displayName || Array.from(displayName).length > 12 || Array.from(displayName).some(ch => ch.codePointAt(0) < 32 || ch.codePointAt(0) === 127)) {
+        throw error(400, '昵称限 1～12 字，不能包含控制字符');
+      }
+      db.prepare('UPDATE accounts SET display_name=? WHERE id=?').run(displayName,user.id);
+      return publicAccount(db.prepare('SELECT * FROM accounts WHERE id=?').get(user.id));
+    }
     if (action === 'logout') {
       db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(token));
       return {};

@@ -234,6 +234,35 @@ try:
         assert not errors,errors
         print('Siege zombie cinematic camera 60Hz continuity, short wave, complete return before unlock:',smooth)
         print('Siege zombie coop real browser: shared core, seat 1 right-facing, enemy phase replay PASS')
+        # The third cooperative player has a real HUD seat and cannon, not a
+        # spectator alias of another existing player.
+        coop3=g._siege_new('A','a',False,8,'classic','off',0,'stock')
+        g._siege_v24_setup(coop3,'zombie');coop3['zombiePlayerCount']=3
+        g._siege_field(coop3)
+        coop3['code']='COOP03';coop3['phase']='play';coop3['rev']=8
+        coop3['shots']=[0,0,0];coop3['turn']=2
+        coop3['players']=[{'key':k,'name':name} for k,name in
+                          [('a','炮手甲'),('b','炮手乙'),('c','炮手丙')]]
+        triple=g._siege_public(coop3,'c',-1)
+        page.evaluate('d=>{apply(d);overview=null;update()}',triple)
+        expect(page.locator('#third')).to_be_visible()
+        expect(page.locator('#n2')).to_have_text('你')
+        assert page.evaluate('room.seat')==2
+        assert page.evaluate('canAim()') is True
+        for width in (320,390,480):
+            page.set_viewport_size({'width':width,'height':844})
+            bounds=page.evaluate("""()=>{
+                const rect=id=>document.getElementById(id).getBoundingClientRect();
+                const a=rect('left'),b=rect('right'),c=rect('third'),bar=rect('hud');
+                const core=rect('coopCore'),status=rect('turn');
+                return {ordered:a.right<=b.left+1&&b.right<=c.left+1,
+                    allInside:a.left>=bar.left-2&&c.right<=bar.right+2,
+                    coreBelow:core.top>status.bottom-1,
+                    visible:c.width>20&&c.height>15}
+            }""")
+            assert all(bounds.values()),(width,bounds)
+        page.set_viewport_size({'width':390,'height':844})
+        print('Siege 3-player cooperative HUD and cannon at phone widths PASS')
         print('Siege camera actual replay coverage:',result)
         print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')
         print('Siege v24 real browser: all 22 inventory rows rendered; uniform controls, filter, selection and cancel PASS')

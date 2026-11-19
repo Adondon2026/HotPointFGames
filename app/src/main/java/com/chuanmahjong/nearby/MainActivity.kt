@@ -334,6 +334,10 @@ class MainActivity : Activity() {
             Toast.makeText(this, "请先设置服务器并启动游戏厅", Toast.LENGTH_LONG).show()
             return
         }
+        if (!CloudAccounts.loggedIn) {
+            showCloudLogin()
+            return
+        }
         runCatching { GameRelay.start(CloudAccounts.address, CloudAccounts.relayToken(), state.port) }
             .onFailure { Toast.makeText(this, it.message, Toast.LENGTH_LONG).show() }
     }
@@ -344,13 +348,18 @@ class MainActivity : Activity() {
             return
         }
         if (CloudAccounts.loggedIn) {
-            AlertDialog.Builder(this).setTitle("云账号 · ${CloudAccounts.name}")
-                .setItems(if (CloudAccounts.admin) arrayOf("立即同步", "生成注册邀请码", "重新登录", "退出登录")
-                    else arrayOf("立即同步", "重新登录", "退出登录")) { _, index ->
-                    when {
-                        index == 0 -> CloudAccounts.syncSoon()
-                        CloudAccounts.admin && index == 1 -> cloudTask(copyInvite = true) { CloudAccounts.invite() }
-                        index == (if (CloudAccounts.admin) 2 else 1) -> showCloudLogin()
+            val actions = listOf("修改游戏昵称", "立即同步") +
+                (if (CloudAccounts.admin) listOf("生成注册邀请码") else emptyList()) +
+                listOf("切换账号", "退出登录")
+            AlertDialog.Builder(this)
+                .setTitle("云账号 · ${CloudAccounts.name}")
+                .setMessage("账号名：${CloudAccounts.username}\\n游戏昵称：${CloudAccounts.name}")
+                .setItems(actions.toTypedArray()) { _, index ->
+                    when (actions[index]) {
+                        "修改游戏昵称" -> editCloudNickname()
+                        "立即同步" -> CloudAccounts.syncSoon()
+                        "生成注册邀请码" -> cloudTask(copyInvite = true) { CloudAccounts.invite() }
+                        "切换账号" -> showCloudLogin()
                         else -> cloudTask { CloudAccounts.signOut() }
                     }
                 }.show()
@@ -359,17 +368,28 @@ class MainActivity : Activity() {
         showCloudLogin()
     }
 
+    private fun editCloudNickname() {
+        val nickname = cloudField("新的游戏昵称（1～12字）")
+        nickname.setText(CloudAccounts.name)
+        AlertDialog.Builder(this).setTitle("修改游戏昵称")
+            .setView(cloudPanel(nickname))
+            .setNegativeButton("取消",null)
+            .setPositiveButton("保存") { _, _ -> cloudTask { CloudAccounts.rename(nickname.text.toString()) } }
+            .show()
+    }
+
     private fun showCloudLogin() {
-        val name = cloudField("昵称")
+        val name = cloudField("账号名（登录时使用）")
+        val nickname = cloudField("游戏昵称（注册时填写）")
         val password = cloudField("账号密码（至少 8 位）", secret = true)
         val code = cloudField("注册邀请码（登录留空）")
         fun authenticate(register: Boolean) {
             val username = name.text.toString().trim()
             val value = password.text.toString()
             val invite = if (register) code.text.toString() else null
-            cloudTask { CloudAccounts.authenticate(username, value, invite) }
+            cloudTask { CloudAccounts.authenticate(username, value, invite, nickname.text.toString()) }
         }
-        AlertDialog.Builder(this).setTitle("云账号").setView(cloudPanel(name, password, code))
+        AlertDialog.Builder(this).setTitle("云账号 · 注册或登录").setView(cloudPanel(name, nickname, password, code))
             .setNegativeButton("取消", null)
             .setNeutralButton("用邀请码注册") { _, _ -> authenticate(true) }
             .setPositiveButton("登录") { _, _ -> authenticate(false) }.show()
@@ -378,7 +398,7 @@ class MainActivity : Activity() {
     private fun refreshUi() {
         relayStatus.text = listOfNotNull(
             GameRelay.status.takeIf { it.isNotBlank() },
-            if (CloudAccounts.loggedIn) "云账号：${CloudAccounts.name} · ${CloudAccounts.status}" else null,
+            if (CloudAccounts.loggedIn) "云账号：${CloudAccounts.username}（${CloudAccounts.name}）· ${CloudAccounts.status}" else "尚未登录云账号",
         ).joinToString("\n")
         val state = ServerPrefs.read(this)
         when {

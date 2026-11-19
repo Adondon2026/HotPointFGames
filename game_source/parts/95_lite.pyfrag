@@ -161,7 +161,10 @@ def _lite_join(self,data):
             found={'id':pid,'name':user['name'],'accountId':uid,'ready':False,'connected':True,'lastSeen':time.time(),'seatKey':secrets.token_urlsafe(24),'life':STATE['settings']['cardLives'],'hand':[],'diceCount':STATE['settings']['diceStart'],'dice':[],'score':0,'ddzHand':[],'ddzScore':0,'ddzHintCursor':0,'isBot':False,'cmHand':[],'cmMelds':[],'cmMissing':None,'cmWon':False,'cmScore':0,'cmDrawnId':None,'cmExchange':[]}
             STATE['players'].append(found)
             if not STATE['hostPlayerId']: STATE['hostPlayerId']=pid
-        else: pid=found['id']
+        else:
+            pid=found['id']
+            # Cloud nickname changes use the immutable account ID, not a new seat.
+            found['name']=user['name']
         token=secrets.token_urlsafe(24); TOKENS[token]=pid; touch_player(found); bump()
         return self.reply({'ok':True,'token':token,'playerId':pid,'reconnected':True})
 Handler.join_player=_lite_join
