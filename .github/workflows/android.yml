@@ -61,6 +61,7 @@ jobs:
           node --check tools/game_relay.mjs
           node --check tools/remote_account_page.mjs
           node tools/test_cloud_accounts.mjs
+          node tools/test_game_relay.mjs
       - name: Test and sync game source
         run: |
           python tests/test_game_update_manifest.py
