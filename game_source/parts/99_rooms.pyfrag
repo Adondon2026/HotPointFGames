@@ -192,7 +192,11 @@ def public_state(player_id,draw_since=-1,draw_revision=-1):
         v['roomCode']=_ROOM_ACTIVE['code'];v['modeSelected']=_ROOM_ACTIVE.get('selected',True)
         if not v['modeSelected']:v['canStart']=False
         if STATE['mode']=='siege':
-            n=len(STATE['players']);v['canStart']=v['canStart'] and (n in (2,3) if STATE['settings'].get('siegeTheme')=='zombie' else n==2)
+            n=len(STATE['players']);coop=STATE['settings'].get('siegeTheme')=='zombie' and STATE['settings'].get('siegeRulesVersion')==24
+            v['canStart']=(player_id==STATE['hostPlayerId'] and STATE['phase']=='lobby'
+                           and (n in (2,3) if coop else n==2)
+                           and all(is_connected(p) for p in STATE['players'] if not p.get('isBot'))
+                           and any(not p.get('isBot') for p in STATE['players']))
     return v
 
 def _room_siege_live(r):
