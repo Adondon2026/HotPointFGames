@@ -9,6 +9,7 @@ import org.json.JSONObject
 import java.net.URL
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
@@ -26,6 +27,7 @@ object CloudAccounts {
 
     val address: String get() = saved.optString("address")
     val name: String get() = saved.optString("name")
+    val username: String get() = saved.optString("username",saved.optString("name"))
     val loggedIn: Boolean get() = saved.has("id")
     val admin: Boolean get() = saved.optBoolean("admin")
 
@@ -103,11 +105,14 @@ object CloudAccounts {
         return result
     }
 
-    fun authenticate(name: String, password: String, code: String?): String {
+    fun authenticate(name: String, password: String, code: String?, nickname: String? = null): String {
         val old = saved
         val body = JSONObject().put("action", if (code == null) "login" else "register")
             .put("name", name).put("password", password)
-        if (code != null) body.put("code", code.trim())
+        if (code != null) {
+            body.put("code", code.trim())
+            body.put("displayName", nickname?.trim()?.ifBlank { name.trim() } ?: name.trim())
+        }
         val account = call(old, body)
         for (field in listOf("address", "relayToken")) account.put(field, old.getString(field))
         val localToken = digest("hotpoint-local-session-v1:" + account.getString("token"))
@@ -115,6 +120,33 @@ object CloudAccounts {
         save(account)
         sync()
         return "已登录 ${account.getString("name")}"
+    }
+
+    fun rename(nickname: String): String {
+        require(loggedIn) { "请先登录云账号" }
+        val name = nickname.trim()
+        require(name.isNotBlank() && name.codePointCount(0,name.length) <= 12) { "昵称需要 1～12 个字" }
+        val old = saved
+        val account = call(old,JSONObject().put("action","rename")
+            .put("token",old.getString("token")).put("displayName",name))
+        val state = JSONObject(old.toString()).put("name",account.getString("name"))
+        module().callAttr("prepare",old.getString("id"),account.getString("name"),localToken()!!)
+        save(state);sync()
+        return "昵称已修改为 " + account.getString("name")
+    }
+
+    /** Translate only the cloud identity already authenticated by the relay;
+     * never accept an identity field directly from a remote browser body. */
+    fun prepareRemotePlayer(id: String, displayName: String): String {
+        require(id.matches(Regex("[a-f0-9]{32}"))) { "云账号 ID 无效" }
+        require(displayName.isNotBlank() && displayName.codePointCount(0,displayName.length) <= 12) {
+            "云昵称无效"
+        }
+        val random = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val localToken = digest("hotpoint-remote-session-v1:" +
+            Base64.encodeToString(random,Base64.NO_WRAP))
+        module().callAttr("prepare",id,displayName,localToken)
+        return localToken
     }
 
     fun invite(): String = call(saved, JSONObject().put("action", "invite")
