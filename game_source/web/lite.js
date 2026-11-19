@@ -1,5 +1,5 @@
 // Local profile + progressive shell. Existing game controls and rule code stay intact.
-const liteGames={cards:'骗子牌',dice:'大话骰',draw:'你画我猜',ddz:'斗地主',chuanma:'四川麻将',army:'军棋',siege:'拆家大战'};
+const liteGames={cards:'骗子牌',dice:'大话骰',draw:'你画我猜',ddz:'斗地主',chuanma:'四川麻将',army:'军棋',siege:'保卫子刊'};
 let accountToken=localStorage.getItem('gh_account_token')||'',liteProfile=null,liteBusy=false;
 const liteHTML=(id,html)=>{const el=document.createElement('div');el.id=id;el.innerHTML=html;return el};
 const j=$('joinCard');j.innerHTML=`<div class="lite-hero"><div class="lite-kicker">HOTPOINT / OFFLINE</div><h1>加入好友房间</h1><p>选择你的账户或以游客身份进入。</p></div><div id="liteSigned" class="lite-signed hidden"><strong id="liteSignedName"></strong><div class="muted" id="liteSignedStats"></div><button class="full green" id="liteResume" style="margin-top:12px">进入房间</button><button class="lite-link full" id="liteSwitch" style="margin-top:7px">切换账户</button></div><div id="liteLoginFields"><label class="lite-field" for="nameInput">昵称</label><input id="nameInput" maxlength="10" placeholder="你的昵称" autocomplete="username"><button class="full green" id="joinBtn" style="margin-top:12px">游客进入</button><div class="lite-login-divider"><span>想保留积分？</span><button class="lite-link" id="liteAccountToggle">登录 / 注册</button></div><div id="liteAccountFields" class="hidden"><label class="lite-field" for="litePin">PIN（4～8 位数字）</label><input id="litePin" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" placeholder="输入本地账户 PIN"><div class="lite-login-actions"><button class="green" id="liteLogin">登录</button><button class="secondary" id="liteRegister">新建账户</button></div><div class="muted">账户和战绩仅保存在房主设备。</div></div><div id="liteLoginError" class="lite-error" role="status"></div></div>`;
@@ -182,9 +182,9 @@ const liteCatalogue={
  Ddz:{mode:'ddz',summary:'三人 · 自动补位',keywords:'斗地主 地主 扑克 ddz doudizhu'},
  Army:{mode:'army',summary:'双人暗棋',keywords:'军棋 陆战棋 军旗 暗棋 army junqi'},
  Chuanma:{mode:'chuanma',summary:'换三张 · 血战',keywords:'四川麻将 川麻 麻将 血战 mahjong'},
- Siege:{mode:'siege',summary:'弹射 · 堡垒破坏',keywords:'拆家大战 炮击 炮弹 堡垒 弹射 愤怒的小鸟 siege artillery'}
+ Siege:{mode:'siege',summary:'弹射 · 堡垒破坏',keywords:'保卫子刊 拆家大战 炮击 炮弹 堡垒 弹射 愤怒的小鸟 siege artillery'}
 };
-const siegeCard=document.createElement('a');siegeCard.id='modeSiege';siegeCard.className='mode';siegeCard.href='#';siegeCard.innerHTML='<div class="mode-emoji" aria-hidden="true">拆</div><div><div class="mode-name">拆家大战</div><div class="mode-desc">双人弹射 · 堡垒破坏</div></div>';grid.appendChild(siegeCard);
+const siegeCard=document.createElement('a');siegeCard.id='modeSiege';siegeCard.className='mode';siegeCard.href='#';siegeCard.innerHTML='<div class="mode-emoji" aria-hidden="true">拆</div><div><div class="mode-name">保卫子刊</div><div class="mode-desc">双人弹射 · 堡垒破坏</div></div>';grid.appendChild(siegeCard);
 let litePendingGame=null;
 const liteSearch=$('liteGameSearch'),liteScroll=$('liteGamesScroll'),liteNav=$('liteCarouselNav');
 const liteCards=()=>Array.from(grid.querySelectorAll('.mode'));
