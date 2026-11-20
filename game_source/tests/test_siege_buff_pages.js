@@ -7,7 +7,7 @@ const script=read('web/siege_buff_pages.js');
 const catalog=read('web/games/siege_catalog.js');
 const keys=(catalog.match(/const siegeV24Keys=\[([^\]]+)\]/)||[])[1]?.match(/'[^']+'/g)||[];
 assert.equal(keys.length,26,'v24 catalog must contain 26 gains');
-assert(build.includes('GAME_DISPLAY_VERSION = "Main + ZMZ pagination"'));
+assert(build.includes('read("web/siege_buff_pages.js")'),'must bundle selector');
 for(const id of ['siegeBuffBack','zmzBuffPager','zmzBuffPrev','zmzBuffNext','zmzBuffPageNumbers','zmzBuffPresets'])
   assert(html.includes('id="'+id+'"'),id);
 assert(css.includes('#settingsModal.zmz-buff-mode')&&css.includes('.zmz-page-off{display:none!important}'));
