@@ -88,7 +88,7 @@ try:
         page.get_by_role('button',name='减少巨型弹').tap()
         expect(page.get_by_role('spinbutton',name='巨型弹使用数量')).to_have_value('0')
         page.get_by_role('button',name='技能',exact=True).tap()
-        expect(rows).to_have_count(12)
+        expect(rows).to_have_count(13)
         page.get_by_role('button',name='防御加固选满').tap()
         expect(page.get_by_role('spinbutton',name='防御加固使用数量')).to_have_value('2')
         expect(page.get_by_role('spinbutton',name='核心修复使用数量')).to_have_value('0')
