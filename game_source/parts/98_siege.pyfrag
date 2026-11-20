@@ -409,13 +409,25 @@ _SIEGE_ZOMBIE_DIFFICULTIES={
     'hell':(1.55,1.3,1.5,2),
 }
 _SIEGE_ZOMBIE_RARITIES=('common','uncommon','rare','precious')
+# Room-independent three-tier cooperative loot balance. Individual rarity
+# overrides still select the intrinsic item tier; intensity controls access,
+# supply quantity and chance of stronger rewards.
+_SIEGE_ZOMBIE_BUFF_INTENSITIES={
+    'normal':dict(tierBonus=0,rareWeight=1.,pickupLayers=1,supplies=1,slotBonus=0),
+    'advanced':dict(tierBonus=1,rareWeight=1.65,pickupLayers=2,supplies=2,slotBonus=2),
+    'rare':dict(tierBonus=2,rareWeight=2.5,pickupLayers=3,supplies=3,slotBonus=4),
+}
+def _siege_zombie_buff_profile(r):
+    return _SIEGE_ZOMBIE_BUFF_INTENSITIES.get(r.get('zombieBuffIntensity','normal'),_SIEGE_ZOMBIE_BUFF_INTENSITIES['normal'])
 _SIEGE_ZOMBIE_DROP_LEVEL={'walker':0,'climber':0,'flyer':1,'shield':1,'heavy':2,'giant':3,'runner':0,'pole':1,'bomber':1,'priest':2,'dancer':2,'guard':3,'engineer':3,'siegecar':3}
 def _siege_zombie_difficulty(r):
     return _SIEGE_ZOMBIE_DIFFICULTIES.get(r.get('zombieDifficulty','medium'),_SIEGE_ZOMBIE_DIFFICULTIES['medium'])
 def _siege_zombie_draw(r,enemy=None):
     wave=r.get('zombie',{}).get('wave',1)
-    ceiling=0 if wave==1 else 1 if wave<=2 else 2 if wave<=4 else 3
-    if enemy is not None:ceiling=min(ceiling,_SIEGE_ZOMBIE_DROP_LEVEL.get(enemy,0))
+    profile=_siege_zombie_buff_profile(r)
+    bonus=profile['tierBonus']
+    ceiling=min(3,(0 if wave==1 else 1 if wave<=2 else 2 if wave<=4 else 3)+bonus)
+    if enemy is not None:ceiling=min(ceiling,_SIEGE_ZOMBIE_DROP_LEVEL.get(enemy,0)+bonus)
     levels={**_SIEGE_V24_LEVELS,**r.get('rarities',{})}
     keys=[k for k in _siege_allowed(r) if _SIEGE_ZOMBIE_RARITIES.index(levels[k])<=ceiling]
     if not keys:return None
@@ -431,13 +443,14 @@ def _siege_zombie_draw(r,enemy=None):
         if upper and ceiling>0 and not any(k in upper for k in history[-4:]):keys=upper
         fresh=[k for k in keys if k not in history[-min(6,max(0,len(keys)-1)):]] if len(keys)>1 else keys
         if fresh:keys=fresh
-    weights=[_SIEGE_V24_WEIGHTS[levels[k]]/(1+3*history[-8:].count(k)) for k in keys]
+    weights=[_SIEGE_V24_WEIGHTS[levels[k]]*profile['rareWeight']**_SIEGE_ZOMBIE_RARITIES.index(levels[k])/(1+3*history[-8:].count(k)) for k in keys]
     k=random.choices(keys,weights=weights,k=1)[0];history.append(k);del history[:-16]
     return k
 def _siege_zombie_pickup(r,k,x,y,slot=None,enemy=False):
     if k is None:return
     ident=r.setdefault('nextItemId',1000);r['nextItemId']=ident+1
-    amount=min(_siege_cap(r,k),_siege_zombie_difficulty(r)[3] if enemy else 1)
+    profile=_siege_zombie_buff_profile(r)
+    amount=min(_siege_cap(r,k),max(profile['pickupLayers'],_siege_zombie_difficulty(r)[3]) if enemy else profile['pickupLayers'])
     item=dict(id=ident,kind=k,x=max(15,min(945,x)),y=max(30,min(396,y)),r=15,amount=amount,zone='air')
     if slot is not None:item['slot']=slot
     if k=='compound':item['recipe']=_siege_compound_recipe()
@@ -449,11 +462,13 @@ def _siege_zombie_drops(r):
             b['rewarded']=True
             _siege_zombie_pickup(r,_siege_zombie_draw(r,b['zombieType']),b['x'],b['y']-b['h']/2,enemy=True)
 def _siege_zombie_supply(r):
+    picks=_siege_zombie_buff_profile(r)['supplies']
     for side,inv in enumerate(r['buffs'][:1] if r.get('zombieSolo') else r['buffs']):
-        k=_siege_zombie_draw(r)
-        if k is not None and inv[k]<_siege_cap(r,k):
-            inv[k]+=1
-            if k=='compound':r['compoundRecipes'][side].append(_siege_compound_recipe())
+        for _ in range(picks):
+            k=_siege_zombie_draw(r)
+            if k is not None and inv[k]<_siege_cap(r,k):
+                inv[k]+=1
+                if k=='compound':r['compoundRecipes'][side].append(_siege_compound_recipe())
 def _siege_zombie_refresh(r):
     # Keep dropped loot; refresh only the original renewable slots.
     slots=[it for it in r['items'] if 'slot' in it]+list(r['respawns'])
@@ -513,20 +528,28 @@ def _siege_zombie_spawn(r):
         spawned+=1
     state['spawned']+=spawned
 
-def _siege_zombie_portal_targets(r,limit):
-    """Greedy non-overlapping crowd coverage; one portal per uncovered cluster."""
+def _siege_zombie_portal_targets(r,layers):
+    """Two portals per layer, prioritizing previously uncovered enemy clusters."""
     alive=[b for b in r['bodies'] if b['kind']=='zombie' and b['hp']>0]
     portals=[];remaining=alive[:]
-    for _ in range(min(3,max(0,limit))):
-        if not remaining:break
-        # Score real, currently living enemies, not preset spawn positions.
+    for i in range(min(6,max(0,layers)*2)):
+        if not alive:break
+        if not remaining:
+            # All enemies were covered already. Additional purchased portals
+            # still open: overlap for concentrated fire, with slight separation.
+            remaining=alive[:]
         best=max(remaining,key=lambda anchor:(
             sum(1 for z in remaining if abs(z['x']-anchor['x'])<=95),
             sum(z['hp'] for z in remaining if abs(z['x']-anchor['x'])<=95),
+            -sum(1 for x,y in portals if abs(x-anchor['x'])<=60),
             -abs(anchor['x']-480)))
         caught=[z for z in remaining if abs(z['x']-best['x'])<=95]
         center=sum(z['x'] for z in caught)/len(caught)
         sky=max(20.,min(190.,min(z['y']-z['h']/2 for z in caught)-90.))
+        if any(abs(center-x)<12 for x,y in portals):
+            # Portals aimed at the same small crowd remain visibly distinct.
+            offset=(1 if i%2 else -1)*(14+9*(i//2))
+            center+=offset
         portals.append((max(20.,min(940.,center)),sky))
         remaining=[z for z in remaining if z not in caught]
     return portals
@@ -560,8 +583,11 @@ def _siege_zombie_world(r):
     r['zombieRewardHistory']=[]
     r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,endless=r.get('zombieWaveMode')=='endless',difficulty=r.get('zombieDifficulty','medium'))
     r['items']=[];r['respawns']=[]
-    slots=[(230,205),(335,140),(430,235),(510,100),(580,190),(665,130),(755,245),(840,110)]
-    for j,(x,y) in enumerate(slots[:min(len(slots),r.get('itemCount',8))]):
+    slots=[(230,205),(335,140),(430,235),(510,100),(580,190),(665,130),(755,245),(840,110),
+           (195,135),(395,85),(710,190),(890,185)]
+    bonus=_siege_zombie_buff_profile(r)['slotBonus']
+    base_slots=min(8,r.get('itemCount',8))
+    for j,(x,y) in enumerate(slots[:min(len(slots),base_slots+bonus if base_slots else 0)]):
         y=min(y,_siege_floor(r,x)-35)
         k=_siege_zombie_draw(r)
         if k is None:r['respawns'].append(dict(id=j,slot=j,x=x,y=y,r=15,amount=1,zone='air',readyAt=2))
@@ -570,6 +596,7 @@ def _siege_zombie_world(r):
         for k in ('big','wooddrop'):
             if k in _siege_allowed(r) and r.get('rarities',{}).get(k,_SIEGE_V24_LEVELS[k])=='common':inv[k]=1
     _siege_zombie_spawn(r)
+    if _siege_zombie_buff_profile(r)['tierBonus']:_siege_zombie_supply(r)
 
 def _siege_zombie_supports(r,core):
     # Trace the load-bearing stack under the shared core, not unrelated scenery.
@@ -1509,7 +1536,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         vx=max(-55.,min(55.,math.cos(a)*power*.48))
         vy=max(270.,power*5.5)
         blocked=None
-        behavior_events.extend(['skyPortal',round(i*.85,3),round(x,1),round(y,1),i+1] for i,(x,y) in enumerate(portal_targets))
+        behavior_events.extend(['skyPortal',round(i*.65,3),round(x,1),round(y,1),i+1] for i,(x,y) in enumerate(portal_targets))
     draw_radius=radius
     # The actual shot angle is recorded for the remote cannon animation.
     fragment_radius=radius
@@ -1527,7 +1554,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             for shot_index in range(repeat_n+1):
                 fragments.append(dict(id=15000+portal_index*100+shot_index,x=cx,y=cy,
                     vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),
-                    bornAt=portal_index*.85+shot_index*.11,scale=1.,kind='repeat',
+                    bornAt=portal_index*.65+shot_index*.11,scale=1.,kind='repeat',
                     travel=0.,splitDone=False,landingRank=shot_index))
     if unified and config['burstMode']=='volley':
         for j,f in enumerate(fragments):
@@ -2878,7 +2905,7 @@ def _siege_bot_fire(r,a,p,live=None,planned=None):
         # Never silently redirect a building shot to another angle or use a different payload.
         try:shoot(a,selection);return
         except ValueError:
-            safe={k:n for k,n in selection.items() if k not in ('wooddrop','stonedrop','big','splitshot','repeat','through')}
+            safe={k:n for k,n in selection.items() if k not in ('wooddrop','stonedrop','springdrop','big','splitshot','repeat','through','skyportal')}
             shoot(a,safe);return
     for angle in ((a,135,155,175,105,90,75,45,5) if a>90 else (a,45,25,5,75,90,115,145,175)):
         try:shoot(angle,selection);return
@@ -2912,7 +2939,8 @@ def _siege_bot(r,live=None):
             if candidates:
                 # Prefer a forward position that intercepts a wave before it reaches a gun.
                 x=min(candidates,key=lambda xx:abs(d*(xx-core['x'])-min(near-55,max(130,near*.56))))
-                build=next((k for k in ('stonedrop','wooddrop') if inv.get(k,0)>0),None)
+                priority=('springdrop','stonedrop','wooddrop') if any(z['zombieType']=='siegecar' for z in targets) else ('stonedrop','wooddrop','springdrop')
+                build=next((k for k in priority if inv.get(k,0)>0),None)
         best_attack=None;best_build=None
         for a in range(0,360,6):
             rad=math.radians(a)
@@ -2938,9 +2966,27 @@ def _siege_bot(r,live=None):
             selection[build]=min(2,inv[build]);_,a,p=best_build
         else:
             _,a,p=best_attack
-            # Offensive rounds do not spend building materials or random trajectory modifiers.
-            for k in ('pierce','through'):
-                if inv.get(k,0)>0:selection[k]=1
+            # Conserve building buffs for an actual barricade; spend combat
+            # modifiers in response to density, proximity and enemy armour.
+            density=max((sum(1 for other in targets if abs(other['x']-z['x'])<=95) for z in targets),default=0)
+            dangerous=any(z['zombieType'] in ('guard','heavy','giant','siegecar') for z in targets)
+            close=any(abs(z['x']-core['x'])<230 for z in targets)
+            if inv.get('pierce'):selection['pierce']=1
+            if inv.get('through') and (dangerous or best_attack[0]>=1000):selection['through']=min(2,inv['through'])
+            if inv.get('repeat') and len(targets)>=2:selection['repeat']=min(2,inv['repeat'])
+            if inv.get('splitshot') and density>=2:selection['splitshot']=min(2,inv['splitshot'])
+            if inv.get('homing') and (best_attack[0]>=1000 or any(z['zombieType'] in ('flyer','runner') for z in targets)):selection['homing']=1
+            if inv.get('blackhole') and density>=2:selection['blackhole']=1
+            if inv.get('bounceblast') and density>=2:selection['bounceblast']=min(2,inv['bounceblast'])
+            if inv.get('compound') and r.get('compoundRecipes',[[],[]])[1] and (dangerous or density>=2):
+                selection['compound']=min(2,inv['compound'])
+            if inv.get('demolish') and dangerous:selection['demolish']=min(2,inv['demolish'])
+            if inv.get('push') and close:selection['push']=min(2,inv['push'])
+            if inv.get('skyportal') and (len(targets)>=2 or (target and core['hp']<65)):
+                # Portal aim is automatic; avoid exhausting it on solitary weak
+                # walkers unless the shared core is in immediate danger.
+                selection['skyportal']=min(inv['skyportal'],1+(len(targets)>=5)+(len(targets)>=10))
+                a=90;p=max(55,p)
             if best_attack[0]<1000 and inv.get('big',0)>0 and 15<a<165:
                 try:_siege_launch_check(r,1,a,{'big':1});selection['big']=1
                 except ValueError:pass

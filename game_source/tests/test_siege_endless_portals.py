@@ -40,14 +40,15 @@ portal=new_zombie('endless')
 # Distribute three authentic living enemy bodies into separate non-overlapping clusters.
 for b,x in zip([b for b in portal['bodies'] if b['kind']=='zombie'],[360.,620.,890.]):
     b['x']=x;b['y']=g._siege_floor_body(portal,x,b['w'])-b['h']/2
+assert [len(g._siege_zombie_portal_targets(portal,n)) for n in (1,2,3)]==[2,4,6]
 targets=g._siege_zombie_portal_targets(portal,3)
-assert len(targets)==3 and all(20<=x<=940 and y>=20 for x,y in targets)
-assert len({round(x,1) for x,y in targets})==3
+assert len(targets)==6 and all(20<=x<=940 and y>=20 for x,y in targets)
+assert len({round(x,1) for x,y in targets})>=3
 portal['buffs'][0]['skyportal']=3;portal['buffs'][0]['repeat']=1
 g._siege_fire(portal,82,60,{'skyportal':3,'repeat':1})
 ev=portal['event']
-assert ev['skyPortals'] and len(ev['skyPortals'])==3
-assert sum(e[0]=='skyPortal' for e in ev['behaviorEvents'])==3
+assert ev['skyPortals'] and len(ev['skyPortals'])==6
+assert sum(e[0]=='skyPortal' for e in ev['behaviorEvents'])==6
 assert ev['attackCounts']['skyportal']==3
 assert portal['buffs'][0]['skyportal']==0
 assert any(len(f[3])>=2 for f in ev['frames']),'portal volleys must appear as real replay fragments'
@@ -60,4 +61,4 @@ deployed=[b for b in spring['bodies'] if b.get('generated') and b.get('special')
 assert deployed,'generated elastic block must be in authoritative world'
 assert all(b['springHits']==4 and b['kind']=='stone' for b in deployed)
 g._siege_spring_hit(deployed[0]);assert deployed[0]['springHits']==3
-print('Siege v24 endless/spring/sky portal: continuous 6-tier spawn, 3 portals, repeated volley and spring drop PASS')
+print('Siege v24 endless/spring/sky portal: continuous 6-tier spawn, 2/4/6 portals, repeated volley and spring drop PASS')
