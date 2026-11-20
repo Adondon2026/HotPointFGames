@@ -475,17 +475,62 @@ _SIEGE_ZOMBIE_MAPS={
 }
 def _siege_zombie_spawn(r):
     state=r['zombie'];wave=state['wave'];bodies=r['bodies']
-    for j,kind in enumerate(_SIEGE_ZOMBIE_WAVES[wave-1]):
+    endless=bool(state.get('endless'))
+    lineup=list(_SIEGE_ZOMBIE_WAVES[min(len(_SIEGE_ZOMBIE_WAVES),wave)-1])
+    if endless and wave>=len(_SIEGE_ZOMBIE_WAVES):
+        # The sixth enemy tier continues indefinitely, with modest increasing pressure.
+        extra=min(5,max(0,(state['round']-6)//3))
+        lineup.extend(_SIEGE_ZOMBIE_WAVES[-1][j%len(_SIEGE_ZOMBIE_WAVES[-1])] for j in range(extra))
+    spawned=0
+    for j,kind in enumerate(lineup):
         w,h,hp,speed,damage=_SIEGE_ZOMBIE_TYPES[kind]
-        hp=round(hp*_siege_zombie_difficulty(r)[0],1)
         left=r.get('zombieBothSides') and j%2==0
         rank=j//2 if r.get('zombieBothSides') else j
         x=30+rank*62 if left else 930-rank*62
-        floor=_siege_floor_body(r,x,w)
-        y=min(220-j%2*45,floor-h/2-14) if kind=='flyer' else floor-h/2
+        if endless:
+            if sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)>=54:break
+            # Reinforcements avoid spawning inside existing creatures or structures.
+            # This preserves the physically meaningful sky/ground contact positions.
+            candidates=sorted(range(26,935,25),key=lambda pos:(abs(pos-x),pos))
+            if left:candidates=[p for p in candidates if p<r['bodies'][0]['x']-30] or candidates
+            else:candidates=[p for p in candidates if p>r['bodies'][0]['x']+30] or candidates
+            fit=None
+            for candidate in candidates:
+                yy=_siege_floor_body(r,candidate,w)-h/2
+                if yy-h/2<5:continue
+                if any(b['hp']>0 and abs(candidate-b['x'])<(w+b['w'])/2+3
+                       and abs(yy-b['y'])<(h+b['h'])/2+2 for b in bodies):continue
+                fit=(candidate,yy);break
+            if fit is None:continue
+            x,y=fit
+        else:
+            floor=_siege_floor_body(r,x,w)
+            y=min(220-j%2*45,floor-h/2-14) if kind=='flyer' else floor-h/2
+        if endless and kind=='flyer':y=min(y,220-j%2*45)
+        hp=round(hp*_siege_zombie_difficulty(r)[0],1)
         ident=r['nextBodyId'];r['nextBodyId']+=1
         bodies.append(dict(id=ident,side=2,kind='zombie',zombieType=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
-    state['spawned']+=len(_SIEGE_ZOMBIE_WAVES[wave-1])
+        spawned+=1
+    state['spawned']+=spawned
+
+def _siege_zombie_portal_targets(r,limit):
+    """Greedy non-overlapping crowd coverage; one portal per uncovered cluster."""
+    alive=[b for b in r['bodies'] if b['kind']=='zombie' and b['hp']>0]
+    portals=[];remaining=alive[:]
+    for _ in range(min(3,max(0,limit))):
+        if not remaining:break
+        # Score real, currently living enemies, not preset spawn positions.
+        best=max(remaining,key=lambda anchor:(
+            sum(1 for z in remaining if abs(z['x']-anchor['x'])<=95),
+            sum(z['hp'] for z in remaining if abs(z['x']-anchor['x'])<=95),
+            -abs(anchor['x']-480)))
+        caught=[z for z in remaining if abs(z['x']-best['x'])<=95]
+        center=sum(z['x'] for z in caught)/len(caught)
+        sky=max(20.,min(190.,min(z['y']-z['h']/2 for z in caught)-90.))
+        portals.append((max(20.,min(940.,center)),sky))
+        remaining=[z for z in remaining if z not in caught]
+    return portals
+
 def _siege_zombie_world(r):
     r.update(field='zombie',fieldLabel='丧尸围城',mode='classic',combatMode='turn',ammo=0,rise=0,offset=0,gunShift=0,wind=0,windPair=0,windLevel='off',reflectors=[],gunMotion=[],launchers=[[170,368],[270,368]],nextBodyId=100)
     map_key=r.get('zombieMap','front')
@@ -513,7 +558,7 @@ def _siege_zombie_world(r):
                 w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
             r['nextBodyId']+=1
     r['zombieRewardHistory']=[]
-    r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,difficulty=r.get('zombieDifficulty','medium'))
+    r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,endless=r.get('zombieWaveMode')=='endless',difficulty=r.get('zombieDifficulty','medium'))
     r['items']=[];r['respawns']=[]
     slots=[(230,205),(335,140),(430,235),(510,100),(580,190),(665,130),(755,245),(840,110)]
     for j,(x,y) in enumerate(slots[:min(len(slots),r.get('itemCount',8))]):
@@ -629,7 +674,16 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     t=max(t,1.)
     for _ in range(6):t+=.08;frames.append(snap(t,None))
     start=t;events.append(['zombiePhase',round(start,3)])
-    if not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
+    if state.get('endless'):
+        # Every FULL player cycle brings another group, even if last round survives.
+        # The six original waves are enemy tiers; tier 6 repeats indefinitely.
+        state['wave']=min(state['totalWaves'],state['wave']+1)
+        before=state['spawned']
+        _siege_zombie_spawn(r)
+        _siege_zombie_refresh(r)
+        events.append(['zombieWave',round(t,3),state['wave'],state['spawned']-before])
+        frames.append(snap(t,None))
+    elif not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
         r['armed']=[{} for _ in r['buffs']]
         if state['wave']==state['totalWaves']:
             state['won']=True;return t+.5
