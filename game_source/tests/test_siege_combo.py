@@ -738,16 +738,21 @@ assert g._siege_zombie_draw(r,'heavy')=='repeat'
 r['zombie']['wave']=5
 assert g._siege_zombie_draw(r,'giant')=='homing'
 z=next(b for b in r['bodies'] if b['kind']=='zombie');z['hp']=0
-n=len(r['items']);g._siege_zombie_drops(r);g._siege_zombie_drops(r)
-assert len(r['items'])==n+1 and r['items'][-1]['kind']=='big' and 'slot' not in r['items'][-1]
+n=len(r['items']);before=r['buffs'][0]['big'];automatic=[]
+g._siege_zombie_drops(r,owner=0,at=.8,pickups=automatic)
+g._siege_zombie_drops(r,owner=0,at=.9,pickups=automatic)
+assert len(r['items'])==n and r['buffs'][0]['big']==before+1
+assert len(automatic)==1 and automatic[0]['auto'] and automatic[0]['kind']=='big'
 r['allowedBuffs']=[];assert g._siege_zombie_draw(r) is None
 # Difficulty scales real spawned enemies, and higher difficulties give larger drops.
-r=v24('zombie');r['zombieDifficulty']='hell';g._siege_field(r)
+r=v24('zombie');r['zombieDifficulty']='hell';r['allowedBuffs']=['big'];g._siege_field(r)
 z=next(b for b in r['bodies'] if b['kind']=='zombie')
 assert z['hp']==round(44*1.55,1) and r['zombie']['difficulty']=='hell'
-z['hp']=0;g._siege_zombie_drops(r)
-assert r['items'][-1]['amount']==2
-print('Siege coop progression: whitelist, rarity gates, single enemy drops and difficulty PASS')
+previous=r['buffs'][0]['big'];n=len(r['items']);awards=[]
+z['hp']=0;g._siege_zombie_drops(r,owner=0,pickups=awards)
+assert len(r['items'])==n and r['buffs'][0]['big']==previous+2
+assert len(awards)==1 and awards[0]['gained']==2 and awards[0]['auto']
+print('Siege coop progression: whitelist, rarity gates, automatic kill rewards and difficulty PASS')
 
 # New cannon bodies, full-circle firing, and terrain-specific cooperative play.
 r=v24('zombie');r['zombieMap']='crossfire';g._siege_field(r)
