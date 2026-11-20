@@ -1222,6 +1222,40 @@ def _siege_trial_reset(r,mode=None):
     finally:random.setstate(rng)
     _siege_trial_stock(r)
 
+_SIEGE_TRIAL_ZOMBIE_LIMIT=12
+def _siege_trial_summon(r,kind,count):
+    """Place destructible zombie specimens in the private trial arena only.
+
+    Training specimens use the real zombie body, HP, armor and hit rules, but
+    remain stationary. A wave AI tick is deliberately not started in a trial
+    since it would unexpectedly damage/reset the target structures.
+    """
+    if kind not in _SIEGE_ZOMBIE_TYPES or kind=='engineer':
+        raise ValueError('未知丧尸种类')
+    if type(count) is not int or count not in (1,3):
+        raise ValueError('只能召唤 1 或 3 只')
+    existing=sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])
+    if existing+count>_SIEGE_TRIAL_ZOMBIE_LIMIT:
+        raise ValueError('场上最多保留 12 只丧尸，请先清空图鉴召唤')
+    w,h,hp,_,_=_SIEGE_ZOMBIE_TYPES[kind]
+    positions=[]
+    for x in range(920,505,-8):
+        y=_siege_floor_body(r,x,w)-h/2
+        if y-h/2 < 6:continue
+        if any(b['hp']>0 and
+               abs(x-b['x'])<(w+b['w'])/2+5 and
+               abs(y-b['y'])<(h+b['h'])/2+5
+               for b in (*r['bodies'],*positions)):continue
+        positions.append(dict(id=r['nextBodyId']+len(positions),kind='zombie',
+                              zombieType=kind,trialSpecimen=True,side=2,
+                              x=float(x),y=y,w=w,h=h,hp=hp,max=hp,
+                              fixed=True,vx=0.,vy=0.))
+        if len(positions)==count:break
+    if len(positions)!=count:raise ValueError('当前地图的右侧空地不足，请减少数量或切换地图')
+    r['bodies'].extend(positions);r['nextBodyId']+=count
+    r['event']=None;r['rev']+=1
+    return len(positions)
+
 def _siege_trial_steps(r,angle,power,selection,force=False,config=None,control=None):
     if not isinstance(selection,dict):raise ValueError('增益选择无效')
     selected={}
@@ -2798,6 +2832,7 @@ def _siege_public(r,key,last):
     v={'rulesVersion':r.get('rulesVersion',23),'theme':r.get('theme','classic'),'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'compoundRecipes':r.get('compoundRecipes',[None,None]),'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in range(r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
     if r.get('terrain'):v['terrain']=r['terrain']
     if r.get('theme')=='zombie':v['zombie']={**r['zombie'],'solo':bool(r.get('zombieSolo')),'bothSides':bool(r.get('zombieBothSides')),'remaining':sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])}
+    if r.get('trial'):v['zombieCatalog']={k:dict(hp=stats[2],speed=stats[3],damage=stats[4]) for k,stats in _SIEGE_ZOMBIE_TYPES.items() if k!='engineer'};v['trialZombieLimit']=_SIEGE_TRIAL_ZOMBIE_LIMIT
     return _siege_manual_view(r,v,time.time())
 
 def siege_request(data):
@@ -2867,6 +2902,14 @@ def siege_request(data):
             return {'ok':True,'paths':[v for v in paths.values() if len(v)>1],'impact':ev['impact'],'damage':ev['trialDamage'],'duration':ev['duration']}
         except ValueError as e:return {'ok':False,'error':str(e)}
         finally:random.setstate(rng)
+    elif kind=='trialSummon' and r.get('trial') and seat==0:
+        if now<r['until']:return {'ok':False,'error':'请等待当前炮击结束'}
+        try:_siege_trial_summon(r,data.get('zombieType'),data.get('count',1))
+        except ValueError as e:return {'ok':False,'error':str(e)}
+    elif kind=='trialClearZombies' and r.get('trial') and seat==0:
+        if now<r['until']:return {'ok':False,'error':'请等待当前炮击结束'}
+        r['bodies']=[b for b in r['bodies'] if not (b['kind']=='zombie' and b.get('trialSpecimen'))]
+        r['event']=None;r['rev']+=1
     elif kind=='trialReset' and r.get('trial') and seat==0:
         if now<r['until']:return {'ok':False,'error':'请等待本炮结束'}
         try:_siege_trial_reset(r,data.get('mode'))
