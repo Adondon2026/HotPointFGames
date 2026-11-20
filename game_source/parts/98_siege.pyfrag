@@ -214,7 +214,7 @@ def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None,allowed=None)
     return items
 
 def _siege_refill(r):
-    # A collected slot becomes available after four more shots (two full rounds).
+    # Only consumed slots refill. Untouched floating items keep their identity across shots and waves.
     turn=sum(r['shots']);waiting=r.setdefault('respawns',[]);new=[]
     allowed=_siege_allowed(r)
     if not allowed:
@@ -229,7 +229,9 @@ def _siege_refill(r):
                 if r.get('theme')=='zombie':item['readyAt']=turn+2;waiting.append(item)
                 continue
             it.pop('recipe',None)
-            it.update(kind=k,amount=_siege_v24_amount(r,k),id=r.get('nextItemId',1000));
+            amount=(min(_siege_cap(r,k),_siege_zombie_buff_profile(r)['pickupLayers'])
+                    if r.get('theme')=='zombie' else _siege_v24_amount(r,k))
+            it.update(kind=k,amount=amount,id=r.get('nextItemId',1000));
             if k=='compound':it['recipe']=_siege_compound_recipe()
             r['nextItemId']=it['id']+1;r['items'].append(it);new.append(it);continue
         field=(_SIEGE_FIELDS|_SIEGE_NEW_FIELDS).get(r.get('field'),{})
@@ -413,9 +415,9 @@ _SIEGE_ZOMBIE_RARITIES=('common','uncommon','rare','precious')
 # overrides still select the intrinsic item tier; intensity controls access,
 # supply quantity and chance of stronger rewards.
 _SIEGE_ZOMBIE_BUFF_INTENSITIES={
-    'normal':dict(tierBonus=0,rareWeight=1.,pickupLayers=1,supplies=1,slotBonus=0),
-    'advanced':dict(tierBonus=1,rareWeight=1.65,pickupLayers=2,supplies=2,slotBonus=2),
-    'rare':dict(tierBonus=2,rareWeight=2.5,pickupLayers=3,supplies=3,slotBonus=4),
+    'normal':dict(tierBonus=0,rareWeight=1.,pickupLayers=1,supplies=1,slotBonus=0,refillShots=2),
+    'advanced':dict(tierBonus=1,rareWeight=1.65,pickupLayers=2,supplies=2,slotBonus=2,refillShots=1),
+    'rare':dict(tierBonus=2,rareWeight=2.5,pickupLayers=3,supplies=3,slotBonus=4,refillShots=1),
 }
 def _siege_zombie_buff_profile(r):
     return _SIEGE_ZOMBIE_BUFF_INTENSITIES.get(r.get('zombieBuffIntensity','normal'),_SIEGE_ZOMBIE_BUFF_INTENSITIES['normal'])
@@ -517,16 +519,6 @@ def _siege_zombie_supply(r):
             if k is not None and inv[k]<_siege_cap(r,k):
                 inv[k]+=1
                 if k=='compound':r['compoundRecipes'][side].append(_siege_compound_recipe())
-def _siege_zombie_refresh(r):
-    # Keep dropped loot; refresh only the original renewable slots.
-    slots=[it for it in r['items'] if 'slot' in it]+list(r['respawns'])
-    r['items'][:]=[it for it in r['items'] if 'slot' not in it]
-    r['respawns']=[]
-    for it in slots:
-        k=_siege_zombie_draw(r)
-        if k is None:
-            r['respawns'].append({**it,'readyAt':sum(r['shots'])+2})
-        else:_siege_zombie_pickup(r,k,it['x'],it['y'],slot=it['slot'])
 # Side-view terrain is a continuous floor profile, not a cosmetic backdrop.
 # (label, ground points, core X, cannon Xs, two-sided spawn)
 _SIEGE_ZOMBIE_MAPS={
@@ -735,7 +727,7 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
         state['wave']=min(state['totalWaves'],state['wave']+1)
         before=state['spawned']
         _siege_zombie_spawn(r)
-        _siege_zombie_refresh(r)
+        # New waves never reroll untouched floating items.
         events.append(['zombieWave',round(t,3),state['wave'],state['spawned']-before])
         frames.append(snap(t,None))
     elif not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
@@ -743,7 +735,7 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
         if state['wave']==state['totalWaves']:
             state['won']=True;return t+.5
         state['wave']+=1;_siege_zombie_spawn(r)
-        _siege_zombie_refresh(r);_siege_zombie_supply(r)
+        _siege_zombie_supply(r)
         events.append(['zombieWave',round(t,3),state['wave']])
         frames.append(snap(t,None))
         return t+.5
@@ -2230,7 +2222,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     inv[k]+=gain;pickups.append({**item,'x':ix,'y':iy,'at':round(t,3),'side':side,'gained':gain})
                     if gain<item.get('amount',1):item['amount']-=gain;continue
                     r['items'].remove(item)
-                    if 'slot' in item:r.setdefault('respawns',[]).append({**item,'readyAt':sum(r['shots'])+4})
+                    if 'slot' in item:
+                        delay=_siege_zombie_buff_profile(r)['refillShots'] if r.get('theme')=='zombie' else 3
+                        r.setdefault('respawns',[]).append({**item,'readyAt':sum(r['shots'])+1+delay})
                     continue
                 pickups.append({**item,'x':ix,'y':iy,'at':round(t,3),'side':side});r['items'].remove(item)
                 if item['kind']=='heal':
