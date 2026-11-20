@@ -372,7 +372,7 @@ function renderTrialBestiary(){
  if(schema!==trialBestiaryKey){
   trialBestiaryKey=schema;const grid=$('trialZombieGrid');grid.replaceChildren();
   for(const kind of keys){
-   const info=catalog[k],meta=trialZombieNotes[k],row=document.createElement('div');row.className='bestiary-row';
+   const info=catalog[kind],meta=trialZombieNotes[kind],row=document.createElement('div');row.className='bestiary-row';
    const content=document.createElement('div'),heading=document.createElement('b'),description=document.createElement('small');
    heading.textContent=meta[0];description.textContent=meta[1]+' · HP '+info.hp+' / 速度 '+info.speed+' / 攻击 '+info.damage;
    content.append(heading,description);const buttons=document.createElement('div');buttons.className='bestiary-buttons';
