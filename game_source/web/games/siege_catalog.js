@@ -185,11 +185,11 @@ const siegeCatalog={
     "path": "M3 20V12L7 6 16 4 21 11V20Z M3 12L11 14 16 4 M11 14V20 M11 14L21 11"
   },
   "springdrop": {
-    "group": "防御与建造", "color": "#c6b2ec", "label": "生成弹块",
+    "group": "防御与建造", "color": "#a5cf9a", "label": "生成弹块",
     "path": "M3 17H21V21H3Z M4 15L8 7L12 15L16 7L20 15 M4 5H20"
   },
   "skyportal": {
-    "group": "空间", "color": "#a9c8f6", "label": "天空传送",
+    "group": "空间", "color": "#8cabea", "label": "天空传送",
     "path": "M3 7A9 4 0 0 1 21 7 M3 7A9 4 0 0 0 21 7 M12 8V20 M8 16L12 20L16 16 M5 4L8 2 M19 4L16 2"
   },
   "gunteleport": {
