@@ -777,8 +777,10 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                     hx,hy=plan['point']
                     if target is not None and target['hp']>0:
                         amount=plan['damage']*(.35**shield if target is core else .65**armor)
-                        target['hp']=max(0.,target['hp']-amount)
-                        if plan['penetration'] and core['hp']>0:
+                        if target.get('special')=='oneway':
+                            _siege_oneway_hit(target)
+                        else:target['hp']=max(0.,target['hp']-amount)
+                        if plan['penetration'] and target.get('special')!='oneway' and core['hp']>0:
                             core['hp']=max(0.,core['hp']-plan['damage']*.4*(.35**shield))
                     events.append(['siegeCarImpact',round(t,3),round(hx,1),round(hy,1),
                                    target['id'] if target else -1])
@@ -2970,7 +2972,7 @@ def _siege_bot(r,live=None):
             if candidates:
                 # Prefer a forward position that intercepts a wave before it reaches a gun.
                 x=min(candidates,key=lambda xx:abs(d*(xx-core['x'])-min(near-55,max(130,near*.56))))
-                priority=('springdrop','onewaydrop','stonedrop','wooddrop') if any(z['zombieType']=='siegecar' for z in targets) else ('stonedrop','wooddrop','springdrop','onewaydrop')
+                priority=('onewaydrop','springdrop','stonedrop','wooddrop') if any(z['zombieType']=='siegecar' for z in targets) else ('stonedrop','onewaydrop','wooddrop','springdrop')
                 build=next((k for k in priority if inv.get(k,0)>0),None)
         best_attack=None;best_build=None
         for a in range(0,360,6):
