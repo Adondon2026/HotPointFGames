@@ -296,6 +296,12 @@ try:
         page.wait_for_function('room?.trial===true',timeout=15000)
         expect(page.locator('#trialBestiaryToggle')).to_be_visible()
         page.locator('#trialBestiaryToggle').tap()
+        print('Trial bestiary UI diagnostics:',page.evaluate("""()=>({
+            trial:room?.trial,open:trialBestiaryOpen,catalog:Object.keys(room?.zombieCatalog||{}),
+            notes:Object.keys(trialZombieNotes),grid:document.querySelector('#trialZombieGrid').children.length,
+            visible:!document.querySelector('#trialBestiary').classList.contains('hidden'),
+            disabled:document.querySelector('#trialBestiaryToggle').disabled
+        })"""),errors,flush=True)
         expect(page.locator('#trialZombieGrid .bestiary-row')).to_have_count(13)
         page.get_by_role('button',name='召唤1只步行僵尸').tap()
         page.wait_for_function('room.bodies.filter(b=>b.kind==="zombie"&&b.trialSpecimen&&b.hp>0).length===1')
