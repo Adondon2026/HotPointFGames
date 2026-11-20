@@ -53,6 +53,7 @@ assert z['x']-z['w']/2<960, 'first entrant should become visible naturally'
 # A one-way item creates a normal physical stone building, not a world-only
 # decorative tile; its blocking direction is authoritative and has four uses.
 r=room('front')
+assert not any(b.get('special') in ('oneway','spring') for b in r['bodies']), 'map must start without demo blocks'
 r['buffs'][0]['onewaydrop']=1
 g._siege_fire(r,70,56,{'onewaydrop':1})
 blocks=[b for b in r['bodies'] if b.get('generated') and b.get('special')=='oneway']
