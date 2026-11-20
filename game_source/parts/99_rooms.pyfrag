@@ -311,7 +311,7 @@ def _room_route(self,post=False):
                             _SIEGE_MANUAL_ROUNDS.pop(id(old),None);_siege_v24_setup(old);_siege_trial_reset(old,old.get('field','standard'))
                         old['touched']=time.time();return self.reply(_siege_public(old,key,-1))
                     data={**data,'trial':True}
-                elif kind in ('state','fire','maneuver','skill','trialPreview','trialReset','leave'):
+                elif kind in ('state','fire','maneuver','skill','trialPreview','trialReset','trialSummon','trialClearZombies','leave'):
                     arena=_SIEGE_ROOMS.get(code)
                     if not arena or not arena.get('trial') or arena['players'][0]['key']!=key:
                         return self.reply({'ok':False,'error':'试验场不存在或会话已失效'},403)
