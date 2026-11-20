@@ -2905,7 +2905,7 @@ def _siege_bot_fire(r,a,p,live=None,planned=None):
         # Never silently redirect a building shot to another angle or use a different payload.
         try:shoot(a,selection);return
         except ValueError:
-            safe={k:n for k,n in selection.items() if k not in ('wooddrop','stonedrop','big','splitshot','repeat','through')}
+            safe={k:n for k,n in selection.items() if k not in ('wooddrop','stonedrop','springdrop','big','splitshot','repeat','through','skyportal')}
             shoot(a,safe);return
     for angle in ((a,135,155,175,105,90,75,45,5) if a>90 else (a,45,25,5,75,90,115,145,175)):
         try:shoot(angle,selection);return
@@ -2939,7 +2939,8 @@ def _siege_bot(r,live=None):
             if candidates:
                 # Prefer a forward position that intercepts a wave before it reaches a gun.
                 x=min(candidates,key=lambda xx:abs(d*(xx-core['x'])-min(near-55,max(130,near*.56))))
-                build=next((k for k in ('stonedrop','wooddrop') if inv.get(k,0)>0),None)
+                priority=('springdrop','stonedrop','wooddrop') if any(z['zombieType']=='siegecar' for z in targets) else ('stonedrop','wooddrop','springdrop')
+                build=next((k for k in priority if inv.get(k,0)>0),None)
         best_attack=None;best_build=None
         for a in range(0,360,6):
             rad=math.radians(a)
@@ -2965,9 +2966,27 @@ def _siege_bot(r,live=None):
             selection[build]=min(2,inv[build]);_,a,p=best_build
         else:
             _,a,p=best_attack
-            # Offensive rounds do not spend building materials or random trajectory modifiers.
-            for k in ('pierce','through'):
-                if inv.get(k,0)>0:selection[k]=1
+            # Conserve building buffs for an actual barricade; spend combat
+            # modifiers in response to density, proximity and enemy armour.
+            density=max((sum(1 for other in targets if abs(other['x']-z['x'])<=95) for z in targets),default=0)
+            dangerous=any(z['zombieType'] in ('guard','heavy','giant','siegecar') for z in targets)
+            close=any(abs(z['x']-core['x'])<230 for z in targets)
+            if inv.get('pierce'):selection['pierce']=1
+            if inv.get('through') and (dangerous or best_attack[0]>=1000):selection['through']=min(2,inv['through'])
+            if inv.get('repeat') and len(targets)>=2:selection['repeat']=min(2,inv['repeat'])
+            if inv.get('splitshot') and density>=2:selection['splitshot']=min(2,inv['splitshot'])
+            if inv.get('homing') and (best_attack[0]>=1000 or any(z['zombieType'] in ('flyer','runner') for z in targets)):selection['homing']=1
+            if inv.get('blackhole') and density>=2:selection['blackhole']=1
+            if inv.get('bounceblast') and density>=2:selection['bounceblast']=min(2,inv['bounceblast'])
+            if inv.get('compound') and r.get('compoundRecipes',[[],[]])[1] and (dangerous or density>=2):
+                selection['compound']=min(2,inv['compound'])
+            if inv.get('demolish') and dangerous:selection['demolish']=min(2,inv['demolish'])
+            if inv.get('push') and close:selection['push']=min(2,inv['push'])
+            if inv.get('skyportal') and (len(targets)>=2 or (target and core['hp']<65)):
+                # Portal aim is automatic; avoid exhausting it on solitary weak
+                # walkers unless the shared core is in immediate danger.
+                selection['skyportal']=min(inv['skyportal'],1+(len(targets)>=5)+(len(targets)>=10))
+                a=90;p=max(55,p)
             if best_attack[0]<1000 and inv.get('big',0)>0 and 15<a<165:
                 try:_siege_launch_check(r,1,a,{'big':1});selection['big']=1
                 except ValueError:pass
