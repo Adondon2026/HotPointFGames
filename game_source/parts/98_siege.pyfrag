@@ -38,9 +38,10 @@ _SIEGE_COMPOUND_RECIPES={
     'burst':('through','bounceblast'),
     'seek':('homing','pierce'),
     'siegebreak':('through','pierce','bounceblast'),
+    'blackburst':('blackhole','bounceblast'),
 }
 def _siege_compound_recipe(value=None):
-    return value if value in _SIEGE_COMPOUND_RECIPES else random.choices(tuple(_SIEGE_COMPOUND_RECIPES),weights=(24,24,24,23,5))[0]
+    return value if value in _SIEGE_COMPOUND_RECIPES else random.choices(tuple(_SIEGE_COMPOUND_RECIPES),weights=(21,21,20,20,5,13))[0]
 
 # Simulation is authoritative and fully computed before publishing the replay.
 # Presentation time is independent of the lengthy rigid-body settling tail.
@@ -92,15 +93,15 @@ _SIEGE_TNT_KINDS=('tnt','tnt_wait')
 _SIEGE_TNT_SHOT_CAP=8
 _SIEGE_TNT_WAIT_CAP=12
 _SIEGE_NEW_ATTACK=('spiral','repeat','push','clone','fuse','larpa','bounceblast','downpour','ignite','firetrail','snake','dive','antigrav','homing','pingpong','firearc','shotshield','mine')
-_SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK),*('shield','armor','buffer'),*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS)
+_SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','springdrop','skyportal','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK),*('shield','armor','buffer'),*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS)
 
 
 # Each match has a randomized, mirrored field. Charges are consumed per type, never multiplied by count.
-_SIEGE_ITEMS={'big':{'label':'巨型弹','color':'#ecc06d'},'power':{'label':'强力弹','color':'#ee8469'},'shock':{'label':'冲击波','color':'#b2a2ed'},'shield':{'label':'护盾','color':'#7bd2e0'},'pierce':{'label':'破甲弹','color':'#f3a4d2'},'armor':{'label':'加固','color':'#a9d693'},'splitshot':{'label':'分裂弹','color':'#f9d19b'},'through':{'label':'穿透弹','color':'#f5a0a5'},'buffer':{'label':'缓冲层','color':'#a9c1ff'},'heal':{'label':'修复','color':'#77dc9e'},'bounce':{'label':'弹跳弹','color':'#83e0c5'},'wooddrop':{'label':'木块生成','color':'#d9a66a'},'stonedrop':{'label':'石块生成','color':'#c2cad8'},'blackhole':{'label':'黑洞弹','color':'#b69bea'},'gunteleport':{'label':'炮台瞬移','color':'#71c9f5'},'coreteleport':{'label':'子刊瞬移','color':'#f5b2eb'},'spiral':{'label':'螺旋弹','color':'#ffabcf'},'repeat':{'label':'连续弹','color':'#fbe199'},'push':{'label':'推进弹','color':'#7ce1d6'},'clone':{'label':'克隆增益','color':'#a4baff'},'heavy':{'label':'重重子弹','color':'#c09d83'},'vanish':{'label':'湮灭子弹','color':'#a6acb7'},'wobble':{'label':'不稳定子弹','color':'#ea8fe3'},'fart':{'label':'屁屁子弹','color':'#9ae3a8'},'fuse':{'label':'定时引信','color':'#f5cc73'},'larpa':{'label':'反弹复制','color':'#8fe0d3'},'bounceblast':{'label':'反弹爆破','color':'#ff9e74'},'downpour':{'label':'向下投弹','color':'#a6c7ff'},'ignite':{'label':'点火弹','color':'#ff965d'},'firetrail':{'label':'燃烧拖尾','color':'#f9b46d'},'snake':{'label':'蛇形弹','color':'#84ded0'},'dive':{'label':'俯冲弹','color':'#a8d7fa'},'antigrav':{'label':'反重力','color':'#c7adf5'},'homing':{'label':'近距追踪','color':'#f8cd88'},'pingpong':{'label':'折返弹','color':'#b3e6ae'},'firearc':{'label':'火焰连线','color':'#f7a15d'},'shotshield':{'label':'弹体护盾','color':'#91e6ed'},'mine':{'label':'待爆地雷','color':'#d8b27a'}}
+_SIEGE_ITEMS={'big':{'label':'巨型弹','color':'#ecc06d'},'power':{'label':'强力弹','color':'#ee8469'},'shock':{'label':'冲击波','color':'#b2a2ed'},'shield':{'label':'护盾','color':'#7bd2e0'},'pierce':{'label':'破甲弹','color':'#f3a4d2'},'armor':{'label':'加固','color':'#a9d693'},'splitshot':{'label':'分裂弹','color':'#f9d19b'},'through':{'label':'穿透弹','color':'#f5a0a5'},'buffer':{'label':'缓冲层','color':'#a9c1ff'},'heal':{'label':'修复','color':'#77dc9e'},'bounce':{'label':'弹跳弹','color':'#83e0c5'},'wooddrop':{'label':'木块生成','color':'#d9a66a'},'stonedrop':{'label':'石块生成','color':'#c2cad8'},'springdrop':{'label':'生成弹块','color':'#c2a7dd'},'skyportal':{'label':'天空传送','color':'#9bcdea'},'blackhole':{'label':'黑洞弹','color':'#b69bea'},'gunteleport':{'label':'炮台瞬移','color':'#71c9f5'},'coreteleport':{'label':'子刊瞬移','color':'#f5b2eb'},'spiral':{'label':'螺旋弹','color':'#ffabcf'},'repeat':{'label':'连续弹','color':'#fbe199'},'push':{'label':'推进弹','color':'#7ce1d6'},'clone':{'label':'克隆增益','color':'#a4baff'},'heavy':{'label':'重重子弹','color':'#c09d83'},'vanish':{'label':'湮灭子弹','color':'#a6acb7'},'wobble':{'label':'不稳定子弹','color':'#ea8fe3'},'fart':{'label':'屁屁子弹','color':'#9ae3a8'},'fuse':{'label':'定时引信','color':'#f5cc73'},'larpa':{'label':'反弹复制','color':'#8fe0d3'},'bounceblast':{'label':'反弹爆破','color':'#ff9e74'},'downpour':{'label':'向下投弹','color':'#a6c7ff'},'ignite':{'label':'点火弹','color':'#ff965d'},'firetrail':{'label':'燃烧拖尾','color':'#f9b46d'},'snake':{'label':'蛇形弹','color':'#84ded0'},'dive':{'label':'俯冲弹','color':'#a8d7fa'},'antigrav':{'label':'反重力','color':'#c7adf5'},'homing':{'label':'近距追踪','color':'#f8cd88'},'pingpong':{'label':'折返弹','color':'#b3e6ae'},'firearc':{'label':'火焰连线','color':'#f7a15d'},'shotshield':{'label':'弹体护盾','color':'#91e6ed'},'mine':{'label':'待爆地雷','color':'#d8b27a'}}
 _SIEGE_ITEMS.update(tntdrop={'label':'TNT生成','color':'#ed8b74'},tntwait={'label':'待爆TNT生成','color':'#dfb66e'},demolish={'label':'拆迁弹','color':'#ffb568'},salvage={'label':'材料回收','color':'#78d9be'},compound={'label':'复合弹','color':'#d5adff'})
 _SIEGE_ATTACK=('big','power','shock','pierce')
 _SIEGE_DEFENSE=('shield','armor','buffer')
-_SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK)
+_SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','springdrop','skyportal','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK)
 _SIEGE_ONE_SHOT=('gunteleport','coreteleport')
 _SIEGE_SINGLE_ITEMS=('heal',*_SIEGE_ONE_SHOT)
 _SIEGE_BARREL=35
@@ -110,9 +111,9 @@ _SIEGE_MAX_RADIUS=36
 # Negative pickups are forced on the next shot and are not inventory buffs.
 _SIEGE_HARD_CAPS={k:(1 if k in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE,'fuse') else 20 if k=='bounce' else 10 if k=='through' else 5) for k in _SIEGE_ITEMS}
 _SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,*_SIEGE_NEGATIVE)
-_SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield','demolish','compound') else 1 if k in ('homing','heal','coreteleport','gunteleport','salvage') else 5 for k in _SIEGE_V24_KEYS}
-_SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop',*_SIEGE_TNT_KEYS,'salvage')
-_SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport',*_SIEGE_ELITE_KEYS) else 'rare' if k in ('repeat','blackhole','shield') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
+_SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield','demolish','compound','skyportal') else 1 if k in ('homing','heal','coreteleport','gunteleport','salvage') else 5 for k in _SIEGE_V24_KEYS}
+_SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop','springdrop','skyportal',*_SIEGE_TNT_KEYS,'salvage')
+_SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport',*_SIEGE_ELITE_KEYS) else 'rare' if k in ('repeat','blackhole','shield','skyportal') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_WEIGHTS={'common':8,'uncommon':4,'rare':2,'precious':1}
 _SIEGE_V24_ART={'splitshot':16,'repeat':24,'bounce':16,'bounceblast':22,'through':5,'big':5,'homing':1,'blackhole':2,'push':3,'pierce':3,'shield':2,'armor':2,'tntdrop':4,'tntwait':3,'demolish':3,'salvage':3,'compound':3}
 _SIEGE_V24_LOCATION={'air':{'common':1.5,'uncommon':1.,'rare':.4,'precious':.15},'side':{'common':.7,'uncommon':1.3,'rare':2.,'precious':2.5},'center':{'common':.25,'uncommon':1.,'rare':3.,'precious':6.}}
@@ -149,7 +150,7 @@ _SIEGE_MAX_ITEMS=25
 def _siege_allowed(r):
     """Room-authoritative whitelist. None means all (including legacy saved rooms)."""
     allowed=r.get('allowedBuffs')
-    if _siege_v24(r):return tuple(k for k in _SIEGE_V24_KEYS if (k not in _SIEGE_NEGATIVE and (allowed is None or k in allowed) if r.get('theme')=='zombie' else k in _SIEGE_V24_ART if r.get('theme')=='art' else allowed is None or k in allowed))
+    if _siege_v24(r):return tuple(k for k in _SIEGE_V24_KEYS if (k not in _SIEGE_NEGATIVE and (allowed is None or k in allowed) if r.get('theme')=='zombie' else k in _SIEGE_V24_ART if r.get('theme')=='art' else (k!='skyportal' and (allowed is None or k in allowed))))
     if allowed is None:return _SIEGE_ACTIVE_ITEMS
     return tuple(k for k in _SIEGE_ACTIVE_ITEMS if k in allowed or any(old in allowed and replacement==k for old,replacement in _SIEGE_REPLACEMENT.items()))
 
@@ -1104,11 +1105,11 @@ def _siege_gun_gravity(r,dt):
 
 _SIEGE_SCOPEABLE=('bounce','through','spiral','power','shock','pierce','push','blackhole','ignite','firetrail','snake','dive','antigrav','homing','pingpong','fuse')
 _SIEGE_EVENT_KINDS=('launch','apex','bounce','through','end')
-_SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
+_SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','springdrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
 _SIEGE_RETIRED=('larpa','downpour','fuse')
 _SIEGE_REPLACEMENT={'larpa':'splitshot','downpour':'splitshot','fuse':'bounceblast'}
 _SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in (*_SIEGE_RETIRED,*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS))
-_SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'mine':12,'clone':12,'blackhole':12,'tntdrop':8,'tntwait':8}
+_SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'springdrop':24,'mine':12,'clone':12,'blackhole':12,'tntdrop':8,'tntwait':8}
 def _siege_migrate_catalog(r):
     # Only public sessions migrate; legacy direct engine regressions remain reproducible.
     _siege_normalize_buffs(r)
@@ -1368,7 +1369,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if k.startswith('compound:'):compound_selected.extend([k.split(':',1)[1]]*chosen.pop(k))
         if compound_selected:chosen['compound']=len(compound_selected)
         elif chosen.get('compound'):compound_selected=r['compoundRecipes'][side][:chosen['compound']]
-    engineering=(config['build']=='safe' or (v24 and not any(chosen.get(k) for k in ('bounceblast','blackhole','pierce','push','demolish','compound',*_SIEGE_TNT_KEYS)))) and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop','salvage'))
+    engineering=(config['build']=='safe' or (v24 and not any(chosen.get(k) for k in ('bounceblast','blackhole','pierce','push','demolish','compound',*_SIEGE_TNT_KEYS)))) and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop','springdrop','salvage'))
     suppressed=('power','shock','pierce','push','blackhole','clone','gunteleport','coreteleport','bounceblast','ignite','firetrail','firearc','mine') if engineering else ()
     if live is None:suppressed=(*suppressed,'shotshield')
     if unified:
@@ -1858,7 +1859,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     target['impactSource']=side;settled=0
                     behavior_events.append(['pushHit',round(t,3),round(x,1),round(y,1),target['id']])
         for k in _SIEGE_PAYLOADS:
-            if v24 and k in ('wooddrop','stonedrop',*_SIEGE_TNT_KEYS):continue
+            if v24 and k in ('wooddrop','stonedrop','springdrop',*_SIEGE_TNT_KEYS):continue
             if k=='splitshot' or not counts.get(k) or (event not in ('bounce','through','end') if v24 else _siege_event_for(config,k)!=event):continue
             if k in _SIEGE_OBJECT_LIMITS:
                 if k=='clone' and kind=='clone':continue
@@ -1916,7 +1917,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 # Recycle real material on either side, including original fortifications.
                 dist=math.hypot(max(0.,abs(b['x']-x)-b['w']/2),max(0.,abs(b['y']-y)-b['h']/2))
                 if dist<=110:
-                    recovered.add('wooddrop' if b['kind']=='wood' else 'stonedrop');b['hp']=0.;b['vx']=b['vy']=0.
+                    recovered.add('springdrop' if b.get('special')=='spring' else 'wooddrop' if b['kind']=='wood' else 'stonedrop');b['hp']=0.;b['vx']=b['vy']=0.
             if recovered:
                 elite_used.add('salvage');behavior_events.append(['salvage',round(t,3),round(x,1),round(y,1),110])
                 for k in recovered:r['buffs'][side][k]=min(_siege_cap(r,k),r['buffs'][side][k]+1)
@@ -1947,7 +1948,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         recover_material(x,y)
         if 0<=x<=960:own_landings.append((x,y))
         counts=root_counts if parent is None or parent.get('kind')=='repeat' else child_counts
-        for k in ('wooddrop','stonedrop'):
+        for k in ('wooddrop','stonedrop','springdrop'):
             if counts.get(k):generate_payload(k,counts[k],x,y)
         rank=0 if parent is None else parent.get('landingRank',parent['id']-99)
         if 0<=rank<len(tnt_alloc):
