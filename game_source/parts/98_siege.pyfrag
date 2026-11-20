@@ -1317,9 +1317,12 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for k,n in chosen.items():r['buffs'][side][k]-=n
     else:
         attack_counts={k:1 for k in (*_SIEGE_ATTACK,*_SIEGE_EXTRA_ATTACK) if r['buffs'][side][k]>0 and k not in suppressed and not (_siege_robot(r,side) and k in _SIEGE_ONE_SHOT)}
-        defense_counts={k:1 for k in _SIEGE_DEFENSE if r['buffs'][1-side][k]>0}
+        # Co-op zombies never have an opposing player whose defenses should
+        # be consumed. For seat 2, 1-side would otherwise alias seat -1.
+        defense_counts={} if r.get('theme')=='zombie' else {k:1 for k in _SIEGE_DEFENSE if r['buffs'][1-side][k]>0}
         for k in attack_counts:r['buffs'][side][k]-=1
-        for k in defense_counts:r['buffs'][1-side][k]-=1
+        if r.get('theme')!='zombie':
+            for k in defense_counts:r['buffs'][1-side][k]-=1
     if v24 and attack_counts.get('heal'):
         core=_siege_core_body(bodies,side)
         if 0<core['hp']<core['max']:

@@ -315,13 +315,29 @@ class MainActivity : Activity() {
         val address = cloudField("手动输入公网 IP:端口")
         address.setText(CloudAccounts.address.removePrefix("https://"))
         val password = cloudField("转发密码", secret = true)
-        AlertDialog.Builder(this).setTitle("服务器设置").setView(cloudPanel(address, password))
+        val identity = TextView(this).apply {
+            text = if (CloudAccounts.loggedIn)
+                "当前云账号：${CloudAccounts.username}  ·  游戏昵称：${CloudAccounts.name}"
+            else "尚未登录云账号。保存服务器后，可在此注册或登录。"
+            setPadding(0, dp(16), 0, dp(6))
+        }
+        val accountButton = Button(this).apply {
+            text = if (CloudAccounts.loggedIn) "修改昵称 / 切换账号" else "注册或登录云账号"
+            isEnabled = CloudAccounts.address.isNotBlank()
+        }
+        val dialog = AlertDialog.Builder(this).setTitle("服务器与账号")
+            .setView(cloudPanel(address, password, identity, accountButton))
             .setNegativeButton("取消", null)
-            .setPositiveButton("保存") { _, _ ->
+            .setPositiveButton("保存服务器") { _, _ ->
                 val endpoint = address.text.toString()
                 val value = password.text.toString()
                 cloudTask { CloudAccounts.configure(endpoint, value) }
-            }.show()
+            }.create()
+        accountButton.setOnClickListener {
+            dialog.dismiss()
+            cloudAccount()
+        }
+        dialog.show()
     }
 
     private fun toggleRelay() {
