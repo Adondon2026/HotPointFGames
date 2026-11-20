@@ -985,6 +985,19 @@ def _siege_body_mass(b):
 def _siege_wall_damage(speed):
     return min(85.,85.*(max(0.,min(650.,speed)-120.)/530.)**1.5)
 
+def _siege_falling_crush_damage(body,vertical_speed):
+    """Kinetic-type overhead impact, not a flat per-block damage constant.
+
+    Fixed zombies use pathfinding rather than rigid-body motion; their former
+    fixed-body contact path only damaged the falling block. The 120 px/s
+    threshold prevents resting/jittering blocks from hurting stationary mobs.
+    """
+    if body['kind'] not in ('stone','wood') or vertical_speed<=120.:
+        return 0.
+    mass=min(1.65,_siege_body_mass(body)**.5)
+    material=1.35 if body['kind']=='stone' else .75
+    return min(90.,(vertical_speed-120.)*.11*mass*material)
+
 def _siege_v24_push(body,vx,vy,layers,share=1.):
     if body['hp']<=0 or layers<=0:return
     mag=max(1.,math.hypot(vx,vy))
@@ -1966,7 +1979,17 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     axis='x' if ox<oy else 'y';v='v'+axis;delta=dx if axis=='x' else dy;sign=1 if delta>=0 else -1;depth=ox if axis=='x' else oy
                     if b.get('fixed') and c.get('fixed'):continue
                     if b.get('fixed') or c.get('fixed'):
+                        fixed=b if b.get('fixed') else c
                         moving,sg=(c,sign) if b.get('fixed') else (b,-sign)
+                        # Falling debris can crush a fixed, pathfinding zombie.
+                        # This must happen before contact resolution clears vy;
+                        # the resulting zero velocity prevents duplicate hits.
+                        if (v24 and fixed['kind']=='zombie' and axis=='y'
+                                and moving['y']<fixed['y'] and moving['vy']>120.):
+                            crush=_siege_falling_crush_damage(moving,moving['vy']-fixed.get('vy',0.))
+                            if crush>0.:
+                                hurt(fixed,crush,moving.get('impactSource',side))
+                                behavior_events.append(['crush',round(t,3),round(moving['x'],1),round(moving['y'],1),round(crush,1)])
                         moving[axis]+=sg*depth
                         if moving[v]*sg<0:
                             if abs(moving[v])>115:hurt(moving,_siege_wall_damage(abs(moving[v])) if v24 and moving['kind']=='core' else (abs(moving[v])-115)*.08,moving.get('impactSource'))
