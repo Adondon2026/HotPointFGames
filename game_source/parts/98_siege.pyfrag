@@ -377,8 +377,9 @@ def _siege_field(r):
         else:_siege_v24_world(r)
         _siege_install_cannons(r)
 
-# Cooperative theme: one authoritative shared core, both guns point right,
-# and zombies only act after both players have fired.
+# Cooperative theme: one authoritative shared core. An enemy phase follows
+# each complete team firing cycle; endless reinforcements arrive every 3 cycles.
+_SIEGE_ZOMBIE_ENDLESS_SPAWN_EVERY=3
 _SIEGE_ZOMBIE_WAVES=(
     ('walker','walker','walker'),
     ('walker','runner','shield','pole'),
@@ -534,7 +535,9 @@ def _siege_zombie_spawn(r):
     lineup=list(_SIEGE_ZOMBIE_WAVES[min(len(_SIEGE_ZOMBIE_WAVES),wave)-1])
     if endless and wave>=len(_SIEGE_ZOMBIE_WAVES):
         # The sixth enemy tier continues indefinitely, with modest increasing pressure.
-        extra=min(5,max(0,(state['round']-6)//3))
+        # Scale reinforcements by spawned groups, not raw enemy-action rounds.
+        # Tier 6 first appears on the fifth reinforcement (round 16).
+        extra=min(5,max(0,(state['round']-1)//_SIEGE_ZOMBIE_ENDLESS_SPAWN_EVERY-5))
         lineup.extend(_SIEGE_ZOMBIE_WAVES[-1][j%len(_SIEGE_ZOMBIE_WAVES[-1])] for j in range(extra))
     spawned=0
     for j,kind in enumerate(lineup):
@@ -722,14 +725,16 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     for _ in range(6):t+=.08;frames.append(snap(t,None))
     start=t;events.append(['zombiePhase',round(start,3)])
     if state.get('endless'):
-        # Every FULL player cycle brings another group, even if last round survives.
-        # The six original waves are enemy tiers; tier 6 repeats indefinitely.
-        state['wave']=min(state['totalWaves'],state['wave']+1)
-        before=state['spawned']
-        _siege_zombie_spawn(r)
-        # New waves never reroll untouched floating items.
-        events.append(['zombieWave',round(t,3),state['wave'],state['spawned']-before])
-        frames.append(snap(t,None))
+        # Enemy movement/attacks happen every complete team cycle, but fresh
+        # reinforcements arrive only after three completed team cycles.
+        # The initial tier-1 wave is already on the map at round 1.
+        if (state['round']-1)%_SIEGE_ZOMBIE_ENDLESS_SPAWN_EVERY==0:
+            state['wave']=min(state['totalWaves'],state['wave']+1)
+            before=state['spawned']
+            _siege_zombie_spawn(r)
+            # Unclaimed floating buffs remain unchanged when waves arrive.
+            events.append(['zombieWave',round(t,3),state['wave'],state['spawned']-before])
+            frames.append(snap(t,None))
     elif not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
         r['armed']=[{} for _ in r['buffs']]
         if state['wave']==state['totalWaves']:
