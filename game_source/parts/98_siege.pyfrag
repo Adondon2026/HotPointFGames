@@ -1747,7 +1747,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if engineering_done:return
             engineering_done=True
             for kind in (k for k in ('wooddrop','stonedrop','springdrop','onewaydrop') for _ in range(attack_counts.get(k,0))):
-                spring=kind=='springdrop';stone=kind!='wooddrop';w=42 if spring else 36;h=28 if spring else 44 if stone else 38;placed=False
+                spring=kind=='springdrop';oneway=kind=='onewaydrop';stone=kind!='wooddrop';w=42 if spring else 24 if oneway else 36;h=28 if spring else 72 if oneway else 44 if stone else 38;placed=False
                 if sum(bool(b.get('generated')) and b['hp']>0 for b in bodies)<60:
                     desired=max(19,min(941,x))
                     candidates=sorted(set(max(19,min(941,desired+d)) for d in range(-100,101,10)),key=lambda xx:(abs(xx-desired),xx))
@@ -1760,9 +1760,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                         if yy-h/2<0:continue
                         if any(b['hp']>0 and abs(b['x']-xx)<(b['w']+w)/2-.01 and abs(b['y']-yy)<(b['h']+h)/2-.01 for b in bodies):continue
                         if any(abs(_siege_launcher(i,r,motion_start+t)[0]-xx)<(w+52)/2 and abs(_siege_launcher(i,r,motion_start+t)[1]-yy)<(h+96)/2 for i in (0,1)):continue
-                        hp=72 if spring else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
+                        hp=72 if spring else 80 if oneway else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
                         body=dict(id=ident,side=side,x=xx,y=yy,w=w,h=h,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True)
                         if spring:body.update(special='spring',springHits=4)
+                        if oneway:body.update(special='oneway',onewayHits=4,passDir=_siege_direction(r,side))
                         bodies.append(body)
                         drop_events.append([ident,round(xx,1),round(yy,1),round(t,3)]);placed=True;last_hit=t;settled=0;break
                 if not placed:r['buffs'][side][kind]+=1
@@ -1900,7 +1901,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         for j in range(n):
             if generated_counts[k]>=limit:break
             if k in ('wooddrop','stonedrop','springdrop','onewaydrop'):
-                spring=k=='springdrop';stone=k!='wooddrop';w=42 if spring else 36;h=28 if spring else 44 if stone else 38
+                spring=k=='springdrop';oneway=k=='onewaydrop';stone=k!='wooddrop';w=42 if spring else 24 if oneway else 36;h=28 if spring else 72 if oneway else 44 if stone else 38
                 if sum(bool(b.get('generated')) and b['hp']>0 and b['kind'] in ('wood','stone') for b in bodies)+sum(q[1] in ('wooddrop','stonedrop','springdrop','onewaydrop') for qs in (live['dropQueues'].values() if live is not None else [drop_queue]) for q in qs)>=60:break
                 xx=max(19,min(941,x+(j-(n-1)/2)*37))
                 if engineering:
@@ -1912,9 +1913,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                         yy=top-h/2
                         if yy-h/2<0 or any(b['kind']=='core' and abs(b['y']-b['h']/2-top)<1 for b in supports):continue
                         if any(abs(_siege_launcher(i,r,motion_start+t)[0]-xx)<(w+52)/2 and abs(_siege_launcher(i,r,motion_start+t)[1]-yy)<(h+96)/2 for i in (0,1)):continue
-                        hp=72 if spring else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
+                        hp=72 if spring else 80 if oneway else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
                         body=dict(id=ident,side=side,x=xx,y=yy,w=w,h=h,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True)
                         if spring:body.update(special='spring',springHits=4)
+                        if oneway:body.update(special='oneway',onewayHits=4,passDir=_siege_direction(r,side))
                         bodies.append(body)
                         drop_events.append([ident,round(xx,1),round(yy,1),round(t,3)]);placed=True;last_hit=t;settled=0;break
                     if not placed:continue
@@ -2458,10 +2460,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     y=min(b['y']-b['h']/2-12.2 for b in overlap)
                 bodies.append(dict(id=ident,side=side,x=x,y=y,w=24,h=24,kind='tnt' if kind=='tntdrop' else 'tnt_wait',hp=18,max=18,vx=0.,vy=0.,generated=True,tntStable=0.))
                 drop_events.append([ident,round(x,1),round(y,1),round(t,3)]);last_hit=t;settled=0;continue
-            spring=kind=='springdrop';stone=kind!='wooddrop';hp=72 if spring else 75 if stone else 42
+            spring=kind=='springdrop';oneway=kind=='onewaydrop';stone=kind!='wooddrop';hp=72 if spring else 80 if oneway else 75 if stone else 42
             ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
-            body=dict(id=ident,side=side,x=x,y=y,w=42 if spring else 36,h=28 if spring else 44 if stone else 38,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True,falling=True)
+            body=dict(id=ident,side=side,x=x,y=y,w=42 if spring else 24 if oneway else 36,h=28 if spring else 72 if oneway else 44 if stone else 38,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True,falling=True)
             if spring:body.update(special='spring',springHits=4)
+            if oneway:body.update(special='oneway',onewayHits=4,passDir=_siege_direction(r,side))
             bodies.append(body)
             drop_events.append([ident,round(x,1),round(y,1),round(t,3)]);last_hit=t;settled=0
         if attack_counts.get('firearc') and not engineering and step%12==0:
