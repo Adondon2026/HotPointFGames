@@ -38,9 +38,10 @@ _SIEGE_COMPOUND_RECIPES={
     'burst':('through','bounceblast'),
     'seek':('homing','pierce'),
     'siegebreak':('through','pierce','bounceblast'),
+    'blackburst':('blackhole','bounceblast'),
 }
 def _siege_compound_recipe(value=None):
-    return value if value in _SIEGE_COMPOUND_RECIPES else random.choices(tuple(_SIEGE_COMPOUND_RECIPES),weights=(24,24,24,23,5))[0]
+    return value if value in _SIEGE_COMPOUND_RECIPES else random.choices(tuple(_SIEGE_COMPOUND_RECIPES),weights=(21,21,20,20,5,13))[0]
 
 # Simulation is authoritative and fully computed before publishing the replay.
 # Presentation time is independent of the lengthy rigid-body settling tail.
@@ -92,15 +93,15 @@ _SIEGE_TNT_KINDS=('tnt','tnt_wait')
 _SIEGE_TNT_SHOT_CAP=8
 _SIEGE_TNT_WAIT_CAP=12
 _SIEGE_NEW_ATTACK=('spiral','repeat','push','clone','fuse','larpa','bounceblast','downpour','ignite','firetrail','snake','dive','antigrav','homing','pingpong','firearc','shotshield','mine')
-_SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK),*('shield','armor','buffer'),*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS)
+_SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','springdrop','skyportal','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK),*('shield','armor','buffer'),*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS)
 
 
 # Each match has a randomized, mirrored field. Charges are consumed per type, never multiplied by count.
-_SIEGE_ITEMS={'big':{'label':'巨型弹','color':'#ecc06d'},'power':{'label':'强力弹','color':'#ee8469'},'shock':{'label':'冲击波','color':'#b2a2ed'},'shield':{'label':'护盾','color':'#7bd2e0'},'pierce':{'label':'破甲弹','color':'#f3a4d2'},'armor':{'label':'加固','color':'#a9d693'},'splitshot':{'label':'分裂弹','color':'#f9d19b'},'through':{'label':'穿透弹','color':'#f5a0a5'},'buffer':{'label':'缓冲层','color':'#a9c1ff'},'heal':{'label':'修复','color':'#77dc9e'},'bounce':{'label':'弹跳弹','color':'#83e0c5'},'wooddrop':{'label':'木块生成','color':'#d9a66a'},'stonedrop':{'label':'石块生成','color':'#c2cad8'},'blackhole':{'label':'黑洞弹','color':'#b69bea'},'gunteleport':{'label':'炮台瞬移','color':'#71c9f5'},'coreteleport':{'label':'子刊瞬移','color':'#f5b2eb'},'spiral':{'label':'螺旋弹','color':'#ffabcf'},'repeat':{'label':'连续弹','color':'#fbe199'},'push':{'label':'推进弹','color':'#7ce1d6'},'clone':{'label':'克隆增益','color':'#a4baff'},'heavy':{'label':'重重子弹','color':'#c09d83'},'vanish':{'label':'湮灭子弹','color':'#a6acb7'},'wobble':{'label':'不稳定子弹','color':'#ea8fe3'},'fart':{'label':'屁屁子弹','color':'#9ae3a8'},'fuse':{'label':'定时引信','color':'#f5cc73'},'larpa':{'label':'反弹复制','color':'#8fe0d3'},'bounceblast':{'label':'反弹爆破','color':'#ff9e74'},'downpour':{'label':'向下投弹','color':'#a6c7ff'},'ignite':{'label':'点火弹','color':'#ff965d'},'firetrail':{'label':'燃烧拖尾','color':'#f9b46d'},'snake':{'label':'蛇形弹','color':'#84ded0'},'dive':{'label':'俯冲弹','color':'#a8d7fa'},'antigrav':{'label':'反重力','color':'#c7adf5'},'homing':{'label':'近距追踪','color':'#f8cd88'},'pingpong':{'label':'折返弹','color':'#b3e6ae'},'firearc':{'label':'火焰连线','color':'#f7a15d'},'shotshield':{'label':'弹体护盾','color':'#91e6ed'},'mine':{'label':'待爆地雷','color':'#d8b27a'}}
+_SIEGE_ITEMS={'big':{'label':'巨型弹','color':'#ecc06d'},'power':{'label':'强力弹','color':'#ee8469'},'shock':{'label':'冲击波','color':'#b2a2ed'},'shield':{'label':'护盾','color':'#7bd2e0'},'pierce':{'label':'破甲弹','color':'#f3a4d2'},'armor':{'label':'加固','color':'#a9d693'},'splitshot':{'label':'分裂弹','color':'#f9d19b'},'through':{'label':'穿透弹','color':'#f5a0a5'},'buffer':{'label':'缓冲层','color':'#a9c1ff'},'heal':{'label':'修复','color':'#77dc9e'},'bounce':{'label':'弹跳弹','color':'#83e0c5'},'wooddrop':{'label':'木块生成','color':'#d9a66a'},'stonedrop':{'label':'石块生成','color':'#c2cad8'},'springdrop':{'label':'生成弹块','color':'#c2a7dd'},'skyportal':{'label':'天空传送','color':'#9bcdea'},'blackhole':{'label':'黑洞弹','color':'#b69bea'},'gunteleport':{'label':'炮台瞬移','color':'#71c9f5'},'coreteleport':{'label':'子刊瞬移','color':'#f5b2eb'},'spiral':{'label':'螺旋弹','color':'#ffabcf'},'repeat':{'label':'连续弹','color':'#fbe199'},'push':{'label':'推进弹','color':'#7ce1d6'},'clone':{'label':'克隆增益','color':'#a4baff'},'heavy':{'label':'重重子弹','color':'#c09d83'},'vanish':{'label':'湮灭子弹','color':'#a6acb7'},'wobble':{'label':'不稳定子弹','color':'#ea8fe3'},'fart':{'label':'屁屁子弹','color':'#9ae3a8'},'fuse':{'label':'定时引信','color':'#f5cc73'},'larpa':{'label':'反弹复制','color':'#8fe0d3'},'bounceblast':{'label':'反弹爆破','color':'#ff9e74'},'downpour':{'label':'向下投弹','color':'#a6c7ff'},'ignite':{'label':'点火弹','color':'#ff965d'},'firetrail':{'label':'燃烧拖尾','color':'#f9b46d'},'snake':{'label':'蛇形弹','color':'#84ded0'},'dive':{'label':'俯冲弹','color':'#a8d7fa'},'antigrav':{'label':'反重力','color':'#c7adf5'},'homing':{'label':'近距追踪','color':'#f8cd88'},'pingpong':{'label':'折返弹','color':'#b3e6ae'},'firearc':{'label':'火焰连线','color':'#f7a15d'},'shotshield':{'label':'弹体护盾','color':'#91e6ed'},'mine':{'label':'待爆地雷','color':'#d8b27a'}}
 _SIEGE_ITEMS.update(tntdrop={'label':'TNT生成','color':'#ed8b74'},tntwait={'label':'待爆TNT生成','color':'#dfb66e'},demolish={'label':'拆迁弹','color':'#ffb568'},salvage={'label':'材料回收','color':'#78d9be'},compound={'label':'复合弹','color':'#d5adff'})
 _SIEGE_ATTACK=('big','power','shock','pierce')
 _SIEGE_DEFENSE=('shield','armor','buffer')
-_SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK)
+_SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','springdrop','skyportal','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK)
 _SIEGE_ONE_SHOT=('gunteleport','coreteleport')
 _SIEGE_SINGLE_ITEMS=('heal',*_SIEGE_ONE_SHOT)
 _SIEGE_BARREL=35
@@ -109,10 +110,10 @@ _SIEGE_MAX_RADIUS=36
 # v0.20.1 upstream: independent room-configured per-projectile stack caps.
 # Negative pickups are forced on the next shot and are not inventory buffs.
 _SIEGE_HARD_CAPS={k:(1 if k in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE,'fuse') else 20 if k=='bounce' else 10 if k=='through' else 5) for k in _SIEGE_ITEMS}
-_SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,*_SIEGE_NEGATIVE)
-_SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield','demolish','compound') else 1 if k in ('homing','heal','coreteleport','gunteleport','salvage') else 5 for k in _SIEGE_V24_KEYS}
-_SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop',*_SIEGE_TNT_KEYS,'salvage')
-_SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport',*_SIEGE_ELITE_KEYS) else 'rare' if k in ('repeat','blackhole','shield') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
+_SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','springdrop','skyportal','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,*_SIEGE_NEGATIVE)
+_SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield','demolish','compound','skyportal') else 1 if k in ('homing','heal','coreteleport','gunteleport','salvage') else 5 for k in _SIEGE_V24_KEYS}
+_SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop','springdrop','skyportal',*_SIEGE_TNT_KEYS,'salvage')
+_SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport',*_SIEGE_ELITE_KEYS) else 'rare' if k in ('repeat','blackhole','shield','skyportal') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_WEIGHTS={'common':8,'uncommon':4,'rare':2,'precious':1}
 _SIEGE_V24_ART={'splitshot':16,'repeat':24,'bounce':16,'bounceblast':22,'through':5,'big':5,'homing':1,'blackhole':2,'push':3,'pierce':3,'shield':2,'armor':2,'tntdrop':4,'tntwait':3,'demolish':3,'salvage':3,'compound':3}
 _SIEGE_V24_LOCATION={'air':{'common':1.5,'uncommon':1.,'rare':.4,'precious':.15},'side':{'common':.7,'uncommon':1.3,'rare':2.,'precious':2.5},'center':{'common':.25,'uncommon':1.,'rare':3.,'precious':6.}}
@@ -149,7 +150,7 @@ _SIEGE_MAX_ITEMS=25
 def _siege_allowed(r):
     """Room-authoritative whitelist. None means all (including legacy saved rooms)."""
     allowed=r.get('allowedBuffs')
-    if _siege_v24(r):return tuple(k for k in _SIEGE_V24_KEYS if (k not in _SIEGE_NEGATIVE and (allowed is None or k in allowed) if r.get('theme')=='zombie' else k in _SIEGE_V24_ART if r.get('theme')=='art' else allowed is None or k in allowed))
+    if _siege_v24(r):return tuple(k for k in _SIEGE_V24_KEYS if (k not in _SIEGE_NEGATIVE and (allowed is None or k in allowed) if r.get('theme')=='zombie' else k in _SIEGE_V24_ART if r.get('theme')=='art' else (k!='skyportal' and (allowed is None or k in allowed))))
     if allowed is None:return _SIEGE_ACTIVE_ITEMS
     return tuple(k for k in _SIEGE_ACTIVE_ITEMS if k in allowed or any(old in allowed and replacement==k for old,replacement in _SIEGE_REPLACEMENT.items()))
 
@@ -474,17 +475,62 @@ _SIEGE_ZOMBIE_MAPS={
 }
 def _siege_zombie_spawn(r):
     state=r['zombie'];wave=state['wave'];bodies=r['bodies']
-    for j,kind in enumerate(_SIEGE_ZOMBIE_WAVES[wave-1]):
+    endless=bool(state.get('endless'))
+    lineup=list(_SIEGE_ZOMBIE_WAVES[min(len(_SIEGE_ZOMBIE_WAVES),wave)-1])
+    if endless and wave>=len(_SIEGE_ZOMBIE_WAVES):
+        # The sixth enemy tier continues indefinitely, with modest increasing pressure.
+        extra=min(5,max(0,(state['round']-6)//3))
+        lineup.extend(_SIEGE_ZOMBIE_WAVES[-1][j%len(_SIEGE_ZOMBIE_WAVES[-1])] for j in range(extra))
+    spawned=0
+    for j,kind in enumerate(lineup):
         w,h,hp,speed,damage=_SIEGE_ZOMBIE_TYPES[kind]
-        hp=round(hp*_siege_zombie_difficulty(r)[0],1)
         left=r.get('zombieBothSides') and j%2==0
         rank=j//2 if r.get('zombieBothSides') else j
         x=30+rank*62 if left else 930-rank*62
-        floor=_siege_floor_body(r,x,w)
-        y=min(220-j%2*45,floor-h/2-14) if kind=='flyer' else floor-h/2
+        if endless:
+            if sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)>=54:break
+            # Reinforcements avoid spawning inside existing creatures or structures.
+            # This preserves the physically meaningful sky/ground contact positions.
+            candidates=sorted(range(26,935,25),key=lambda pos:(abs(pos-x),pos))
+            if left:candidates=[p for p in candidates if p<r['bodies'][0]['x']-30] or candidates
+            else:candidates=[p for p in candidates if p>r['bodies'][0]['x']+30] or candidates
+            fit=None
+            for candidate in candidates:
+                yy=_siege_floor_body(r,candidate,w)-h/2
+                if yy-h/2<5:continue
+                if any(b['hp']>0 and abs(candidate-b['x'])<(w+b['w'])/2+3
+                       and abs(yy-b['y'])<(h+b['h'])/2+2 for b in bodies):continue
+                fit=(candidate,yy);break
+            if fit is None:continue
+            x,y=fit
+        else:
+            floor=_siege_floor_body(r,x,w)
+            y=min(220-j%2*45,floor-h/2-14) if kind=='flyer' else floor-h/2
+        if endless and kind=='flyer':y=min(y,220-j%2*45)
+        hp=round(hp*_siege_zombie_difficulty(r)[0],1)
         ident=r['nextBodyId'];r['nextBodyId']+=1
         bodies.append(dict(id=ident,side=2,kind='zombie',zombieType=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
-    state['spawned']+=len(_SIEGE_ZOMBIE_WAVES[wave-1])
+        spawned+=1
+    state['spawned']+=spawned
+
+def _siege_zombie_portal_targets(r,limit):
+    """Greedy non-overlapping crowd coverage; one portal per uncovered cluster."""
+    alive=[b for b in r['bodies'] if b['kind']=='zombie' and b['hp']>0]
+    portals=[];remaining=alive[:]
+    for _ in range(min(3,max(0,limit))):
+        if not remaining:break
+        # Score real, currently living enemies, not preset spawn positions.
+        best=max(remaining,key=lambda anchor:(
+            sum(1 for z in remaining if abs(z['x']-anchor['x'])<=95),
+            sum(z['hp'] for z in remaining if abs(z['x']-anchor['x'])<=95),
+            -abs(anchor['x']-480)))
+        caught=[z for z in remaining if abs(z['x']-best['x'])<=95]
+        center=sum(z['x'] for z in caught)/len(caught)
+        sky=max(20.,min(190.,min(z['y']-z['h']/2 for z in caught)-90.))
+        portals.append((max(20.,min(940.,center)),sky))
+        remaining=[z for z in remaining if z not in caught]
+    return portals
+
 def _siege_zombie_world(r):
     r.update(field='zombie',fieldLabel='丧尸围城',mode='classic',combatMode='turn',ammo=0,rise=0,offset=0,gunShift=0,wind=0,windPair=0,windLevel='off',reflectors=[],gunMotion=[],launchers=[[170,368],[270,368]],nextBodyId=100)
     map_key=r.get('zombieMap','front')
@@ -512,7 +558,7 @@ def _siege_zombie_world(r):
                 w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
             r['nextBodyId']+=1
     r['zombieRewardHistory']=[]
-    r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,difficulty=r.get('zombieDifficulty','medium'))
+    r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,endless=r.get('zombieWaveMode')=='endless',difficulty=r.get('zombieDifficulty','medium'))
     r['items']=[];r['respawns']=[]
     slots=[(230,205),(335,140),(430,235),(510,100),(580,190),(665,130),(755,245),(840,110)]
     for j,(x,y) in enumerate(slots[:min(len(slots),r.get('itemCount',8))]):
@@ -628,7 +674,16 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     t=max(t,1.)
     for _ in range(6):t+=.08;frames.append(snap(t,None))
     start=t;events.append(['zombiePhase',round(start,3)])
-    if not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
+    if state.get('endless'):
+        # Every FULL player cycle brings another group, even if last round survives.
+        # The six original waves are enemy tiers; tier 6 repeats indefinitely.
+        state['wave']=min(state['totalWaves'],state['wave']+1)
+        before=state['spawned']
+        _siege_zombie_spawn(r)
+        _siege_zombie_refresh(r)
+        events.append(['zombieWave',round(t,3),state['wave'],state['spawned']-before])
+        frames.append(snap(t,None))
+    elif not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
         r['armed']=[{} for _ in r['buffs']]
         if state['wave']==state['totalWaves']:
             state['won']=True;return t+.5
@@ -1104,11 +1159,11 @@ def _siege_gun_gravity(r,dt):
 
 _SIEGE_SCOPEABLE=('bounce','through','spiral','power','shock','pierce','push','blackhole','ignite','firetrail','snake','dive','antigrav','homing','pingpong','fuse')
 _SIEGE_EVENT_KINDS=('launch','apex','bounce','through','end')
-_SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
+_SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','springdrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
 _SIEGE_RETIRED=('larpa','downpour','fuse')
 _SIEGE_REPLACEMENT={'larpa':'splitshot','downpour':'splitshot','fuse':'bounceblast'}
-_SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in (*_SIEGE_RETIRED,*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS))
-_SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'mine':12,'clone':12,'blackhole':12,'tntdrop':8,'tntwait':8}
+_SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in (*_SIEGE_RETIRED,*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,'springdrop','skyportal'))
+_SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'springdrop':24,'mine':12,'clone':12,'blackhole':12,'tntdrop':8,'tntwait':8}
 def _siege_migrate_catalog(r):
     # Only public sessions migrate; legacy direct engine regressions remain reproducible.
     _siege_normalize_buffs(r)
@@ -1362,13 +1417,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     stock=r.get('buffMode','auto')=='stock'
     armed=r.setdefault('armed',[{} for _ in r['buffs']]);armed_before=[dict(x) for x in armed]
     chosen=_siege_selection(r,selection,side)
+    portal_targets=_siege_zombie_portal_targets(r,chosen.get('skyportal',0)) if v24 and chosen.get('skyportal') and r.get('theme')=='zombie' else []
+    if chosen.get('skyportal') and not portal_targets:
+        raise ValueError('天空传送需要场上存在可攻击的僵尸')
     compound_selected=[]
     if v24:
         for k in list(chosen):
             if k.startswith('compound:'):compound_selected.extend([k.split(':',1)[1]]*chosen.pop(k))
         if compound_selected:chosen['compound']=len(compound_selected)
         elif chosen.get('compound'):compound_selected=r['compoundRecipes'][side][:chosen['compound']]
-    engineering=(config['build']=='safe' or (v24 and not any(chosen.get(k) for k in ('bounceblast','blackhole','pierce','push','demolish','compound',*_SIEGE_TNT_KEYS)))) and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop','salvage'))
+    engineering=(config['build']=='safe' or (v24 and not any(chosen.get(k) for k in ('bounceblast','blackhole','pierce','push','demolish','compound',*_SIEGE_TNT_KEYS)))) and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop','springdrop','salvage'))
     suppressed=('power','shock','pierce','push','blackhole','clone','gunteleport','coreteleport','bounceblast','ignite','firetrail','firearc','mine') if engineering else ()
     if live is None:suppressed=(*suppressed,'shotshield')
     if unified:
@@ -1443,6 +1501,15 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     _siege_motion(r,motion_start)
     n=attack_counts.get('big',0);radius=_siege_shell_radius(r,n);blast_radius=52+(10 if v24 else 36)*n
     px,py=_siege_muzzle(side,r,actual_angle,radius,motion_start)
+    if portal_targets:
+        # All copies now launch from portals above real zombie clusters, never
+        # from the normal gun. Angle is a small lateral correction; power
+        # controls downward speed. Original repeat/split damage rules stay intact.
+        px,py=portal_targets[0]
+        vx=max(-55.,min(55.,math.cos(a)*power*.48))
+        vy=max(270.,power*5.5)
+        blocked=None
+        behavior_events.extend(['skyPortal',round(i*.85,3),round(x,1),round(y,1),i+1] for i,(x,y) in enumerate(portal_targets))
     draw_radius=radius
     # The actual shot angle is recorded for the remote cannon animation.
     fragment_radius=radius
@@ -1453,6 +1520,15 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     # Delayed extra rounds retain angle/power; total damage grows while each shell weakens.
     for j in range(repeat_n):
         fragments.append(dict(id=100+j,x=px,y=py,vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),bornAt=(0. if unified and config['burstMode']=='volley' else .11*(j+1)),scale=1.,kind='repeat',travel=0.,splitDone=False))
+    if portal_targets:
+        # One complete mother + repeat volley per portal. Space out portals
+        # for readable camera guidance rather than three simultaneous cuts.
+        for portal_index,(cx,cy) in enumerate(portal_targets[1:],1):
+            for shot_index in range(repeat_n+1):
+                fragments.append(dict(id=15000+portal_index*100+shot_index,x=cx,y=cy,
+                    vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),
+                    bornAt=portal_index*.85+shot_index*.11,scale=1.,kind='repeat',
+                    travel=0.,splitDone=False,landingRank=shot_index))
     if unified and config['burstMode']=='volley':
         for j,f in enumerate(fragments):
             delta=math.radians((j+1)*4*(-1 if j%2 else 1))
@@ -1523,7 +1599,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             sh.update(x=x,y=y,radius=radius+24+6*n)
         return [dict(sh) for sh in shields.values() if sh['left']>0]
     def sample(t,p):
-        return {'motionTime':motion_start+t,'embers':[[round(e['x'],1),round(e['y'],1)] for e in embers],'controls':dict(control['left']) if control is not None and ((p is not None and main_stop is None) or any(f['live'] and t>=f.get('bornAt',0) and not f.get('stop') for f in fragments)) else {},'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']]}
+        return {'motionTime':motion_start+t,'embers':[[round(e['x'],1),round(e['y'],1)] for e in embers],'controls':dict(control['left']) if control is not None and ((p is not None and main_stop is None) or any(f['live'] and t>=f.get('bornAt',0) and not f.get('stop') for f in fragments)) else {},'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']],'skyPortals':[list(p) for p in portal_targets]}
     clone_left=0 if unified else attack_counts.get('clone',0)
     def spawn_clone(x,y,shell_kind):
         nonlocal clone_left
@@ -1648,8 +1724,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if engineering:
             if engineering_done:return
             engineering_done=True
-            for kind in (k for k in ('wooddrop','stonedrop') for _ in range(attack_counts.get(k,0))):
-                stone=kind=='stonedrop';w=36;h=44 if stone else 38;placed=False
+            for kind in (k for k in ('wooddrop','stonedrop','springdrop') for _ in range(attack_counts.get(k,0))):
+                spring=kind=='springdrop';stone=kind!='wooddrop';w=42 if spring else 36;h=28 if spring else 44 if stone else 38;placed=False
                 if sum(bool(b.get('generated')) and b['hp']>0 for b in bodies)<60:
                     desired=max(19,min(941,x))
                     candidates=sorted(set(max(19,min(941,desired+d)) for d in range(-100,101,10)),key=lambda xx:(abs(xx-desired),xx))
@@ -1662,12 +1738,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                         if yy-h/2<0:continue
                         if any(b['hp']>0 and abs(b['x']-xx)<(b['w']+w)/2-.01 and abs(b['y']-yy)<(b['h']+h)/2-.01 for b in bodies):continue
                         if any(abs(_siege_launcher(i,r,motion_start+t)[0]-xx)<(w+52)/2 and abs(_siege_launcher(i,r,motion_start+t)[1]-yy)<(h+96)/2 for i in (0,1)):continue
-                        hp=75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
-                        bodies.append(dict(id=ident,side=side,x=xx,y=yy,w=w,h=h,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True))
+                        hp=72 if spring else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
+                        body=dict(id=ident,side=side,x=xx,y=yy,w=w,h=h,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True)
+                        if spring:body.update(special='spring',springHits=4)
+                        bodies.append(body)
                         drop_events.append([ident,round(xx,1),round(yy,1),round(t,3)]);placed=True;last_hit=t;settled=0;break
                 if not placed:r['buffs'][side][kind]+=1
             return
-        kinds=[k for k in ('wooddrop','stonedrop') for _ in range(attack_counts.get(k,0))]
+        kinds=[k for k in ('wooddrop','stonedrop','springdrop') for _ in range(attack_counts.get(k,0))]
         free=max(0,60-sum(b.get('generated',False) and b['hp']>0 for b in bodies)-(sum(map(len,live['dropQueues'].values())) if live is not None else len(drop_queue)))
         for k in kinds[free:]:r['buffs'][side][k]+=1
         for j,k in enumerate(kinds[:free]):drop_queue.append((t+.15+j*.52,k,max(19,min(941,x)),min(-100,y-250)))
@@ -1799,9 +1877,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         limit=_SIEGE_OBJECT_LIMITS[k]
         for j in range(n):
             if generated_counts[k]>=limit:break
-            if k in ('wooddrop','stonedrop'):
-                stone=k=='stonedrop';w=36;h=44 if stone else 38
-                if sum(bool(b.get('generated')) and b['hp']>0 and b['kind'] in ('wood','stone') for b in bodies)+sum(q[1] in ('wooddrop','stonedrop') for qs in (live['dropQueues'].values() if live is not None else [drop_queue]) for q in qs)>=60:break
+            if k in ('wooddrop','stonedrop','springdrop'):
+                spring=k=='springdrop';stone=k!='wooddrop';w=42 if spring else 36;h=28 if spring else 44 if stone else 38
+                if sum(bool(b.get('generated')) and b['hp']>0 and b['kind'] in ('wood','stone') for b in bodies)+sum(q[1] in ('wooddrop','stonedrop','springdrop') for qs in (live['dropQueues'].values() if live is not None else [drop_queue]) for q in qs)>=60:break
                 xx=max(19,min(941,x+(j-(n-1)/2)*37))
                 if engineering:
                     placed=False
@@ -1812,8 +1890,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                         yy=top-h/2
                         if yy-h/2<0 or any(b['kind']=='core' and abs(b['y']-b['h']/2-top)<1 for b in supports):continue
                         if any(abs(_siege_launcher(i,r,motion_start+t)[0]-xx)<(w+52)/2 and abs(_siege_launcher(i,r,motion_start+t)[1]-yy)<(h+96)/2 for i in (0,1)):continue
-                        hp=75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
-                        bodies.append(dict(id=ident,side=side,x=xx,y=yy,w=w,h=h,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True))
+                        hp=72 if spring else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
+                        body=dict(id=ident,side=side,x=xx,y=yy,w=w,h=h,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True)
+                        if spring:body.update(special='spring',springHits=4)
+                        bodies.append(body)
                         drop_events.append([ident,round(xx,1),round(yy,1),round(t,3)]);placed=True;last_hit=t;settled=0;break
                     if not placed:continue
                 else:
@@ -1858,7 +1938,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     target['impactSource']=side;settled=0
                     behavior_events.append(['pushHit',round(t,3),round(x,1),round(y,1),target['id']])
         for k in _SIEGE_PAYLOADS:
-            if v24 and k in ('wooddrop','stonedrop',*_SIEGE_TNT_KEYS):continue
+            if v24 and k in ('wooddrop','stonedrop','springdrop',*_SIEGE_TNT_KEYS):continue
             if k=='splitshot' or not counts.get(k) or (event not in ('bounce','through','end') if v24 else _siege_event_for(config,k)!=event):continue
             if k in _SIEGE_OBJECT_LIMITS:
                 if k=='clone' and kind=='clone':continue
@@ -1916,7 +1996,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 # Recycle real material on either side, including original fortifications.
                 dist=math.hypot(max(0.,abs(b['x']-x)-b['w']/2),max(0.,abs(b['y']-y)-b['h']/2))
                 if dist<=110:
-                    recovered.add('wooddrop' if b['kind']=='wood' else 'stonedrop');b['hp']=0.;b['vx']=b['vy']=0.
+                    recovered.add('springdrop' if b.get('special')=='spring' else 'wooddrop' if b['kind']=='wood' else 'stonedrop');b['hp']=0.;b['vx']=b['vy']=0.
             if recovered:
                 elite_used.add('salvage');behavior_events.append(['salvage',round(t,3),round(x,1),round(y,1),110])
                 for k in recovered:r['buffs'][side][k]=min(_siege_cap(r,k),r['buffs'][side][k]+1)
@@ -1947,7 +2027,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         recover_material(x,y)
         if 0<=x<=960:own_landings.append((x,y))
         counts=root_counts if parent is None or parent.get('kind')=='repeat' else child_counts
-        for k in ('wooddrop','stonedrop'):
+        for k in ('wooddrop','stonedrop','springdrop'):
             if counts.get(k):generate_payload(k,counts[k],x,y)
         rank=0 if parent is None else parent.get('landingRank',parent['id']-99)
         if 0<=rank<len(tnt_alloc):
@@ -2356,9 +2436,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     y=min(b['y']-b['h']/2-12.2 for b in overlap)
                 bodies.append(dict(id=ident,side=side,x=x,y=y,w=24,h=24,kind='tnt' if kind=='tntdrop' else 'tnt_wait',hp=18,max=18,vx=0.,vy=0.,generated=True,tntStable=0.))
                 drop_events.append([ident,round(x,1),round(y,1),round(t,3)]);last_hit=t;settled=0;continue
-            stone=kind=='stonedrop';hp=75 if stone else 42
+            spring=kind=='springdrop';stone=kind!='wooddrop';hp=72 if spring else 75 if stone else 42
             ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
-            bodies.append(dict(id=ident,side=side,x=x,y=y,w=36,h=44 if stone else 38,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True,falling=True))
+            body=dict(id=ident,side=side,x=x,y=y,w=42 if spring else 36,h=28 if spring else 44 if stone else 38,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True,falling=True)
+            if spring:body.update(special='spring',springHits=4)
+            bodies.append(body)
             drop_events.append([ident,round(x,1),round(y,1),round(t,3)]);last_hit=t;settled=0
         if attack_counts.get('firearc') and not engineering and step%12==0:
             pts=([(px,py)] if impact is None else [])+[(f['x'],f['y']) for f in fragments if f['live'] and t>=f.get('bornAt',0)]
@@ -2536,7 +2618,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['turn']=1-side
         if r['turn']==0:r['windPair']=_siege_weather(r.get('windLevel','off'))
         r['wind']=r.get('windPair',0)*(1 if r['turn']==0 else -1)
-    r['event']={'id':r['rev'],'side':side,'emberEvents':ember_events,'generatedCounts':generated_counts if unified else {},'payloadEvents':event_counts if unified else {},'trialDamage':round(trial_damage,1),'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':actual_angle,'requestedAngle':angle,'angleOffset':angle_offset,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'engineering':engineering,'behaviorEvents':behavior_events,'fireArcs':arc_events,'minesBefore':mines_before,'mineEvents':mine_events,'holePaths':hole_paths,'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(_siege_launcher(i,r,motion_start+t)) for i in range(r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2)],'gunMotion':r.get('gunMotion',[])}
+    r['event']={'id':r['rev'],'side':side,'emberEvents':ember_events,'generatedCounts':generated_counts if unified else {},'payloadEvents':event_counts if unified else {},'trialDamage':round(trial_damage,1),'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'skyPortals':[list(p) for p in portal_targets],'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':actual_angle,'requestedAngle':angle,'angleOffset':angle_offset,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'engineering':engineering,'behaviorEvents':behavior_events,'fireArcs':arc_events,'minesBefore':mines_before,'mineEvents':mine_events,'holePaths':hole_paths,'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(_siege_launcher(i,r,motion_start+t)) for i in range(r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2)],'gunMotion':r.get('gunMotion',[])}
     if v24 and control is None:
         r['event'].update(_siege_replay_timing(frames,t,hit_at,bodies=bodies,events=behavior_events),compoundRecipe=compound_recipe,compoundRecipesUsed=compound_selected,compoundEffects=compound_effects)
         if r.get('theme')=='zombie':

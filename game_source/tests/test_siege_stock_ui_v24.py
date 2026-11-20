@@ -88,7 +88,7 @@ try:
         page.get_by_role('button',name='减少巨型弹').tap()
         expect(page.get_by_role('spinbutton',name='巨型弹使用数量')).to_have_value('0')
         page.get_by_role('button',name='技能',exact=True).tap()
-        expect(rows).to_have_count(10)
+        expect(rows).to_have_count(12)
         page.get_by_role('button',name='防御加固选满').tap()
         expect(page.get_by_role('spinbutton',name='防御加固使用数量')).to_have_value('2')
         expect(page.get_by_role('spinbutton',name='核心修复使用数量')).to_have_value('0')
@@ -151,7 +151,7 @@ try:
         assert page.evaluate('selection')=={'compound:ricochet':2,'compound:siegebreak':1}
         page.get_by_role('button',name='清空',exact=True).tap()
         page.evaluate("""()=>{room.trial=true;room.compoundRecipes=[Object.keys(compoundLabels).flatMap(k=>[k,k,k]),[]];stockKey='';update()}""")
-        expect(page.locator('.compound-row')).to_have_count(5)
+        expect(page.locator('.compound-row')).to_have_count(6)
         page.get_by_role('button',name='复合·爆跳选满').tap()
         expect(page.get_by_role('button',name='增加复合·追甲')).to_be_disabled()
         page.get_by_role('button',name='清空',exact=True).tap()
