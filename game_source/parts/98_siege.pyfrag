@@ -988,6 +988,31 @@ def _siege_box_bounce(b,ox,oy,x,y,vx,vy,radius):
     if dot<0:vx-=1.76*dot*nx;vy-=1.76*dot*ny
     return cx+nx*.5,cy+ny*.5,vx,vy
 
+def _siege_spring_bounce(body,ox,oy,x,y,vx,vy,radius,rng=None):
+    """Scatter over the outward 160-degree hemisphere of the actual contact face.
+
+    The spring rebounds on any face, not just a fixed left/right direction.
+    A seeded per-shot RNG keeps replays deterministic while allowing varied
+    directions. Outward-only impulses avoid instant re-collisions.
+    """
+    cx,cy,_,_=_siege_box_bounce(body,ox,oy,x,y,vx,vy,radius)
+    edges=((abs(cx-(body['x']-body['w']/2-radius)),-1.,0.),
+           (abs(cx-(body['x']+body['w']/2+radius)),1.,0.),
+           (abs(cy-(body['y']-body['h']/2-radius)),0.,-1.),
+           (abs(cy-(body['y']+body['h']/2+radius)),0.,1.))
+    _,nx,ny=min(edges,key=lambda v:v[0])
+    angle=math.atan2(ny,nx)+(rng or random).uniform(-1.39,1.39)
+    speed=max(215.,min(800.,math.hypot(vx,vy)*.92))
+    return cx,cy,speed*math.cos(angle),speed*math.sin(angle)
+
+def _siege_oneway_hit(body):
+    """Absorb an incoming wrong-way projectile, consuming a finite charge."""
+    if body.get('special')!='oneway' or body['hp']<=0:return False
+    body['onewayHits']=max(0,body.get('onewayHits',4)-1)
+    body['hp']=max(0.,body['hp']-max(16.,body.get('max',80.)/4.))
+    if body['onewayHits']==0:body['hp']=0.
+    return True
+
 def _siege_robot(r,side):return bool(r.get('bot') and side==1)
 
 def _siege_shell_radius(r,n):return 6+(4 if _siege_v24(r) else 6)*n
@@ -2337,12 +2362,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and not _siege_oneway_pass(b,vx) and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
                 if target and target.get('special')=='spring':
-                    px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,rr)
+                    px,py,vx,vy=_siege_spring_bounce(target,oldx,oldy,x,y,vx,vy,rr,copy_rng)
                     _siege_spring_hit(target)
                     bounces.append([round(px,1),round(py,1),round(t,3),-1])
                     behavior_events.append(['springHit',round(t,3),target['id'],target['springHits']])
                     frames.append(snap(t,[round(px,1),round(py,1)]))
                     break
+                if target and target.get('special')=='oneway':
+                    _siege_oneway_hit(target)
+                    behavior_events.append(['onewayBlock',round(t,3),target['id'],target['onewayHits']])
+                    finish_main(x,y,None,False);break
                 if target and unified and dispatch_event('contact',x,y,vx,vy,target=target):break
                 if target and root_counts.get('through') and len(passed)<root_counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_scale*(1+1.5*root_counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
@@ -2423,11 +2452,15 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and not _siege_oneway_pass(b,f['vx']) and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and target.get('special')=='spring':
-                    f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fr)
+                    f['x'],f['y'],f['vx'],f['vy']=_siege_spring_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fr,copy_rng)
                     _siege_spring_hit(target)
                     bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']])
                     behavior_events.append(['springHit',round(t,3),target['id'],target['springHits']])
                     break
+                if target and target.get('special')=='oneway':
+                    _siege_oneway_hit(target)
+                    behavior_events.append(['onewayBlock',round(t,3),target['id'],target['onewayHits']])
+                    finish_fragment(f,x,y,None,False);break
                 if target and unified and dispatch_event('contact',x,y,f['vx'],f['vy'],f,target):break
                 if target and counts.get('through') and len(f['passed'])<counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42)*(1+1.5*counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
