@@ -356,7 +356,7 @@ def v24(theme='classic',allowed=None):
     g._siege_v24_setup(r,theme)
     r['items']=[];r['respawns']=[];r['until']=0
     return r
-assert len(g._SIEGE_V24_KEYS)==28 and g._SIEGE_V24_CAPS['splitshot']==3 and g._SIEGE_V24_CAPS['repeat']==3
+assert len(g._SIEGE_V24_KEYS)==29 and g._SIEGE_V24_CAPS['splitshot']==3 and g._SIEGE_V24_CAPS['repeat']==3
 assert g._SIEGE_V24_CAPS['heal']==g._SIEGE_V24_CAPS['homing']==1
 assert g._SIEGE_V24_CAPS['shield']==3 and g._SIEGE_V24_CAPS['bounce']==5
 r=v24();r['buffs'][0].update(splitshot=3,repeat=3,bounceblast=1)
