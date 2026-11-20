@@ -1208,7 +1208,7 @@ def _siege_gun_gravity(r,dt):
 
 _SIEGE_SCOPEABLE=('bounce','through','spiral','power','shock','pierce','push','blackhole','ignite','firetrail','snake','dive','antigrav','homing','pingpong','fuse')
 _SIEGE_EVENT_KINDS=('launch','apex','bounce','through','end')
-_SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','springdrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
+_SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','springdrop','onewaydrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
 _SIEGE_RETIRED=('larpa','downpour','fuse')
 _SIEGE_REPLACEMENT={'larpa':'splitshot','downpour':'splitshot','fuse':'bounceblast'}
 _SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in (*_SIEGE_RETIRED,*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,'springdrop','onewaydrop','skyportal'))
