@@ -25,11 +25,22 @@ def snap_for(r):
 endless=new_zombie('endless')
 state=endless['zombie'];assert state['endless'] and state['wave']==1
 old=state['spawned']
-g._siege_zombie_round(endless,1,[],snap_for(endless),[],None)
-assert state['wave']==2 and state['spawned']>old,'must spawn even with living enemies remaining'
-for _ in range(8):
-    g._siege_zombie_round(endless,1,[],snap_for(endless),[],None)
-assert state['wave']==6 and not state['won'] and state['round']==10
+# The first wave is already present. Every three *complete player cycles*,
+# not every shot or enemy action, produce one new reinforcement group.
+for cycle in range(1,19):
+    events=[]
+    previous=state['spawned']
+    g._siege_zombie_round(endless,1,[],snap_for(endless),events,None)
+    expected_wave=min(state['totalWaves'],1+cycle//3)
+    assert state['round']==cycle+1 and state['wave']==expected_wave,(cycle,state)
+    triggered=[e for e in events if e[0]=='zombieWave']
+    assert len(triggered)==int(cycle%3==0),(cycle,triggered)
+    if cycle%3:
+        assert state['spawned']==previous,(cycle,'reinforcement before third cycle')
+    elif cycle<=15:
+        assert state['spawned']>previous,(cycle,'third cycle must spawn even while enemies survive')
+    assert not state['won']
+assert state['wave']==6 and state['round']==19
 assert sum(b['kind']=='zombie' and b['hp']>0 for b in endless['bodies'])<=54
 assert state['spawned']>=old+3
 finite=new_zombie('classic');before=finite['zombie']['spawned']
