@@ -528,20 +528,28 @@ def _siege_zombie_spawn(r):
         spawned+=1
     state['spawned']+=spawned
 
-def _siege_zombie_portal_targets(r,limit):
-    """Greedy non-overlapping crowd coverage; one portal per uncovered cluster."""
+def _siege_zombie_portal_targets(r,layers):
+    """Two portals per layer, prioritizing previously uncovered enemy clusters."""
     alive=[b for b in r['bodies'] if b['kind']=='zombie' and b['hp']>0]
     portals=[];remaining=alive[:]
-    for _ in range(min(3,max(0,limit))):
-        if not remaining:break
-        # Score real, currently living enemies, not preset spawn positions.
+    for i in range(min(6,max(0,layers)*2)):
+        if not alive:break
+        if not remaining:
+            # All enemies were covered already. Additional purchased portals
+            # still open: overlap for concentrated fire, with slight separation.
+            remaining=alive[:]
         best=max(remaining,key=lambda anchor:(
             sum(1 for z in remaining if abs(z['x']-anchor['x'])<=95),
             sum(z['hp'] for z in remaining if abs(z['x']-anchor['x'])<=95),
+            -sum(1 for x,y in portals if abs(x-anchor['x'])<=60),
             -abs(anchor['x']-480)))
         caught=[z for z in remaining if abs(z['x']-best['x'])<=95]
         center=sum(z['x'] for z in caught)/len(caught)
         sky=max(20.,min(190.,min(z['y']-z['h']/2 for z in caught)-90.))
+        if any(abs(center-x)<12 for x,y in portals):
+            # Portals aimed at the same small crowd remain visibly distinct.
+            offset=(1 if i%2 else -1)*(14+9*(i//2))
+            center+=offset
         portals.append((max(20.,min(940.,center)),sky))
         remaining=[z for z in remaining if z not in caught]
     return portals
@@ -1528,7 +1536,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         vx=max(-55.,min(55.,math.cos(a)*power*.48))
         vy=max(270.,power*5.5)
         blocked=None
-        behavior_events.extend(['skyPortal',round(i*.85,3),round(x,1),round(y,1),i+1] for i,(x,y) in enumerate(portal_targets))
+        behavior_events.extend(['skyPortal',round(i*.65,3),round(x,1),round(y,1),i+1] for i,(x,y) in enumerate(portal_targets))
     draw_radius=radius
     # The actual shot angle is recorded for the remote cannon animation.
     fragment_radius=radius
@@ -1546,7 +1554,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             for shot_index in range(repeat_n+1):
                 fragments.append(dict(id=15000+portal_index*100+shot_index,x=cx,y=cy,
                     vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),
-                    bornAt=portal_index*.85+shot_index*.11,scale=1.,kind='repeat',
+                    bornAt=portal_index*.65+shot_index*.11,scale=1.,kind='repeat',
                     travel=0.,splitDone=False,landingRank=shot_index))
     if unified and config['burstMode']=='volley':
         for j,f in enumerate(fragments):
