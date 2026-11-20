@@ -406,7 +406,7 @@ g._siege_fire(r,90,40,{'compound':1},config=g._siege_public_config({}))
 assert r['buffs'][0]['compound']==0 and r['event']['payloadEvents']['bounceblast']>0
 # Curated recipes are committed at pickup, stable in public inventory, and
 # consumed only at fire; each constituent adds one layer without spending stock.
-assert set(g._SIEGE_COMPOUND_RECIPES)=={'breach','ricochet','burst','seek','siegebreak'}
+assert set(g._SIEGE_COMPOUND_RECIPES)=={'breach','ricochet','burst','seek','siegebreak','blackburst'}
 for recipe,effects in g._SIEGE_COMPOUND_RECIPES.items():
     r=v24();x,y=g._siege_muzzle(0,r,75)
     r['items']=[dict(id=999,kind='compound',recipe=recipe,x=x,y=y,r=20,amount=1,zone='center')]
