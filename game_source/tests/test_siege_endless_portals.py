@@ -43,6 +43,27 @@ for cycle in range(1,19):
 assert state['wave']==6 and state['round']==19
 assert sum(b['kind']=='zombie' and b['hp']>0 for b in endless['bodies'])<=54
 assert state['spawned']>=old+3
+# "Three rounds" means three full rotations across all player cannons.
+# A single participant firing early in the round must never spawn a wave.
+for seats in (2,3):
+    coop=g._siege_new('A','a',True,0,'classic','off',0)
+    coop.update(zombieSolo=False,zombiePlayerCount=seats,
+                zombieMap='front',zombieWaveMode='endless')
+    coop['players']=[dict(name='P'+str(i),key='k'+str(i)) for i in range(seats)]
+    coop['shots']=[0]*seats
+    g._siege_v24_setup(coop,'zombie')
+    g._siege_field(coop)
+    coop['phase']='play';coop['items']=[];coop['allowedBuffs']=[]
+    starting=coop['zombie']['spawned']
+    for fired in range(3*seats):
+        assert coop['turn']==fired%seats
+        g._siege_fire(coop,90,25,{})
+        assert coop['zombie']['round']==1+(fired+1)//seats
+        assert coop['zombie']['wave']==1+(fired+1)//(3*seats)
+        if fired+1<3*seats:assert coop['zombie']['spawned']==starting
+        assert coop['phase']=='play'
+    assert coop['zombie']['spawned']>starting,('no wave after 3 complete rotations',seats)
+
 finite=new_zombie('classic');before=finite['zombie']['spawned']
 g._siege_zombie_round(finite,1,[],snap_for(finite),[],None)
 assert finite['zombie']['wave']==1 and finite['zombie']['spawned']==before
