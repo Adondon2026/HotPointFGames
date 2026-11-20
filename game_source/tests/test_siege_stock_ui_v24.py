@@ -249,6 +249,15 @@ try:
         expect(page.locator('#n2')).to_have_text('你')
         assert page.evaluate('room.seat')==2
         assert page.evaluate('canAim()') is True
+        # The active turn indicator belongs to the third seat, not the
+        # previous hard-coded "right" element.
+        assert page.locator('#third').evaluate('e=>e.classList.contains("active")')
+        assert not page.locator('#right').evaluate('e=>e.classList.contains("active")')
+        assert page.evaluate('room.players.length')==3
+        # With the map open, rendering must include the third launcher.
+        page.evaluate('()=>{mapOpen=true;update()}')
+        expect(page.locator('#minimap')).to_be_visible()
+        assert "room.zombie?room.players.length:2" in g.SIEGE_PAGE
         for width in (320,390,480):
             page.set_viewport_size({'width':width,'height':844})
             bounds=page.evaluate("""()=>{
