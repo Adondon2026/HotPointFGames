@@ -188,7 +188,7 @@ try:
         d=g._siege_public(coop,'bot',coop['rev']);d['busy']=False
         page.evaluate('d=>{apply(d);overview=null;update()}',d)
         expect(page.locator('#coopCore')).to_be_visible()
-        expect(page.locator('#coopCoreText')).to_have_text('共享子刊 100/100')
+        expect(page.locator('#coopCoreText')).to_have_text('子刊 100/100')
         expect(page.locator('#turn')).to_contain_text('轮到你')
         assert page.evaluate('muzzle(1,45,6)[0]>launcher(1)[0]')
         assert page.evaluate('room.bodies.filter(b=>b.kind==="zombie").length')==3
@@ -266,11 +266,48 @@ try:
                 const core=rect('coopCore'),status=rect('turn');
                 return {ordered:a.right<=b.left+1&&b.right<=c.left+1,
                     allInside:a.left>=bar.left-2&&c.right<=bar.right+2,
-                    coreBelow:core.top>status.bottom-1,
+                    aligned:Math.abs(core.top-status.top)<14,
+                    compact:bar.height<95,
                     visible:c.width>20&&c.height>15}
             }""")
             assert all(bounds.values()),(width,bounds)
+        # Both two- and three-player co-op must occupy only ONE landscape
+        # row, with every element within the HUD and no overlapping columns.
+        for players in (triple, g._siege_public(coop,'bot',coop['rev'])):
+            players['busy']=False
+            page.evaluate('d=>{playing=null;apply(d);overview=null;update()}',players)
+            for width,height in ((844,390),(667,375)):
+                page.set_viewport_size({'width':width,'height':height})
+                bounds=page.evaluate("""()=>{
+                    const ids=['left','right','turn','coopCore','mapToggle','menuToggle'];
+                    if(room.players.length===3)ids.splice(2,0,'third');
+                    const rect=id=>document.getElementById(id).getBoundingClientRect();
+                    const bar=rect('hud'),parts=ids.map(rect);
+                    return {height:bar.height,topRange:Math.max(...parts.map(x=>x.top))-Math.min(...parts.map(x=>x.top)),
+                        inside:parts.every(x=>x.left>=bar.left-2&&x.right<=bar.right+2),
+                        overlap:parts.some((a,i)=>parts.some((b,j)=>j>i&&a.left<b.right-1&&b.left<a.right-1)),
+                        parts:parts.map(x=>[x.left,x.right,x.top,x.height])}
+                }""")
+                assert bounds['height']<=44 and bounds['topRange']<=12 and bounds['inside'] and not bounds['overlap'],(len(players['players']),width,bounds)
         page.set_viewport_size({'width':390,'height':844})
+        # The trial bestiary is intentionally on-demand; verify the real
+        # authenticated server summon, multi-summon, clear and live HUD count.
+        page.goto(url+'/trial/siege')
+        page.wait_for_function('room?.trial===true',timeout=15000)
+        expect(page.locator('#trialBestiaryToggle')).to_be_visible()
+        page.locator('#trialBestiaryToggle').tap()
+        expect(page.locator('#trialZombieGrid .bestiary-row')).to_have_count(13)
+        page.get_by_role('button',name='召唤1只步行僵尸').tap()
+        page.wait_for_function('room.bodies.filter(b=>b.kind==="zombie"&&b.trialSpecimen&&b.hp>0).length===1')
+        page.get_by_role('button',name='召唤3只疾行僵尸').tap()
+        page.wait_for_function('room.bodies.filter(b=>b.kind==="zombie"&&b.trialSpecimen&&b.hp>0).length===4')
+        expect(page.locator('#trialZombieCount')).to_have_text('场上 4 / 12 只')
+        page.locator('#trialZombieClear').tap()
+        page.wait_for_function('room.bodies.every(b=>b.kind!=="zombie")')
+        expect(page.locator('#trialZombieCount')).to_have_text('场上 0 / 12 只')
+        assert not errors,errors
+        print('Siege trial bestiary: 13 species, one/three summon, clear, real server state PASS')
+        print('Siege coop compact 1-row landscape HUD for 2/3 players PASS')
         print('Siege 3-player cooperative HUD and cannon at phone widths PASS')
         print('Siege camera actual replay coverage:',result)
         print('Siege camera: 32 targets, zoom contraction, both sides, moving core and lit TNT PASS')
