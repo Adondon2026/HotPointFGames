@@ -181,10 +181,16 @@ const siegeCatalog={
     "path": "M4 4H20V20H4Z M4 10H20 M4 15H20 M10 4V10 M15 10V15 M9 15V20"
   },
   "stonedrop": {
-    "group": "防御与建造",
-    "color": "#a5cf9a",
-    "label": "石块生成",
+    "group": "防御与建造", "color": "#a5cf9a", "label": "石块生成",
     "path": "M3 20V12L7 6 16 4 21 11V20Z M3 12L11 14 16 4 M11 14V20 M11 14L21 11"
+  },
+  "springdrop": {
+    "group": "防御与建造", "color": "#c6b2ec", "label": "生成弹块",
+    "path": "M3 17H21V21H3Z M4 15L8 7L12 15L16 7L20 15 M4 5H20"
+  },
+  "skyportal": {
+    "group": "空间", "color": "#a9c8f6", "label": "天空传送",
+    "path": "M3 7A9 4 0 0 1 21 7 M3 7A9 4 0 0 0 21 7 M12 8V20 M8 16L12 20L16 16 M5 4L8 2 M19 4L16 2"
   },
   "gunteleport": {
     "group": "空间",
@@ -238,11 +244,11 @@ const siegeIcon=(k,size=22)=>{const i=siegeCatalog[k];return i?'<svg class="sieg
 
 const siegeActiveKeys=Object.keys(siegeCatalog).filter(k=>!['larpa','downpour','fuse','tntdrop','tntwait','demolish','salvage','compound'].includes(k));
 
-const siegeV24Keys=['splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push','tntdrop','tntwait','demolish','salvage','compound','heavy','vanish','wobble','fart'];
-const siegeV24Skills=['shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop','tntdrop','tntwait','salvage'];
-const siegeV24Support=['wooddrop','stonedrop','tntdrop','tntwait'];
+const siegeV24Keys=['splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','springdrop','skyportal','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push','tntdrop','tntwait','demolish','salvage','compound','heavy','vanish','wobble','fart'];
+const siegeV24Skills=['shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop','springdrop','skyportal','tntdrop','tntwait','salvage'];
+const siegeV24Support=['wooddrop','stonedrop','springdrop','tntdrop','tntwait'];
 const siegeV24Negatives=['heavy','vanish','wobble','fart'];
-const siegeV24Cap=k=>['splitshot','repeat','shield','demolish','compound'].includes(k)?3:['homing','heal','coreteleport','gunteleport','salvage'].includes(k)?1:5;
-const siegeRarity=k=>['homing','heal','coreteleport','gunteleport','demolish','salvage','compound'].includes(k)?'precious':['repeat','blackhole','shield'].includes(k)?'rare':['splitshot','through','bounceblast','pierce','armor','tntdrop','tntwait'].includes(k)?'uncommon':'common';
-const siegeV24Names={demolish:'拆迁弹',salvage:'材料回收',compound:'复合弹',splitshot:'分裂',repeat:'连发',bounce:'弹跳',through:'穿透',homing:'制导',shield:'核心护盾',armor:'防御加固',heal:'核心修复',wooddrop:'木块生成',stonedrop:'石块生成',tntdrop:'TNT生成',tntwait:'待爆TNT生成',coreteleport:'核心瞬移',gunteleport:'炮台瞬移',blackhole:'黑洞',bounceblast:'爆炸',pierce:'破甲弹',big:'巨型弹',push:'推进',heavy:'重重效果',vanish:'湮灭效果',wobble:'不稳定效果',fart:'屁屁效果'};
+const siegeV24Cap=k=>['splitshot','repeat','shield','demolish','compound','skyportal'].includes(k)?3:['homing','heal','coreteleport','gunteleport','salvage'].includes(k)?1:5;
+const siegeRarity=k=>['homing','heal','coreteleport','gunteleport','demolish','salvage','compound'].includes(k)?'precious':['repeat','blackhole','shield','skyportal'].includes(k)?'rare':['splitshot','through','bounceblast','pierce','armor','tntdrop','tntwait'].includes(k)?'uncommon':'common';
+const siegeV24Names={demolish:'拆迁弹',salvage:'材料回收',compound:'复合弹',splitshot:'分裂',repeat:'连发',bounce:'弹跳',through:'穿透',homing:'制导',shield:'核心护盾',armor:'防御加固',heal:'核心修复',wooddrop:'木块生成',stonedrop:'石块生成',springdrop:'生成弹块',skyportal:'天空传送',tntdrop:'TNT生成',tntwait:'待爆TNT生成',coreteleport:'核心瞬移',gunteleport:'炮台瞬移',blackhole:'黑洞',bounceblast:'爆炸',pierce:'破甲弹',big:'巨型弹',push:'推进',heavy:'重重效果',vanish:'湮灭效果',wobble:'不稳定效果',fart:'屁屁效果'};
 const siegeV24Group=k=>siegeV24Negatives.includes(k)?'负面':siegeV24Skills.includes(k)?'技能':['big','pierce','demolish','compound'].includes(k)?'弹药':['splitshot','repeat','bounce','through','homing'].includes(k)?'机制':'效果';
