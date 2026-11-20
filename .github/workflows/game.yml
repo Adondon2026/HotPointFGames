@@ -55,6 +55,7 @@ jobs:
           python game_source/tests/test_siege_special_blocks.py
           python game_source/tests/test_siege_endless_portals.py
           python game_source/tests/test_siege_zombie_buff_strength.py
+          python game_source/tests/test_siege_oneway_boundary.py
           python game_source/tests/test_siege_v12.py
           python game_source/tests/test_siege_v13.py
           python game_source/tests/test_siege_v14.py

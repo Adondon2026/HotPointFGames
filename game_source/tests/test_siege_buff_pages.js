@@ -6,7 +6,7 @@ const html=read('web/90_shell_after_games.html'),css=read('web/lite.css'),build=
 const script=read('web/siege_buff_pages.js');
 const catalog=read('web/games/siege_catalog.js');
 const keys=(catalog.match(/const siegeV24Keys=\[([^\]]+)\]/)||[])[1]?.match(/'[^']+'/g)||[];
-assert.equal(keys.length,28,'v24 catalog must contain 28 gains');
+assert.equal(keys.length,29,'v24 catalog must contain 29 gains');
 assert(build.includes('read("web/siege_buff_pages.js")'),'must bundle selector');
 for(const id of ['siegeBuffBack','zmzBuffPager','zmzBuffPrev','zmzBuffNext','zmzBuffPageNumbers','zmzBuffPresets'])
   assert(html.includes('id="'+id+'"'),id);
@@ -47,7 +47,7 @@ const sheet={scrollTop:75,getBoundingClientRect:()=>({bottom:height+180})};
 modal.querySelector=()=>sheet;details.open=false;
 back.getBoundingClientRect=()=>({bottom:list.scrollHeight+160});
 const groups=['弹药','机制','效果','技能','负面'].map(name=>element(name,['siege-buff-group']));
-const counts=[4,5,3,12,4];
+const counts=[4,5,3,13,4];
 let j=0;const rows=[];
 groups.forEach((g,i)=>{
  list.children.push(g);
@@ -74,19 +74,19 @@ assert(modal.classList.contains('zmz-buff-mode'),'open selector must focus a scr
 assert.equal(numbers.children.length,3);
 assert.deepEqual(numbers.children.map(x=>x.textContent),['1','2','3']);
 assert.equal(rows.filter(x=>!x.classList.contains('zmz-page-off')).length,9);
-assert.equal(summary.textContent,'第 1 / 4 页 · 本页 9 项，共 28 项');
+assert.equal(summary.textContent,'第 1 / 4 页 · 本页 9 项，共 29 项');
 assert(list.scrollHeight<=list.clientHeight,'page 1 fits');
 const save=rows.map(r=>r.checked);
 next.dispatch('click');
 assert.equal(rows.filter(x=>!x.classList.contains('zmz-page-off')).length,9);
 assert(list.scrollHeight<=list.clientHeight,'page 2 fits');
 next.dispatch('click');
-assert.equal(rows.filter(x=>x.classList.contains('zmz-page-off')).length,19);
+assert.equal(rows.filter(x=>x.classList.contains('zmz-page-off')).length,20);
 assert.equal(rows.filter(x=>!x.classList.contains('zmz-page-off')).length,9);
 assert(list.scrollHeight<=list.clientHeight,'page 3 fits');
 next.dispatch('click');
-assert.equal(rows.filter(x=>!x.classList.contains('zmz-page-off')).length,1);
-assert.equal(summary.textContent,'第 4 / 4 页 · 本页 1 项，共 28 项');
+assert.equal(rows.filter(x=>!x.classList.contains('zmz-page-off')).length,2);
+assert.equal(summary.textContent,'第 4 / 4 页 · 本页 2 项，共 29 项');
 assert.deepEqual(numbers.children.map(x=>x.textContent),['2','3','4']);
 assert(list.scrollHeight<=list.clientHeight,'page 4 fits');
 assert.deepEqual(rows.map(x=>x.checked),save,'switching pages must preserve all other-page states');
@@ -106,6 +106,6 @@ back.dispatch('click');assert.equal(details.open,false);
 assert(!modal.classList.contains('zmz-buff-mode'),'closing restores other settings');
 assert.equal(sheet.scrollTop,75,'other settings restore previous scroll position');
 assert.deepEqual(rows.map(x=>x.checked),save,'closing keeps all selections');
-console.log('Main + ZMZ pagination pager: 28 gains, 4 pages, short-screen fit, no scrolling, cross-page state, presets and return PASS');
+console.log('Main + ZMZ pagination pager: 29 gains, 4 pages, short-screen fit, no scrolling, cross-page state, presets and return PASS');
 
 // Zombie room: negative benefits are hidden but remain in the DOM for classic mode.

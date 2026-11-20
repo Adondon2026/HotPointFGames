@@ -93,15 +93,15 @@ _SIEGE_TNT_KINDS=('tnt','tnt_wait')
 _SIEGE_TNT_SHOT_CAP=8
 _SIEGE_TNT_WAIT_CAP=12
 _SIEGE_NEW_ATTACK=('spiral','repeat','push','clone','fuse','larpa','bounceblast','downpour','ignite','firetrail','snake','dive','antigrav','homing','pingpong','firearc','shotshield','mine')
-_SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','springdrop','skyportal','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK),*('shield','armor','buffer'),*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS)
+_SIEGE_SELECTABLE=(*('big','power','shock','pierce','splitshot','through','bounce','wooddrop','stonedrop','springdrop','onewaydrop','skyportal','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK),*('shield','armor','buffer'),*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS)
 
 
 # Each match has a randomized, mirrored field. Charges are consumed per type, never multiplied by count.
-_SIEGE_ITEMS={'big':{'label':'巨型弹','color':'#ecc06d'},'power':{'label':'强力弹','color':'#ee8469'},'shock':{'label':'冲击波','color':'#b2a2ed'},'shield':{'label':'护盾','color':'#7bd2e0'},'pierce':{'label':'破甲弹','color':'#f3a4d2'},'armor':{'label':'加固','color':'#a9d693'},'splitshot':{'label':'分裂弹','color':'#f9d19b'},'through':{'label':'穿透弹','color':'#f5a0a5'},'buffer':{'label':'缓冲层','color':'#a9c1ff'},'heal':{'label':'修复','color':'#77dc9e'},'bounce':{'label':'弹跳弹','color':'#83e0c5'},'wooddrop':{'label':'木块生成','color':'#d9a66a'},'stonedrop':{'label':'石块生成','color':'#c2cad8'},'springdrop':{'label':'生成弹块','color':'#c2a7dd'},'skyportal':{'label':'天空传送','color':'#9bcdea'},'blackhole':{'label':'黑洞弹','color':'#b69bea'},'gunteleport':{'label':'炮台瞬移','color':'#71c9f5'},'coreteleport':{'label':'子刊瞬移','color':'#f5b2eb'},'spiral':{'label':'螺旋弹','color':'#ffabcf'},'repeat':{'label':'连续弹','color':'#fbe199'},'push':{'label':'推进弹','color':'#7ce1d6'},'clone':{'label':'克隆增益','color':'#a4baff'},'heavy':{'label':'重重子弹','color':'#c09d83'},'vanish':{'label':'湮灭子弹','color':'#a6acb7'},'wobble':{'label':'不稳定子弹','color':'#ea8fe3'},'fart':{'label':'屁屁子弹','color':'#9ae3a8'},'fuse':{'label':'定时引信','color':'#f5cc73'},'larpa':{'label':'反弹复制','color':'#8fe0d3'},'bounceblast':{'label':'反弹爆破','color':'#ff9e74'},'downpour':{'label':'向下投弹','color':'#a6c7ff'},'ignite':{'label':'点火弹','color':'#ff965d'},'firetrail':{'label':'燃烧拖尾','color':'#f9b46d'},'snake':{'label':'蛇形弹','color':'#84ded0'},'dive':{'label':'俯冲弹','color':'#a8d7fa'},'antigrav':{'label':'反重力','color':'#c7adf5'},'homing':{'label':'近距追踪','color':'#f8cd88'},'pingpong':{'label':'折返弹','color':'#b3e6ae'},'firearc':{'label':'火焰连线','color':'#f7a15d'},'shotshield':{'label':'弹体护盾','color':'#91e6ed'},'mine':{'label':'待爆地雷','color':'#d8b27a'}}
+_SIEGE_ITEMS={'big':{'label':'巨型弹','color':'#ecc06d'},'power':{'label':'强力弹','color':'#ee8469'},'shock':{'label':'冲击波','color':'#b2a2ed'},'shield':{'label':'护盾','color':'#7bd2e0'},'pierce':{'label':'破甲弹','color':'#f3a4d2'},'armor':{'label':'加固','color':'#a9d693'},'splitshot':{'label':'分裂弹','color':'#f9d19b'},'through':{'label':'穿透弹','color':'#f5a0a5'},'buffer':{'label':'缓冲层','color':'#a9c1ff'},'heal':{'label':'修复','color':'#77dc9e'},'bounce':{'label':'弹跳弹','color':'#83e0c5'},'wooddrop':{'label':'木块生成','color':'#d9a66a'},'stonedrop':{'label':'石块生成','color':'#c2cad8'},'springdrop':{'label':'生成弹块','color':'#c2a7dd'},'onewaydrop':{'label':'生成单向方块','color':'#89cbb8'},'skyportal':{'label':'天空传送','color':'#9bcdea'},'blackhole':{'label':'黑洞弹','color':'#b69bea'},'gunteleport':{'label':'炮台瞬移','color':'#71c9f5'},'coreteleport':{'label':'子刊瞬移','color':'#f5b2eb'},'spiral':{'label':'螺旋弹','color':'#ffabcf'},'repeat':{'label':'连续弹','color':'#fbe199'},'push':{'label':'推进弹','color':'#7ce1d6'},'clone':{'label':'克隆增益','color':'#a4baff'},'heavy':{'label':'重重子弹','color':'#c09d83'},'vanish':{'label':'湮灭子弹','color':'#a6acb7'},'wobble':{'label':'不稳定子弹','color':'#ea8fe3'},'fart':{'label':'屁屁子弹','color':'#9ae3a8'},'fuse':{'label':'定时引信','color':'#f5cc73'},'larpa':{'label':'反弹复制','color':'#8fe0d3'},'bounceblast':{'label':'反弹爆破','color':'#ff9e74'},'downpour':{'label':'向下投弹','color':'#a6c7ff'},'ignite':{'label':'点火弹','color':'#ff965d'},'firetrail':{'label':'燃烧拖尾','color':'#f9b46d'},'snake':{'label':'蛇形弹','color':'#84ded0'},'dive':{'label':'俯冲弹','color':'#a8d7fa'},'antigrav':{'label':'反重力','color':'#c7adf5'},'homing':{'label':'近距追踪','color':'#f8cd88'},'pingpong':{'label':'折返弹','color':'#b3e6ae'},'firearc':{'label':'火焰连线','color':'#f7a15d'},'shotshield':{'label':'弹体护盾','color':'#91e6ed'},'mine':{'label':'待爆地雷','color':'#d8b27a'}}
 _SIEGE_ITEMS.update(tntdrop={'label':'TNT生成','color':'#ed8b74'},tntwait={'label':'待爆TNT生成','color':'#dfb66e'},demolish={'label':'拆迁弹','color':'#ffb568'},salvage={'label':'材料回收','color':'#78d9be'},compound={'label':'复合弹','color':'#d5adff'})
 _SIEGE_ATTACK=('big','power','shock','pierce')
 _SIEGE_DEFENSE=('shield','armor','buffer')
-_SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','springdrop','skyportal','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK)
+_SIEGE_EXTRA_ATTACK=('splitshot','through','bounce','wooddrop','stonedrop','springdrop','onewaydrop','skyportal','blackhole','gunteleport','coreteleport',*_SIEGE_NEW_ATTACK)
 _SIEGE_ONE_SHOT=('gunteleport','coreteleport')
 _SIEGE_SINGLE_ITEMS=('heal',*_SIEGE_ONE_SHOT)
 _SIEGE_BARREL=35
@@ -110,9 +110,9 @@ _SIEGE_MAX_RADIUS=36
 # v0.20.1 upstream: independent room-configured per-projectile stack caps.
 # Negative pickups are forced on the next shot and are not inventory buffs.
 _SIEGE_HARD_CAPS={k:(1 if k in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE,'fuse') else 20 if k=='bounce' else 10 if k=='through' else 5) for k in _SIEGE_ITEMS}
-_SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','springdrop','skyportal','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,*_SIEGE_NEGATIVE)
+_SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','springdrop','onewaydrop','skyportal','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,*_SIEGE_NEGATIVE)
 _SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield','demolish','compound','skyportal') else 1 if k in ('homing','heal','coreteleport','gunteleport','salvage') else 5 for k in _SIEGE_V24_KEYS}
-_SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop','springdrop','skyportal',*_SIEGE_TNT_KEYS,'salvage')
+_SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop','springdrop','onewaydrop','skyportal',*_SIEGE_TNT_KEYS,'salvage')
 _SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport',*_SIEGE_ELITE_KEYS) else 'rare' if k in ('repeat','blackhole','shield','skyportal') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_WEIGHTS={'common':8,'uncommon':4,'rare':2,'precious':1}
 _SIEGE_V24_ART={'splitshot':16,'repeat':24,'bounce':16,'bounceblast':22,'through':5,'big':5,'homing':1,'blackhole':2,'push':3,'pierce':3,'shield':2,'armor':2,'tntdrop':4,'tntwait':3,'demolish':3,'salvage':3,'compound':3}
@@ -504,20 +504,11 @@ def _siege_zombie_spawn(r):
         x=30+rank*62 if left else 930-rank*62
         if endless:
             if sum(b['kind']=='zombie' and b['hp']>0 for b in bodies)>=54:break
-            # Reinforcements avoid spawning inside existing creatures or structures.
-            # This preserves the physically meaningful sky/ground contact positions.
-            candidates=sorted(range(26,935,25),key=lambda pos:(abs(pos-x),pos))
-            if left:candidates=[p for p in candidates if p<r['bodies'][0]['x']-30] or candidates
-            else:candidates=[p for p in candidates if p>r['bodies'][0]['x']+30] or candidates
-            fit=None
-            for candidate in candidates:
-                yy=_siege_floor_body(r,candidate,w)-h/2
-                if yy-h/2<5:continue
-                if any(b['hp']>0 and abs(candidate-b['x'])<(w+b['w'])/2+3
-                       and abs(yy-b['y'])<(h+b['h'])/2+2 for b in bodies):continue
-                fit=(candidate,yy);break
-            if fit is None:continue
-            x,y=fit
+            # Endless reinforcements march in from OUTSIDE the world. Never
+            # teleport new enemies into an interior hole or behind a player.
+            spacing=min(16.,w*.6)
+            x=(-w/2-8-rank*spacing) if left else (960+w/2+8+rank*spacing)
+            y=_siege_floor_body(r,x,w)-h/2
         else:
             floor=_siege_floor_body(r,x,w)
             y=min(220-j%2*45,floor-h/2-14) if kind=='flyer' else floor-h/2
@@ -577,6 +568,7 @@ def _siege_zombie_world(r):
             r['bodies'].append(dict(
                 id=r['nextBodyId'],side=0,kind='stone',special=material,
                 passDir=1,springHits=4 if material=='spring' else 0,
+                onewayHits=4 if material=='oneway' else 0,
                 x=float(x),y=_siege_floor_body(r,x,w)-h/2,
                 w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
             r['nextBodyId']+=1
@@ -785,8 +777,10 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                     hx,hy=plan['point']
                     if target is not None and target['hp']>0:
                         amount=plan['damage']*(.35**shield if target is core else .65**armor)
-                        target['hp']=max(0.,target['hp']-amount)
-                        if plan['penetration'] and core['hp']>0:
+                        if target.get('special')=='oneway':
+                            _siege_oneway_hit(target)
+                        else:target['hp']=max(0.,target['hp']-amount)
+                        if plan['penetration'] and target.get('special')!='oneway' and core['hp']>0:
                             core['hp']=max(0.,core['hp']-plan['damage']*.4*(.35**shield))
                     events.append(['siegeCarImpact',round(t,3),round(hx,1),round(hy,1),
                                    target['id'] if target else -1])
@@ -840,7 +834,10 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
             # structure, including flyers trapped behind ground units.
             # Solid scenery is still handled above as a destructible obstacle;
             # cannons remain pass-through and dynamic.
-            z['x']=max(z['w']/2,min(960-z['w']/2,nx))
+            # Exterior entrants must not teleport to the screen edge.
+            if z['x']<z['w']/2:z['x']=min(nx,960-z['w']/2)
+            elif z['x']>960-z['w']/2:z['x']=max(nx,z['w']/2)
+            else:z['x']=max(z['w']/2,min(960-z['w']/2,nx))
         if physics:physics(t)
         frames.append(snap(t,None))
     # Show only the immediate post-attack collapse; the former 24 samples
@@ -992,6 +989,31 @@ def _siege_box_bounce(b,ox,oy,x,y,vx,vy,radius):
     dot=vx*nx+vy*ny
     if dot<0:vx-=1.76*dot*nx;vy-=1.76*dot*ny
     return cx+nx*.5,cy+ny*.5,vx,vy
+
+def _siege_spring_bounce(body,ox,oy,x,y,vx,vy,radius,rng=None):
+    """Scatter over the outward 160-degree hemisphere of the actual contact face.
+
+    The spring rebounds on any face, not just a fixed left/right direction.
+    A seeded per-shot RNG keeps replays deterministic while allowing varied
+    directions. Outward-only impulses avoid instant re-collisions.
+    """
+    cx,cy,_,_=_siege_box_bounce(body,ox,oy,x,y,vx,vy,radius)
+    edges=((abs(cx-(body['x']-body['w']/2-radius)),-1.,0.),
+           (abs(cx-(body['x']+body['w']/2+radius)),1.,0.),
+           (abs(cy-(body['y']-body['h']/2-radius)),0.,-1.),
+           (abs(cy-(body['y']+body['h']/2+radius)),0.,1.))
+    _,nx,ny=min(edges,key=lambda v:v[0])
+    angle=math.atan2(ny,nx)+(rng or random).uniform(-1.39,1.39)
+    speed=max(215.,min(800.,math.hypot(vx,vy)*.92))
+    return cx,cy,speed*math.cos(angle),speed*math.sin(angle)
+
+def _siege_oneway_hit(body):
+    """Absorb an incoming wrong-way projectile, consuming a finite charge."""
+    if body.get('special')!='oneway' or body['hp']<=0:return False
+    body['onewayHits']=max(0,body.get('onewayHits',4)-1)
+    body['hp']=max(0.,body['hp']-max(16.,body.get('max',80.)/4.))
+    if body['onewayHits']==0:body['hp']=0.
+    return True
 
 def _siege_robot(r,side):return bool(r.get('bot') and side==1)
 
@@ -1186,11 +1208,11 @@ def _siege_gun_gravity(r,dt):
 
 _SIEGE_SCOPEABLE=('bounce','through','spiral','power','shock','pierce','push','blackhole','ignite','firetrail','snake','dive','antigrav','homing','pingpong','fuse')
 _SIEGE_EVENT_KINDS=('launch','apex','bounce','through','end')
-_SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','springdrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
+_SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','springdrop','onewaydrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
 _SIEGE_RETIRED=('larpa','downpour','fuse')
 _SIEGE_REPLACEMENT={'larpa':'splitshot','downpour':'splitshot','fuse':'bounceblast'}
-_SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in (*_SIEGE_RETIRED,*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,'springdrop','skyportal'))
-_SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'springdrop':24,'mine':12,'clone':12,'blackhole':12,'tntdrop':8,'tntwait':8}
+_SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in (*_SIEGE_RETIRED,*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,'springdrop','onewaydrop','skyportal'))
+_SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'springdrop':24,'onewaydrop':24,'mine':12,'clone':12,'blackhole':12,'tntdrop':8,'tntwait':8}
 def _siege_migrate_catalog(r):
     # Only public sessions migrate; legacy direct engine regressions remain reproducible.
     _siege_normalize_buffs(r)
@@ -1453,7 +1475,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             if k.startswith('compound:'):compound_selected.extend([k.split(':',1)[1]]*chosen.pop(k))
         if compound_selected:chosen['compound']=len(compound_selected)
         elif chosen.get('compound'):compound_selected=r['compoundRecipes'][side][:chosen['compound']]
-    engineering=(config['build']=='safe' or (v24 and not any(chosen.get(k) for k in ('bounceblast','blackhole','pierce','push','demolish','compound',*_SIEGE_TNT_KEYS)))) and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop','springdrop','salvage'))
+    engineering=(config['build']=='safe' or (v24 and not any(chosen.get(k) for k in ('bounceblast','blackhole','pierce','push','demolish','compound',*_SIEGE_TNT_KEYS)))) and any((chosen if stock else r['buffs'][side]).get(k,0) for k in ('wooddrop','stonedrop','springdrop','onewaydrop','salvage'))
     suppressed=('power','shock','pierce','push','blackhole','clone','gunteleport','coreteleport','bounceblast','ignite','firetrail','firearc','mine') if engineering else ()
     if live is None:suppressed=(*suppressed,'shotshield')
     if unified:
@@ -1751,8 +1773,8 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         if engineering:
             if engineering_done:return
             engineering_done=True
-            for kind in (k for k in ('wooddrop','stonedrop','springdrop') for _ in range(attack_counts.get(k,0))):
-                spring=kind=='springdrop';stone=kind!='wooddrop';w=42 if spring else 36;h=28 if spring else 44 if stone else 38;placed=False
+            for kind in (k for k in ('wooddrop','stonedrop','springdrop','onewaydrop') for _ in range(attack_counts.get(k,0))):
+                spring=kind=='springdrop';oneway=kind=='onewaydrop';stone=kind!='wooddrop';w=42 if spring else 24 if oneway else 36;h=28 if spring else 72 if oneway else 44 if stone else 38;placed=False
                 if sum(bool(b.get('generated')) and b['hp']>0 for b in bodies)<60:
                     desired=max(19,min(941,x))
                     candidates=sorted(set(max(19,min(941,desired+d)) for d in range(-100,101,10)),key=lambda xx:(abs(xx-desired),xx))
@@ -1765,14 +1787,15 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                         if yy-h/2<0:continue
                         if any(b['hp']>0 and abs(b['x']-xx)<(b['w']+w)/2-.01 and abs(b['y']-yy)<(b['h']+h)/2-.01 for b in bodies):continue
                         if any(abs(_siege_launcher(i,r,motion_start+t)[0]-xx)<(w+52)/2 and abs(_siege_launcher(i,r,motion_start+t)[1]-yy)<(h+96)/2 for i in (0,1)):continue
-                        hp=72 if spring else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
+                        hp=72 if spring else 80 if oneway else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
                         body=dict(id=ident,side=side,x=xx,y=yy,w=w,h=h,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True)
                         if spring:body.update(special='spring',springHits=4)
+                        if oneway:body.update(special='oneway',onewayHits=4,passDir=_siege_direction(r,side))
                         bodies.append(body)
                         drop_events.append([ident,round(xx,1),round(yy,1),round(t,3)]);placed=True;last_hit=t;settled=0;break
                 if not placed:r['buffs'][side][kind]+=1
             return
-        kinds=[k for k in ('wooddrop','stonedrop','springdrop') for _ in range(attack_counts.get(k,0))]
+        kinds=[k for k in ('wooddrop','stonedrop','springdrop','onewaydrop') for _ in range(attack_counts.get(k,0))]
         free=max(0,60-sum(b.get('generated',False) and b['hp']>0 for b in bodies)-(sum(map(len,live['dropQueues'].values())) if live is not None else len(drop_queue)))
         for k in kinds[free:]:r['buffs'][side][k]+=1
         for j,k in enumerate(kinds[:free]):drop_queue.append((t+.15+j*.52,k,max(19,min(941,x)),min(-100,y-250)))
@@ -1904,9 +1927,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         limit=_SIEGE_OBJECT_LIMITS[k]
         for j in range(n):
             if generated_counts[k]>=limit:break
-            if k in ('wooddrop','stonedrop','springdrop'):
-                spring=k=='springdrop';stone=k!='wooddrop';w=42 if spring else 36;h=28 if spring else 44 if stone else 38
-                if sum(bool(b.get('generated')) and b['hp']>0 and b['kind'] in ('wood','stone') for b in bodies)+sum(q[1] in ('wooddrop','stonedrop','springdrop') for qs in (live['dropQueues'].values() if live is not None else [drop_queue]) for q in qs)>=60:break
+            if k in ('wooddrop','stonedrop','springdrop','onewaydrop'):
+                spring=k=='springdrop';oneway=k=='onewaydrop';stone=k!='wooddrop';w=42 if spring else 24 if oneway else 36;h=28 if spring else 72 if oneway else 44 if stone else 38
+                if sum(bool(b.get('generated')) and b['hp']>0 and b['kind'] in ('wood','stone') for b in bodies)+sum(q[1] in ('wooddrop','stonedrop','springdrop','onewaydrop') for qs in (live['dropQueues'].values() if live is not None else [drop_queue]) for q in qs)>=60:break
                 xx=max(19,min(941,x+(j-(n-1)/2)*37))
                 if engineering:
                     placed=False
@@ -1917,9 +1940,10 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                         yy=top-h/2
                         if yy-h/2<0 or any(b['kind']=='core' and abs(b['y']-b['h']/2-top)<1 for b in supports):continue
                         if any(abs(_siege_launcher(i,r,motion_start+t)[0]-xx)<(w+52)/2 and abs(_siege_launcher(i,r,motion_start+t)[1]-yy)<(h+96)/2 for i in (0,1)):continue
-                        hp=72 if spring else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
+                        hp=72 if spring else 80 if oneway else 75 if stone else 42;ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
                         body=dict(id=ident,side=side,x=xx,y=yy,w=w,h=h,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True)
                         if spring:body.update(special='spring',springHits=4)
+                        if oneway:body.update(special='oneway',onewayHits=4,passDir=_siege_direction(r,side))
                         bodies.append(body)
                         drop_events.append([ident,round(xx,1),round(yy,1),round(t,3)]);placed=True;last_hit=t;settled=0;break
                     if not placed:continue
@@ -1965,7 +1989,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     target['impactSource']=side;settled=0
                     behavior_events.append(['pushHit',round(t,3),round(x,1),round(y,1),target['id']])
         for k in _SIEGE_PAYLOADS:
-            if v24 and k in ('wooddrop','stonedrop','springdrop',*_SIEGE_TNT_KEYS):continue
+            if v24 and k in ('wooddrop','stonedrop','springdrop','onewaydrop',*_SIEGE_TNT_KEYS):continue
             if k=='splitshot' or not counts.get(k) or (event not in ('bounce','through','end') if v24 else _siege_event_for(config,k)!=event):continue
             if k in _SIEGE_OBJECT_LIMITS:
                 if k=='clone' and kind=='clone':continue
@@ -2023,7 +2047,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 # Recycle real material on either side, including original fortifications.
                 dist=math.hypot(max(0.,abs(b['x']-x)-b['w']/2),max(0.,abs(b['y']-y)-b['h']/2))
                 if dist<=110:
-                    recovered.add('springdrop' if b.get('special')=='spring' else 'wooddrop' if b['kind']=='wood' else 'stonedrop');b['hp']=0.;b['vx']=b['vy']=0.
+                    recovered.add('springdrop' if b.get('special')=='spring' else 'onewaydrop' if b.get('special')=='oneway' else 'wooddrop' if b['kind']=='wood' else 'stonedrop');b['hp']=0.;b['vx']=b['vy']=0.
             if recovered:
                 elite_used.add('salvage');behavior_events.append(['salvage',round(t,3),round(x,1),round(y,1),110])
                 for k in recovered:r['buffs'][side][k]=min(_siege_cap(r,k),r['buffs'][side][k]+1)
@@ -2054,7 +2078,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         recover_material(x,y)
         if 0<=x<=960:own_landings.append((x,y))
         counts=root_counts if parent is None or parent.get('kind')=='repeat' else child_counts
-        for k in ('wooddrop','stonedrop','springdrop'):
+        for k in ('wooddrop','stonedrop','springdrop','onewaydrop'):
             if counts.get(k):generate_payload(k,counts[k],x,y)
         rank=0 if parent is None else parent.get('landingRank',parent['id']-99)
         if 0<=rank<len(tnt_alloc):
@@ -2340,12 +2364,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and not _siege_oneway_pass(b,vx) and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
                 if target and target.get('special')=='spring':
-                    px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,rr)
+                    px,py,vx,vy=_siege_spring_bounce(target,oldx,oldy,x,y,vx,vy,rr,copy_rng)
                     _siege_spring_hit(target)
                     bounces.append([round(px,1),round(py,1),round(t,3),-1])
                     behavior_events.append(['springHit',round(t,3),target['id'],target['springHits']])
                     frames.append(snap(t,[round(px,1),round(py,1)]))
                     break
+                if target and target.get('special')=='oneway':
+                    _siege_oneway_hit(target)
+                    behavior_events.append(['onewayBlock',round(t,3),target['id'],target['onewayHits']])
+                    finish_main(x,y,None,False);break
                 if target and unified and dispatch_event('contact',x,y,vx,vy,target=target):break
                 if target and root_counts.get('through') and len(passed)<root_counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_scale*(1+1.5*root_counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
@@ -2426,11 +2454,15 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
                 target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and not _siege_oneway_pass(b,f['vx']) and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and target.get('special')=='spring':
-                    f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fr)
+                    f['x'],f['y'],f['vx'],f['vy']=_siege_spring_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fr,copy_rng)
                     _siege_spring_hit(target)
                     bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']])
                     behavior_events.append(['springHit',round(t,3),target['id'],target['springHits']])
                     break
+                if target and target.get('special')=='oneway':
+                    _siege_oneway_hit(target)
+                    behavior_events.append(['onewayBlock',round(t,3),target['id'],target['onewayHits']])
+                    finish_fragment(f,x,y,None,False);break
                 if target and unified and dispatch_event('contact',x,y,f['vx'],f['vy'],f,target):break
                 if target and counts.get('through') and len(f['passed'])<counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42)*(1+1.5*counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
@@ -2463,10 +2495,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     y=min(b['y']-b['h']/2-12.2 for b in overlap)
                 bodies.append(dict(id=ident,side=side,x=x,y=y,w=24,h=24,kind='tnt' if kind=='tntdrop' else 'tnt_wait',hp=18,max=18,vx=0.,vy=0.,generated=True,tntStable=0.))
                 drop_events.append([ident,round(x,1),round(y,1),round(t,3)]);last_hit=t;settled=0;continue
-            spring=kind=='springdrop';stone=kind!='wooddrop';hp=72 if spring else 75 if stone else 42
+            spring=kind=='springdrop';oneway=kind=='onewaydrop';stone=kind!='wooddrop';hp=72 if spring else 80 if oneway else 75 if stone else 42
             ident=r.get('nextBodyId',100);r['nextBodyId']=ident+1
-            body=dict(id=ident,side=side,x=x,y=y,w=42 if spring else 36,h=28 if spring else 44 if stone else 38,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True,falling=True)
+            body=dict(id=ident,side=side,x=x,y=y,w=42 if spring else 24 if oneway else 36,h=28 if spring else 72 if oneway else 44 if stone else 38,kind='stone' if stone else 'wood',hp=hp,max=hp,vx=0.,vy=0.,generated=True,falling=True)
             if spring:body.update(special='spring',springHits=4)
+            if oneway:body.update(special='oneway',onewayHits=4,passDir=_siege_direction(r,side))
             bodies.append(body)
             drop_events.append([ident,round(x,1),round(y,1),round(t,3)]);last_hit=t;settled=0
         if attack_counts.get('firearc') and not engineering and step%12==0:
@@ -2905,7 +2938,7 @@ def _siege_bot_fire(r,a,p,live=None,planned=None):
         # Never silently redirect a building shot to another angle or use a different payload.
         try:shoot(a,selection);return
         except ValueError:
-            safe={k:n for k,n in selection.items() if k not in ('wooddrop','stonedrop','springdrop','big','splitshot','repeat','through','skyportal')}
+            safe={k:n for k,n in selection.items() if k not in ('wooddrop','stonedrop','springdrop','onewaydrop','big','splitshot','repeat','through','skyportal')}
             shoot(a,safe);return
     for angle in ((a,135,155,175,105,90,75,45,5) if a>90 else (a,45,25,5,75,90,115,145,175)):
         try:shoot(angle,selection);return
@@ -2939,7 +2972,7 @@ def _siege_bot(r,live=None):
             if candidates:
                 # Prefer a forward position that intercepts a wave before it reaches a gun.
                 x=min(candidates,key=lambda xx:abs(d*(xx-core['x'])-min(near-55,max(130,near*.56))))
-                priority=('springdrop','stonedrop','wooddrop') if any(z['zombieType']=='siegecar' for z in targets) else ('stonedrop','wooddrop','springdrop')
+                priority=('onewaydrop','springdrop','stonedrop','wooddrop') if any(z['zombieType']=='siegecar' for z in targets) else ('stonedrop','onewaydrop','wooddrop','springdrop')
                 build=next((k for k in priority if inv.get(k,0)>0),None)
         best_attack=None;best_build=None
         for a in range(0,360,6):
