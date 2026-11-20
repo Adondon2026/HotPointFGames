@@ -110,7 +110,7 @@ _SIEGE_MAX_RADIUS=36
 # v0.20.1 upstream: independent room-configured per-projectile stack caps.
 # Negative pickups are forced on the next shot and are not inventory buffs.
 _SIEGE_HARD_CAPS={k:(1 if k in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE,'fuse') else 20 if k=='bounce' else 10 if k=='through' else 5) for k in _SIEGE_ITEMS}
-_SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,*_SIEGE_NEGATIVE)
+_SIEGE_V24_KEYS=('splitshot','repeat','bounce','through','homing','shield','armor','heal','wooddrop','stonedrop','springdrop','skyportal','coreteleport','gunteleport','blackhole','bounceblast','pierce','big','push',*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,*_SIEGE_NEGATIVE)
 _SIEGE_V24_CAPS={k:3 if k in ('splitshot','repeat','shield','demolish','compound','skyportal') else 1 if k in ('homing','heal','coreteleport','gunteleport','salvage') else 5 for k in _SIEGE_V24_KEYS}
 _SIEGE_V24_SKILLS=('shield','armor','heal','coreteleport','gunteleport','wooddrop','stonedrop','springdrop','skyportal',*_SIEGE_TNT_KEYS,'salvage')
 _SIEGE_V24_LEVELS={k:('precious' if k in ('homing','heal','coreteleport','gunteleport',*_SIEGE_ELITE_KEYS) else 'rare' if k in ('repeat','blackhole','shield','skyportal') else 'uncommon' if k in ('splitshot','through','bounceblast','pierce','armor',*_SIEGE_TNT_KEYS) else 'common') for k in _SIEGE_V24_KEYS}
