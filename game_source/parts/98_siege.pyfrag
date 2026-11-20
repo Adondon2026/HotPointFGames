@@ -500,6 +500,17 @@ def _siege_zombie_world(r):
     if map_key=='ridge':
         x=650;h=72
         r['bodies'].append(dict(id=1,side=-1,kind='stone',x=x,y=_siege_floor(r,x)-h/2,w=28,h=h,hp=75,max=75,vx=0.,vy=0.))
+    if map_key=='front':
+        # Pilot two reusable materials on one map before changing the whole pool.
+        # The barrier lets friendly rightward fire through, but intercepts enemy shells.
+        for x,w,h,material in ((515,20,88,'oneway'),(665,44,28,'spring')):
+            hp=72.
+            r['bodies'].append(dict(
+                id=r['nextBodyId'],side=0,kind='stone',special=material,
+                passDir=1,springHits=4 if material=='spring' else 0,
+                x=float(x),y=_siege_floor_body(r,x,w)-h/2,
+                w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
+            r['nextBodyId']+=1
     r['zombieRewardHistory']=[]
     r['zombie']=dict(wave=1,totalWaves=len(_SIEGE_ZOMBIE_WAVES),round=1,kills=0,spawned=0,won=False,difficulty=r.get('zombieDifficulty','medium'))
     r['items']=[];r['respawns']=[]
@@ -556,7 +567,7 @@ def _siege_siegecar_trace(r,start,end,radius=5.):
     ground=_siege_siegecar_ground_hit(r,start,end,radius)
     first=1.01;hit=None
     for b in r['bodies']:
-        if b['hp']<=0 or b['kind'] not in ('wood','stone','core'):continue
+        if b['hp']<=0 or b['kind'] not in ('wood','stone','core') or _siege_oneway_pass(b,dx):continue
         lo=0.;hi=1.
         for p,v,minimum,maximum in (
             (x0,dx,b['x']-b['w']/2-radius,b['x']+b['w']/2+radius),
@@ -984,6 +995,18 @@ def _siege_body_mass(b):
 
 def _siege_wall_damage(speed):
     return min(85.,85.*(max(0.,min(650.,speed)-120.)/530.)**1.5)
+
+def _siege_oneway_pass(body,horizontal_speed):
+    """Projectiles cross in the arrow direction; reverse shots collide."""
+    return body.get('special')=='oneway' and horizontal_speed*body.get('passDir',1)>1.
+
+def _siege_spring_hit(body):
+    """A spring plate reflects shots, but loses one charge and physical HP."""
+    if body.get('special')!='spring' or body['hp']<=0:return False
+    body['springHits']=max(0,body.get('springHits',4)-1)
+    body['hp']=max(0.,body['hp']-max(12.,body['max']/4.))
+    if body['springHits']==0:body['hp']=0.
+    return True
 
 def _siege_falling_crush_damage(body,vertical_speed):
     """Kinetic-type overhead impact, not a flat per-block damage constant.
@@ -2194,7 +2217,14 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     px,py=contact;vy=-vy*.88;vx*=.97;bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 collect(x,y,rr,t)
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
-                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
+                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and not _siege_oneway_pass(b,vx) and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
+                if target and target.get('special')=='spring':
+                    px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,rr)
+                    _siege_spring_hit(target)
+                    bounces.append([round(px,1),round(py,1),round(t,3),-1])
+                    behavior_events.append(['springHit',round(t,3),target['id'],target['springHits']])
+                    frames.append(snap(t,[round(px,1),round(py,1)]))
+                    break
                 if target and unified and dispatch_event('contact',x,y,vx,vy,target=target):break
                 if target and root_counts.get('through') and len(passed)<root_counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_scale*(1+1.5*root_counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
@@ -2273,7 +2303,13 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     f['x'],f['y']=contact;f['vy']=-f['vy']*.88;f['vx']*=.97;bounces.append([round(contact[0],1),round(contact[1],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 collect(x,y,fr,t)
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
-                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
+                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and not _siege_oneway_pass(b,f['vx']) and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
+                if target and target.get('special')=='spring':
+                    f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fr)
+                    _siege_spring_hit(target)
+                    bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']])
+                    behavior_events.append(['springHit',round(t,3),target['id'],target['springHits']])
+                    break
                 if target and unified and dispatch_event('contact',x,y,f['vx'],f['vy'],f,target):break
                 if target and counts.get('through') and len(f['passed'])<counts['through'] and not target.get('platform'):
                     if not engineering:hurt(target,24*damage_for(counts)*f.get('scale',.42)*(1+1.5*counts.get('pierce',0) if v24 and target['kind']=='stone' else 1))
