@@ -1417,6 +1417,9 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     stock=r.get('buffMode','auto')=='stock'
     armed=r.setdefault('armed',[{} for _ in r['buffs']]);armed_before=[dict(x) for x in armed]
     chosen=_siege_selection(r,selection,side)
+    portal_targets=_siege_zombie_portal_targets(r,chosen.get('skyportal',0)) if v24 and chosen.get('skyportal') and r.get('theme')=='zombie' else []
+    if chosen.get('skyportal') and not portal_targets:
+        raise ValueError('天空传送需要场上存在可攻击的僵尸')
     compound_selected=[]
     if v24:
         for k in list(chosen):
@@ -1498,6 +1501,15 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     _siege_motion(r,motion_start)
     n=attack_counts.get('big',0);radius=_siege_shell_radius(r,n);blast_radius=52+(10 if v24 else 36)*n
     px,py=_siege_muzzle(side,r,actual_angle,radius,motion_start)
+    if portal_targets:
+        # All copies now launch from portals above real zombie clusters, never
+        # from the normal gun. Angle is a small lateral correction; power
+        # controls downward speed. Original repeat/split damage rules stay intact.
+        px,py=portal_targets[0]
+        vx=max(-55.,min(55.,math.cos(a)*power*.48))
+        vy=max(270.,power*5.5)
+        blocked=None
+        behavior_events.extend(['skyPortal',round(i*.85,3),round(x,1),round(y,1),i+1] for i,(x,y) in enumerate(portal_targets))
     draw_radius=radius
     # The actual shot angle is recorded for the remote cannon animation.
     fragment_radius=radius
@@ -1508,6 +1520,15 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     # Delayed extra rounds retain angle/power; total damage grows while each shell weakens.
     for j in range(repeat_n):
         fragments.append(dict(id=100+j,x=px,y=py,vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),bornAt=(0. if unified and config['burstMode']=='volley' else .11*(j+1)),scale=1.,kind='repeat',travel=0.,splitDone=False))
+    if portal_targets:
+        # One complete mother + repeat volley per portal. Space out portals
+        # for readable camera guidance rather than three simultaneous cuts.
+        for portal_index,(cx,cy) in enumerate(portal_targets[1:],1):
+            for shot_index in range(repeat_n+1):
+                fragments.append(dict(id=15000+portal_index*100+shot_index,x=cx,y=cy,
+                    vx=vx,vy=vy,live=True,groundLeft=ground_left,passed=set(),
+                    bornAt=portal_index*.85+shot_index*.11,scale=1.,kind='repeat',
+                    travel=0.,splitDone=False,landingRank=shot_index))
     if unified and config['burstMode']=='volley':
         for j,f in enumerate(fragments):
             delta=math.radians((j+1)*4*(-1 if j%2 else 1))
@@ -1578,7 +1599,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             sh.update(x=x,y=y,radius=radius+24+6*n)
         return [dict(sh) for sh in shields.values() if sh['left']>0]
     def sample(t,p):
-        return {'motionTime':motion_start+t,'embers':[[round(e['x'],1),round(e['y'],1)] for e in embers],'controls':dict(control['left']) if control is not None and ((p is not None and main_stop is None) or any(f['live'] and t>=f.get('bornAt',0) and not f.get('stop') for f in fragments)) else {},'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']]}
+        return {'motionTime':motion_start+t,'embers':[[round(e['x'],1),round(e['y'],1)] for e in embers],'controls':dict(control['left']) if control is not None and ((p is not None and main_stop is None) or any(f['live'] and t>=f.get('bornAt',0) and not f.get('stop') for f in fragments)) else {},'side':side,'shotNo':shot_no,'p':p,'radius':draw_radius,'angle':actual_angle,'angleOffset':angle_offset,'puffs':puffs[-16:],'clones':r['clones'],'fragments':[[f['id'],round(f['x'],1),round(f['y'],1)] for f in fragments if f['live'] and t>=f.get('bornAt',0)], 'holes':[h for h in holes if h[2]<=t<h[2]+2], 'age':t,'impact':impact,'hitAt':hit_at,'blastRadius':blast_radius,'attacks':attacks,'bounces':bounces[-4:], 'teleports':teleports,'behaviorEvents':behavior_events[-24:],'fragmentHits':fragment_hits[-24:],'engineering':engineering,'fireArcs':arc_events[-8:],'shield':dict(live.get('shotShields',{}).get(side,{})) if live is not None else {},'shields':refresh_shell_shields(t),'mines':[dict(m) for m in r['mines']],'skyPortals':[list(p) for p in portal_targets]}
     clone_left=0 if unified else attack_counts.get('clone',0)
     def spawn_clone(x,y,shell_kind):
         nonlocal clone_left
@@ -2597,7 +2618,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
         r['turn']=1-side
         if r['turn']==0:r['windPair']=_siege_weather(r.get('windLevel','off'))
         r['wind']=r.get('windPair',0)*(1 if r['turn']==0 else -1)
-    r['event']={'id':r['rev'],'side':side,'emberEvents':ember_events,'generatedCounts':generated_counts if unified else {},'payloadEvents':event_counts if unified else {},'trialDamage':round(trial_damage,1),'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':actual_angle,'requestedAngle':angle,'angleOffset':angle_offset,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'engineering':engineering,'behaviorEvents':behavior_events,'fireArcs':arc_events,'minesBefore':mines_before,'mineEvents':mine_events,'holePaths':hole_paths,'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(_siege_launcher(i,r,motion_start+t)) for i in range(r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2)],'gunMotion':r.get('gunMotion',[])}
+    r['event']={'id':r['rev'],'side':side,'emberEvents':ember_events,'generatedCounts':generated_counts if unified else {},'payloadEvents':event_counts if unified else {},'trialDamage':round(trial_damage,1),'frames':frames,'impact':impact,'hitAt':hit_at,'hitId':hit_id,'duration':t,'cores':cores,'itemsBefore':items_before,'buffsBefore':buffs_before,'pickups':pickups,'attacks':attacks,'defenses':defenses,'attackCounts':attack_counts,'defenseCounts':defense_counts,'armedBefore':armed_before,'selected':chosen,'radius':radius,'blastRadius':blast_radius,'wind':wind,'motionStart':motion_start,'extraBlasts':extra_blasts,'fragmentHits':fragment_hits,'skyPortals':[list(p) for p in portal_targets],'passed':list(passed),'refreshed':refreshed,'bounces':bounces,'drops':drop_events,'holes':holes,'teleports':teleports,'angle':actual_angle,'requestedAngle':angle,'angleOffset':angle_offset,'fragmentRadius':fragment_radius,'negativeActive':list(negatives),'engineering':engineering,'behaviorEvents':behavior_events,'fireArcs':arc_events,'minesBefore':mines_before,'mineEvents':mine_events,'holePaths':hole_paths,'puffs':puffs,'clones':r['clones'],'launchersBefore':launchers_before,'gunMotionBefore':gun_motion_before,'launchersBase':[list(_siege_launcher(i,r,motion_start+t)) for i in range(r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2)],'gunMotion':r.get('gunMotion',[])}
     if v24 and control is None:
         r['event'].update(_siege_replay_timing(frames,t,hit_at,bodies=bodies,events=behavior_events),compoundRecipe=compound_recipe,compoundRecipesUsed=compound_selected,compoundEffects=compound_effects)
         if r.get('theme')=='zombie':
