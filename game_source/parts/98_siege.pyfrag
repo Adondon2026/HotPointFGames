@@ -1008,6 +1008,15 @@ def _siege_spring_hit(body):
     if body['springHits']==0:body['hp']=0.
     return True
 
+def _siege_projectile_kinetic_scale(vx,vy):
+    """Modest direct-hit bonus from real contact velocity, including descent.
+
+    Launch power and height already influence velocity through ballistics;
+    neither is multiplied into blast splash damage a second time.
+    """
+    speed=min(900.,math.hypot(vx,vy))
+    return max(.8,min(1.55,.78+.67*(speed/640.)**1.4+.06*min(1.,max(0.,vy)/600.)))
+
 def _siege_falling_crush_damage(body,vertical_speed):
     """Kinetic-type overhead impact, not a flat per-block damage constant.
 
@@ -1561,6 +1570,11 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             dx=b['x']-x;dy=b['y']-y;dist=math.hypot(max(0,abs(dx)-b['w']/2),max(0,abs(dy)-b['h']/2))
             if dist>br:continue
             direct=24 if b is target else 0
+            if v24 and direct and b['kind']=='zombie':
+                # A faster descending impact carries more energy; explosion
+                # splash remains independent of velocity for balance.
+                ivx,ivy=impact_v if impact_v is not None else (vx,vy)
+                direct*=_siege_projectile_kinetic_scale(ivx,ivy)
             if dive_strike and counts.get('dive'):direct*=_siege_dive_strike(counts['dive'])
             if counts.get('pierce') and (b['kind']=='stone' or (b['kind']=='zombie' and b.get('zombieType') in ('shield','heavy','giant')) if v24 else b['kind']!='core'):direct*=1+1.5*counts['pierce']
             if v24 and b['kind'] in _SIEGE_TNT_KINDS and (b is target or (1-dist/br)*scale>=.45):_siege_tnt_arm(b,world_now(),side)
