@@ -606,14 +606,14 @@ function drawTrialGhost(c){
 }
 const v24Groups=['弹药','机制','效果','技能','负面'];
 function v24StockSummary(){
- const n=(1+(selection.repeat||0))*2**(selection.splitshot||0)*Math.max(1,selection.skyportal||1),pct=(100/2**(selection.splitshot||0)).toFixed(1).replace(/\.0$/,'');
+ const n=(1+(selection.repeat||0))*2**(selection.splitshot||0)*Math.max(1,(selection.skyportal||0)*2),pct=(100/2**(selection.splitshot||0)).toFixed(1).replace(/\.0$/,'');
  const inv=room.buffs[room.seat]||{},total=siegeV24Keys.filter(k=>room.trial||!siegeV24Negatives.includes(k)).reduce((a,k)=>a+(inv[k]||0),0),selected=Object.values(selection).reduce((a,b)=>a+b,0);
  $('stockBtn').textContent='增益 '+total+(selected?' · 已选'+selected:'');
- $('stockSummary').textContent=Object.keys(selection).length?n+' 枚炮弹'+(selection.splitshot?' · 单枚 '+pct+'% 基础攻击':'')+(selection.repeat?' · 连发 '+(1+selection.repeat)+' 次':'')+(selection.skyportal?' · 天空传送门 ≤'+selection.skyportal:'')+(Object.keys(selection).some(k=>k.startsWith('compound:'))?' · '+Object.keys(selection).filter(k=>k.startsWith('compound:')).map(k=>compoundLabels[k.split(':')[1]]+' ×'+selection[k]).join('、'):'')+((selection.tntdrop||selection.tntwait)?' · TNT ≤'+Math.min(8,n*((selection.tntdrop||0)+(selection.tntwait||0))):''):'普通炮弹 · 不消耗增益';
+ $('stockSummary').textContent=Object.keys(selection).length?n+' 枚炮弹'+(selection.splitshot?' · 单枚 '+pct+'% 基础攻击':'')+(selection.repeat?' · 连发 '+(1+selection.repeat)+' 次':'')+(selection.skyportal?' · 天空传送门 ×'+selection.skyportal*2:'')+(Object.keys(selection).some(k=>k.startsWith('compound:'))?' · '+Object.keys(selection).filter(k=>k.startsWith('compound:')).map(k=>compoundLabels[k.split(':')[1]]+' ×'+selection[k]).join('、'):'')+((selection.tntdrop||selection.tntwait)?' · TNT ≤'+Math.min(8,n*((selection.tntdrop||0)+(selection.tntwait||0))):''):'普通炮弹 · 不消耗增益';
 }
 function v24EffectHint(k,n){
  const fmt=v=>Number(v.toFixed(2));
- return ({splitshot:2**n+' 枚 · 击发或首次触物分裂 · 单枚 '+(100/2**n).toFixed(1).replace(/\.0$/,'')+'% 攻击',repeat:(1+n)+' 发完整母弹',bounce:n+' 次反弹 · 撞击建筑/子刊造成伤害',through:n+' 次穿透',homing:room?.zombie?'发射0.2秒后追踪最近存活僵尸':'过中线后强力追踪敌方子刊',demolish:room?.zombie?'破阵 · 打击攻城车/重甲 · 暂时破除守护转移':'首次落点 · 范围 '+(100+30*(n-1))+' · 结构伤害 '+125*n,salvage:'命中或落点回收双方木石 · 范围110',compound:compoundHint(compoundInventory()[0]),big:'半径 '+(6+4*n)+' · 伤害 +'+18*n+'% · 爆炸范围 '+(52+10*n),bounceblast:'碰撞产生向外冲击',blackhole:'碰撞生成2秒引力场 · 吸引实体 · 持续伤害僵尸',pierce:'对坚硬建筑额外伤害',push:'命中实体强力击飞 · 叠加增强',wooddrop:'最终落点生成木块',stonedrop:'最终落点生成石块',springdrop:'最终落点生成弹性石块 · 最多反弹4次 · 可回收',skyportal:'保卫子刊专用 · 选中'+n+'个最高密度区域，在空中开启传送门 · 每门复制完整炮弹组 · 力度控制下降速度',tntdrop:'停稳1秒后爆炸',tntwait:'留场 · 命中或爆炸引爆',shield:'子刊承伤 '+fmt(100*.35**n)+'% · 下次受击',armor:'建筑承伤 '+fmt(100*.65**n)+'% · 下次受击',heal:'开炮时恢复18点子刊生命',coreteleport:'全地图落点附近瞬移子刊',gunteleport:'全地图落点附近瞬移炮台 · 无位置退回',heavy:'降低飞行能力',vanish:'炮弹可能提前消失',wobble:'弹道不稳定',fart:'炮弹产生异常推进'})[k]||'';
+ return ({splitshot:2**n+' 枚 · 击发或首次触物分裂 · 单枚 '+(100/2**n).toFixed(1).replace(/\.0$/,'')+'% 攻击',repeat:(1+n)+' 发完整母弹',bounce:n+' 次反弹 · 撞击建筑/子刊造成伤害',through:n+' 次穿透',homing:room?.zombie?'发射0.2秒后追踪最近存活僵尸':'过中线后强力追踪敌方子刊',demolish:room?.zombie?'破阵 · 打击攻城车/重甲 · 暂时破除守护转移':'首次落点 · 范围 '+(100+30*(n-1))+' · 结构伤害 '+125*n,salvage:'命中或落点回收双方木石 · 范围110',compound:compoundHint(compoundInventory()[0]),big:'半径 '+(6+4*n)+' · 伤害 +'+18*n+'% · 爆炸范围 '+(52+10*n),bounceblast:'碰撞产生向外冲击',blackhole:'碰撞生成2秒引力场 · 吸引实体 · 持续伤害僵尸',pierce:'对坚硬建筑额外伤害',push:'命中实体强力击飞 · 叠加增强',wooddrop:'最终落点生成木块',stonedrop:'最终落点生成石块',springdrop:'最终落点生成弹性石块 · 最多反弹4次 · 可回收',skyportal:'保卫子刊专用 · '+n+'层开启'+2*n+'个传送门 · 优先覆盖僵尸密集区 · 每门复制完整炮弹组 · 力度影响下降速度',tntdrop:'停稳1秒后爆炸',tntwait:'留场 · 命中或爆炸引爆',shield:'子刊承伤 '+fmt(100*.35**n)+'% · 下次受击',armor:'建筑承伤 '+fmt(100*.65**n)+'% · 下次受击',heal:'开炮时恢复18点子刊生命',coreteleport:'全地图落点附近瞬移子刊',gunteleport:'全地图落点附近瞬移炮台 · 无位置退回',heavy:'降低飞行能力',vanish:'炮弹可能提前消失',wobble:'弹道不稳定',fart:'炮弹产生异常推进'})[k]||'';
 }
 function renderV24ModeRail(){
  const rail=$('stockModeRail'),show=(selection.splitshot||0)>0;
@@ -721,8 +721,8 @@ function drawBlastPulse(x,y,age,radius,heavy=true){
  ctx.restore()
 }
 function drawPayloadBlasts(events,t){
- // A portal persists briefly above its selected zombie cluster. Successive
- // portals appear one by one so camera tracking remains legible on phones.
+ // A portal persists briefly above its selected zombie cluster. Each stack
+ // schedules a pair, staggered to retain readable phone-camera tracking.
  for(const e of (events||[]).filter(e=>e[0]==='skyPortal'&&t>=e[1]&&t<e[1]+1.15)){
   const age=t-e[1],fade=Math.min(1,age/.16,Math.max(0,(1.15-age)/.28));
   ctx.save();ctx.globalAlpha=fade*.92;ctx.translate(e[2],e[3]);ctx.strokeStyle='#afcbff';ctx.lineWidth=4;
