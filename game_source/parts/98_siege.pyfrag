@@ -1162,7 +1162,7 @@ _SIEGE_EVENT_KINDS=('launch','apex','bounce','through','end')
 _SIEGE_PAYLOADS=('splitshot','bounceblast','wooddrop','stonedrop','springdrop','mine','blackhole','ignite','clone',*_SIEGE_TNT_KEYS)
 _SIEGE_RETIRED=('larpa','downpour','fuse')
 _SIEGE_REPLACEMENT={'larpa':'splitshot','downpour':'splitshot','fuse':'bounceblast'}
-_SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in (*_SIEGE_RETIRED,*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS))
+_SIEGE_ACTIVE_ITEMS=tuple(k for k in _SIEGE_ITEMS if k not in (*_SIEGE_RETIRED,*_SIEGE_TNT_KEYS,*_SIEGE_ELITE_KEYS,'springdrop','skyportal'))
 _SIEGE_OBJECT_LIMITS={'wooddrop':24,'stonedrop':24,'springdrop':24,'mine':12,'clone':12,'blackhole':12,'tntdrop':8,'tntwait':8}
 def _siege_migrate_catalog(r):
     # Only public sessions migrate; legacy direct engine regressions remain reproducible.
