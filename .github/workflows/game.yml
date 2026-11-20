@@ -66,6 +66,7 @@ jobs:
           python game_source/tests/test_siege_zmz_v202.py
           python game_source/tests/test_scores_all.py
           node game_source/tests/test_army_presentation.js
+          node game_source/tests/test_siege_buff_pages.js
       - name: Browser regression - Siege inventory
         run: |
           python -m pip install playwright==1.58.0

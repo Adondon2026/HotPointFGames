@@ -28,6 +28,7 @@ def build_html():
         read("web/90_common.js"),
         read("web/games/siege_catalog.js"),
         read("web/lite.js"),
+        read("web/siege_buff_pages.js"),
         read("web/feedback.js"),
         read("web/games/army.js"),
     ])
