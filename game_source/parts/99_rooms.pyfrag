@@ -55,7 +55,7 @@ def _room_load_settings(player,record):
         row=db.execute('SELECT settings FROM room_preferences WHERE owner=?',(key,)).fetchone()
     if row:
         try:
-            saved=json.loads(row['settings']);record['state']['settings'].update({k:v for k,v in saved.items() if k in fresh_state()['settings'] or k in ('siegeZombieDifficulty','siegeZombieMap')})
+            saved=json.loads(row['settings']);record['state']['settings'].update({k:v for k,v in saved.items() if k in fresh_state()['settings'] or k in ('siegeZombieDifficulty','siegeZombieMap','siegeZombieWaveMode')})
         except (ValueError,TypeError,AttributeError):pass
     settings=record['state']['settings']
     if settings.get('siegeCombatMode')=='live':settings.update(siegeCombatMode='sync',siegeReload=15)
@@ -127,7 +127,7 @@ def _room_start_siege(player,solo=False):
     if STATE['settings'].get('siegeRulesVersion')==24:
         allowed=STATE['settings'].get('siegeAllowedBuffs')
         r['allowedBuffs']=list(_SIEGE_V24_KEYS) if allowed is None else list(allowed)
-        r['zombieDifficulty']=STATE['settings'].get('siegeZombieDifficulty','medium');r['zombieMap']=STATE['settings'].get('siegeZombieMap','front')
+        r['zombieDifficulty']=STATE['settings'].get('siegeZombieDifficulty','medium');r['zombieMap']=STATE['settings'].get('siegeZombieMap','front');r['zombieWaveMode']=STATE['settings'].get('siegeZombieWaveMode','classic')
         _siege_v24_setup(r,STATE['settings'].get('siegeTheme','classic'),STATE['settings'].get('siegeRarities',{}));_siege_field(r)
     r.update(code=_ROOM_ACTIVE['code'],players=[{'name':p['name'],'key':p['id']} for p in seats],phase='play')
     r.update(combatMode='turn' if r.get('theme')=='zombie' else 'sync' if STATE['settings'].get('siegeCombatMode')=='live' else STATE['settings'].get('siegeCombatMode','turn'),reloadSeconds=STATE['settings'].get('siegeReload',15) if type(STATE['settings'].get('siegeReload',15)) is int and 0<=STATE['settings'].get('siegeReload',15)<=120 else 15)
@@ -173,8 +173,10 @@ def _room_action(self,player,action,data):
                 if not isinstance(difficulty,str) or difficulty not in _SIEGE_ZOMBIE_DIFFICULTIES:return {'error':'难度无效'},400
                 zombie_map=data.get('zombieMap',STATE['settings'].get('siegeZombieMap','front'))
                 if not isinstance(zombie_map,str) or zombie_map not in (*_SIEGE_ZOMBIE_MAPS,'random'):return {'error':'地图无效'},400
+                wave_mode=data.get('zombieWaveMode',STATE['settings'].get('siegeZombieWaveMode','classic'))
+                if wave_mode not in ('classic','endless'):return {'error':'尸潮规则无效'},400
                 if theme not in ('classic','art','zombie') or not isinstance(rarities,dict) or any(k not in _SIEGE_V24_KEYS or not isinstance(v,str) or v not in _SIEGE_V24_WEIGHTS for k,v in rarities.items()):return {'error':'稀有度设置无效'},400
-                STATE['settings'].update(siegeRulesVersion=24,siegeTheme=theme,siegeZombieDifficulty=difficulty,siegeZombieMap=zombie_map,siegeRarities={k:v for k,v in rarities.items() if k not in _SIEGE_NEGATIVE})
+                STATE['settings'].update(siegeRulesVersion=24,siegeTheme=theme,siegeZombieDifficulty=difficulty,siegeZombieMap=zombie_map,siegeZombieWaveMode=wave_mode,siegeRarities={k:v for k,v in rarities.items() if k not in _SIEGE_NEGATIVE})
             STATE['settings'].update(siegeAllowedBuffs=allowed,siegeStackCaps=caps,siegeFortStrength=fort,siegeItemCount=count,siegeAmmo=ammo,siegeMode=mode,siegeWind=wind,siegeBuffMode=buff_mode,siegeCombatMode=combat,siegeReload=reload);_room_save_settings(player);bump();return {},200
         if action in ('start','solo_start'):return _room_start_siege(player,action=='solo_start')
         if action=='reset':
@@ -267,7 +269,7 @@ def _room_siege(data):
         r.update(itemCount=STATE['settings'].get('siegeItemCount',13),mode=('random' if STATE['settings'].get('siegeMode','random')=='dynamic' else STATE['settings'].get('siegeMode','random')),windLevel=STATE['settings'].get('siegeWind','medium'),ammo=STATE['settings'].get('siegeAmmo',0),buffMode=STATE['settings'].get('siegeBuffMode','auto'),allowedBuffs=STATE['settings'].get('siegeAllowedBuffs'),stackCaps=STATE['settings'].get('siegeStackCaps') or {},fortStrength=STATE['settings'].get('siegeFortStrength','normal'))
         r.update(combatMode='sync' if STATE['settings'].get('siegeCombatMode')=='live' else STATE['settings'].get('siegeCombatMode','turn'),reloadSeconds=STATE['settings'].get('siegeReload',15) if type(STATE['settings'].get('siegeReload',15)) is int and 0<=STATE['settings'].get('siegeReload',15)<=120 else 15)
         if STATE['settings'].get('siegeRulesVersion')==24:
-            r['zombieDifficulty']=STATE['settings'].get('siegeZombieDifficulty','medium');r['zombieMap']=STATE['settings'].get('siegeZombieMap','front')
+            r['zombieDifficulty']=STATE['settings'].get('siegeZombieDifficulty','medium');r['zombieMap']=STATE['settings'].get('siegeZombieMap','front');r['zombieWaveMode']=STATE['settings'].get('siegeZombieWaveMode','classic')
             _siege_v24_setup(r,STATE['settings'].get('siegeTheme','classic'),STATE['settings'].get('siegeRarities',{}))
         _settle_match();_siege_rematch(r);_ROOM_ACTIVE['runtime'].pop('siegeLive',None);_ROOM_ACTIVE['runtime'].pop('siegeSync',None);live=r['combatMode']=='live';rt=_room_siege_live(r) if live else None;sync=r['combatMode']=='sync';sr=_room_siege_sync(r) if sync else None;STATE['matchId']=secrets.token_hex(16);save_state()
     elif kind=='return':
