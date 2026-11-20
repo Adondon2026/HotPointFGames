@@ -1015,3 +1015,16 @@ e=r['event']
 assert e['zombiePhase'] is not None and e['duration']>=e['zombiePhase'],e
 assert abs(e['playbackDuration']-e['duration']-.18)<.002,(e['playbackDuration'],e['duration'])
 print('Zombie replay keeps normal-speed physical action without a redundant camera pause PASS')
+
+# The third cooperative player may fire in automatic inventory mode without
+# consuming their own or another teammate's defensive inventory.
+r=v24('zombie');r['zombiePlayerCount']=3;g._siege_field(r)
+r['buffMode']='auto';r['shots']=[0,0,0];r['turn']=2
+r['players']=[{'name':n,'key':k} for n,k in [('甲','a'),('乙','b'),('丙','c')]]
+r['buffs'][0]['shield']=2;r['buffs'][1]['armor']=2;r['buffs'][2]['shield']=3
+before=[(b['shield'],b['armor']) for b in r['buffs']]
+g._siege_fire(r,90,25,{},config=g._siege_public_config({}))
+after=[(b['shield'],b['armor']) for b in r['buffs']]
+assert all(x>=y for pair,prev in zip(after,before) for x,y in zip(pair,prev)),(before,after)
+assert r['turn']==0 and r['zombie']['round']==2 and len(r['shots'])==3
+print('Third cooperative player auto inventory never drains teammate defenses PASS')
