@@ -1028,3 +1028,30 @@ after=[(b['shield'],b['armor']) for b in r['buffs']]
 assert all(x>=y for pair,prev in zip(after,before) for x,y in zip(pair,prev)),(before,after)
 assert r['turn']==0 and r['zombie']['round']==2 and len(r['shots'])==3
 print('Third cooperative player auto inventory never drains teammate defenses PASS')
+
+# Private free-fire trial: a real zombie catalogue and bounded, authenticated
+# target summoning. These specimens are destructible but do not advance wave AI.
+trial_key='b'*48
+trial=g.siege_request({'type':'create','key':trial_key,'trial':True,'rulesVersion':24})
+assert trial['ok'] and trial['trial'] and len(trial['zombieCatalog'])==13,trial
+trial_code=trial['code']
+def specimen(kind,**kwargs):
+    return g.siege_request(dict(type=kind,key=trial_key,code=trial_code,**kwargs))
+assert not specimen('trialSummon',zombieType='invalid',count=1)['ok']
+assert not specimen('trialSummon',zombieType='engineer',count=1)['ok']
+assert not specimen('trialSummon',zombieType='walker',count=True)['ok']
+assert not specimen('trialSummon',zombieType='walker',count=20)['ok']
+a=specimen('trialSummon',zombieType='walker',count=1)
+assert a['ok'] and len([b for b in a['bodies'] if b['kind']=='zombie'])==1
+b=specimen('trialSummon',zombieType='runner',count=3)
+targets=[z for z in b['bodies'] if z['kind']=='zombie']
+assert b['ok'] and len(targets)==4 and len(set(z['id'] for z in targets))==4
+assert all(z['hp']==g._SIEGE_ZOMBIE_TYPES[z['zombieType']][2] and z['fixed'] for z in targets)
+assert all(506<z['x']<=920 and z['y']+z['h']/2<=g._siege_floor(g._SIEGE_ROOMS[trial_code],z['x'])+.001 for z in targets)
+assert not any((a['id']!=b['id'] and abs(a['x']-b['x'])<(a['w']+b['w'])/2 and abs(a['y']-b['y'])<(a['h']+b['h'])/2) for a in targets for b in targets)
+wrong=g.siege_request(dict(type='trialSummon',key='a'*48,code=trial_code,zombieType='runner',count=1))
+assert wrong['ok'] is False
+cleared=specimen('trialClearZombies')
+assert cleared['ok'] and not any(b['kind']=='zombie' for b in cleared['bodies'])
+assert len(cleared['bodies'])>=2 and len(cleared['zombieCatalog'])==13
+print('Trial zombie bestiary 13 kinds, safe placements, counts, auth and reset PASS')
