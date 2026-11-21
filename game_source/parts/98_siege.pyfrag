@@ -529,7 +529,7 @@ _SIEGE_ZOMBIE_MAPS={
     'basin':('盆地要塞',[(0,270),(130,270),(300,416),(660,416),(830,270),(960,270)],480,(375,585),True),
     'crest':('双峰夹击',[(0,416),(125,416),(270,280),(365,280),(480,390),(595,280),(690,280),(835,416),(960,416)],480,(320,640),True),
 }
-def _siege_zombie_spawn(r):
+def _siege_zombie_spawn(r,opening=False):
     state=r['zombie'];wave=state['wave'];bodies=r['bodies']
     endless=bool(state.get('endless'))
     lineup=list(_SIEGE_ZOMBIE_WAVES[min(len(_SIEGE_ZOMBIE_WAVES),wave)-1])
@@ -551,6 +551,12 @@ def _siege_zombie_spawn(r):
             # teleport new enemies into an interior hole or behind a player.
             spacing=min(16.,w*.6)
             x=(-w/2-8-rank*spacing) if left else (960+w/2+8+rank*spacing)
+            # The opening wave enters from those same exterior spawn points,
+            # but completes its short approach before players take control.
+            # Later waves still start fully outside and march in normally.
+            entry_from=x
+            if opening:
+                x=(w/2+16+rank*(w+14)) if left else (960-w/2-16-rank*(w+14))
             y=_siege_floor_body(r,x,w)-h/2
         else:
             floor=_siege_floor_body(r,x,w)
@@ -558,7 +564,9 @@ def _siege_zombie_spawn(r):
         if endless and kind=='flyer':y=min(y,220-j%2*45)
         hp=round(hp*_siege_zombie_difficulty(r)[0],1)
         ident=r['nextBodyId'];r['nextBodyId']+=1
-        bodies.append(dict(id=ident,side=2,kind='zombie',zombieType=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True))
+        body=dict(id=ident,side=2,kind='zombie',zombieType=kind,x=x,y=y,w=w,h=h,hp=hp,max=hp,vx=0.,vy=0.,fixed=True)
+        if endless and opening:body['entryFromX']=entry_from
+        bodies.append(body)
         spawned+=1
     state['spawned']+=spawned
 
@@ -618,7 +626,7 @@ def _siege_zombie_world(r):
     for inv in r['buffs']:
         for k in ('big','wooddrop'):
             if k in _siege_allowed(r) and r.get('rarities',{}).get(k,_SIEGE_V24_LEVELS[k])=='common':inv[k]=1
-    _siege_zombie_spawn(r)
+    _siege_zombie_spawn(r,opening=r['zombie']['endless'])
     if _siege_zombie_buff_profile(r)['tierBonus']:_siege_zombie_supply(r)
 
 def _siege_zombie_supports(r,core):
