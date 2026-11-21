@@ -22,14 +22,20 @@ def room(map_key):
 def exterior(z):
     return z['x']+z['w']/2<0 or z['x']-z['w']/2>960
 
-# Every wave originates outside, including overflow waves and both-sided maps;
-# neither alive zombies nor fortifications push new spawns inside the world.
+# The opening wave already exists on the battlefield and is visible from
+# outside-to-edge entry animation, before players fire. Reinforcements, unlike
+# that pre-entered opening wave, still spawn fully beyond the exterior border.
 for map_key in ('front','crossfire','ridge','basin','crest'):
     r=room(map_key)
     initial=[b for b in r['bodies'] if b['kind']=='zombie']
-    assert initial and all(exterior(b) for b in initial),(map_key,[(b['x'],b['w']) for b in initial])
+    assert initial and r['zombie']['wave']==1 and r['zombie']['spawned']==len(initial)
+    assert all(not exterior(z) for z in initial),(map_key,[(b['x'],b['w']) for b in initial])
+    assert all(exterior({**z,'x':z['entryFromX']}) for z in initial),map_key
+    assert all(z['x']<=130 or z['x']>=830 for z in initial),map_key
+    assert all((z['entryFromX']<0 and z['x']>z['entryFromX']) or
+               (z['entryFromX']>960 and z['x']<z['entryFromX']) for z in initial),map_key
     if map_key in ('crossfire','basin','crest'):
-        assert any(z['x']<0 for z in initial) and any(z['x']>960 for z in initial),map_key
+        assert any(z['x']<130 for z in initial) and any(z['x']>830 for z in initial),map_key
     r['zombie']['wave']=6
     before={b['id'] for b in r['bodies']}
     # Interior obstacles deliberately fill common legacy spawn slots.
@@ -40,8 +46,8 @@ for map_key in ('front','crossfire','ridge','basin','crest'):
     new=[b for b in r['bodies'] if b['kind']=='zombie' and b['id'] not in before]
     assert new and all(exterior(z) for z in new),map_key
 
-# The off-screen queue advances continuously; no first-frame jump directly
-# to x = 960 - half_width at the first enemy tick.
+# The opening wave has pre-entered from the border and starts walking farther
+# inward during the first ordinary enemy phase, before the next spawn.
 r=room('front')
 z=next(b for b in r['bodies'] if b['kind']=='zombie')
 start=z['x']
