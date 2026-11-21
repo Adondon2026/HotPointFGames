@@ -31,7 +31,7 @@ for n in range(8):
     g._siege_zombie_round(r,1,[],snap,[],None)
     assert snapshot(r)==original,('uncollected items rerolled',n)
     assert not r['respawns']
-assert r['zombie']['wave']==6
+assert r['zombie']['wave']==3  # two reinforcements across eight complete cycles
 
 # Finite wave changes must also preserve the exact same air items.
 r=room('advanced','classic')
