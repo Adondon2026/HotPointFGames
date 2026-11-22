@@ -157,12 +157,15 @@ def _room_action(self,player,action,data):
                 add_local_bot();STATE['players'][-1]['autoBot']=True
             if len(STATE['players'])!=2:return {'error':'海战需要两人，或单人添加机器人'},409
             if any(not is_connected(p) for p in STATE['players'] if not p.get('isBot')):return {'error':'等待另一位玩家重新连接'},409
-            _ROOM_ACTIVE['runtime']['shipBattle']=_ship_new(sorted(STATE['players'],key=lambda p:p['id']!=STATE['hostPlayerId']))
-            STATE.update(phase='ship_play',matchId=secrets.token_hex(16),winnerId=None,turnPlayerId=None,roundNo=1)
+            seats=sorted(STATE['players'],key=lambda p:p['id']!=STATE['hostPlayerId'])
+            r=_naval_new(seats)
+            STATE.update(siege=r,phase='siege_play',matchId=secrets.token_hex(16),winnerId=None,
+                         turnPlayerId=seats[0]['id'],roundNo=1)
             bump();return {},200
-        if action=='reset' and STATE['phase']=='ship_play':
+        if action=='reset' and STATE['phase']=='siege_play':
             if player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可以结束对局'},403
-            _ROOM_ACTIVE['runtime'].pop('shipBattle',None);STATE.update(phase='lobby',winnerId=None,turnPlayerId=None,roundNo=0)
+            _settle_match();STATE.pop('siege',None)
+            STATE.update(phase='lobby',winnerId=None,turnPlayerId=None,roundNo=0)
             bump();return {},200
     if action=='set_mode' and data.get('mode')=='siege':
         if STATE['phase']!='lobby' or player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可在房间选择游戏'},403
@@ -242,10 +245,15 @@ def _room_siege_sync(r):
 
 def _room_siege(data):
     pid=TOKENS.get(str(data.get('token','')));p=player_by_id(pid);r=STATE.get('siege')
-    if not p or not r or STATE['mode']!='siege' or STATE['phase']!='siege_play':return {'ok':False,'error':'对局已结束，请返回房间','roomEnded':True}
+    if not p or not r or STATE['mode'] not in ('siege','ship') or STATE['phase']!='siege_play':return {'ok':False,'error':'对局已结束，请返回房间','roomEnded':True}
     touch_player(p);kind=data.get('type');now=time.time();seat=next((i for i,x in enumerate(r['players']) if x['key']==pid),None)
     if seat is None:return {'ok':False,'error':'不在对局中'}
     _siege_migrate_catalog(r)
+    if r.get('naval') and kind=='move':
+        try:_naval_move(r,seat,data.get('x'),data.get('y'),data.get('rev'),now)
+        except ValueError as e:return {'ok':False,'error':str(e)}
+        _settle_match();save_state()
+        out=_siege_public(r,pid,-1);out['host']=pid==STATE['hostPlayerId'];return out
     if _siege_manual_tick(r,now):_settle_match();save_state()
     if r.get('combatMode')=='live':
         r.update(combatMode='sync',reloadSeconds=15);STATE['settings'].update(siegeCombatMode='sync',siegeReload=15);save_state()
@@ -303,7 +311,7 @@ def _room_siege(data):
     elif kind!='state':return {'ok':False,'error':'未知操作'}
     if live:
         if r['bot'] and _siege_live_can_fire(r,rt,1,now):_siege_bot(r,rt);save_state()
-    elif not sync and id(r) not in _SIEGE_MANUAL_ROUNDS and r['bot'] and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:_siege_bot(r);_settle_match();save_state()
+    elif not sync and id(r) not in _SIEGE_MANUAL_ROUNDS and r['bot'] and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:(_naval_bot(r) if r.get('naval') else _siege_bot(r));_settle_match();save_state()
     _settle_match()
     v=_siege_sync_public(r,sr,pid,data.get('last',-1)) if sync else _siege_live_public(r,rt,pid) if live else _siege_public(r,pid,data.get('last',-1));v['host']=pid==STATE['hostPlayerId']
     if r['phase']=='over' and p.get('accountId'):
@@ -376,7 +384,7 @@ def _room_route(self,post=False):
                         if not isinstance(data,dict):raise ValueError()
                         return self.reply(_ship_request(data))
                     except (ValueError,TypeError,KeyError,AttributeError):return self.reply({'ok':False,'error':'操作无效'},400)
-                if not post and sub=='/ship':return self.reply(SHIP_BATTLE_PAGE,200,'text/html; charset=utf-8')
+                if not post and sub=='/ship':return self.reply(SIEGE_PAGE,200,'text/html; charset=utf-8')
                 if post and sub=='/api/siege':
                     try:
                         if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()

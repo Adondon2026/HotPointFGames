@@ -330,6 +330,7 @@ def _siege_weather(level):
     return random.choice((-1,1))*random.randint(limit//2,limit) if limit else 0
 
 def _siege_field(r):
+    if r.get('naval'):return _naval_world(r)
     dynamic=r.get('mode','classic')=='dynamic'
     offset=random.randint(-30,55) if dynamic else 0
     layout=random.choice(('tower','wall','split')) if dynamic else 'tower'
@@ -1535,7 +1536,7 @@ def _siege_fire(r,angle,power,selection=None,force=False,config=None):
 
 def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=False,config=None,control=None):
     config=_siege_config(config)
-    v24=_siege_v24(r)
+    v24=_siege_v24(r);naval=bool(r.get('naval'))
     if v24:
         split_trigger=config['triggers'].get('splitshot','launch')
         config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={'splitshot':split_trigger} if split_trigger in ('launch','contact') else {},splitPattern='fan',burstMode='serial',build='attack')
@@ -2449,7 +2450,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             oldx,oldy=px,py;px+=vx*dt;py+=vy*dt
             ox,oy=_siege_path_offset(t,root_counts,negatives);ex,ey=_siege_path_offset(t-dt,root_counts,negatives)
             px+=ox-ex;py+=oy-ey;px,py,vx,vy=deflect(px,py,vx,vy,radius);flight_distance+=math.hypot(px-oldx,py-oldy)
-            vy+=((_siege_gravity({},negatives) if main_dived and config.get('simple') else _siege_gravity(motion_root,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;vx+=wind*dt
+            vy+=(0. if naval else ((_siege_gravity({},negatives) if main_dived and config.get('simple') else _siege_gravity(motion_root,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0)))*dt;vx+=wind*dt
             if negatives.get('fart') and step%9==0:puffs.append([round(px,1),round(py,1),round(t,3)])
             rr=_siege_v20_radius(radius,flight_distance,negatives);draw_radius=rr;vanish_scale=_siege_v20_vanish(flight_distance,negatives)
             target=None
@@ -2461,7 +2462,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     px,py=contact;vy=-vy*.88;vx*=.97;bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 collect(x,y,rr,t)
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
-                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and not _siege_oneway_pass(b,vx) and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
+                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and (naval or (b['side']==side and t<.12))) and b['id'] not in passed and not _siege_oneway_pass(b,vx) and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
                 if target and target.get('special')=='spring':
                     px,py,vx,vy=_siege_spring_bounce(target,oldx,oldy,x,y,vx,vy,rr,copy_rng)
                     _siege_spring_hit(target)
@@ -2482,13 +2483,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     finish_main(x,y,target,config['parentEnd']=='explode');break
                 if target and ground_left>0:
                     ground_left-=1;incident=(vx,vy);px,py,vx,vy=_siege_box_bounce(target,oldx,oldy,x,y,vx,vy,radius);bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy,target=target,incident=incident);frames.append(snap(t,[round(px,1),round(py,1)]));break
+                if naval and not target and (y<=rr or y>=416-rr) and ground_left>0:
+                    ground_left-=1;px=x;py=max(rr+.1,min(416-rr-.1,y));vy=(abs(vy) if y<=rr else -abs(vy))*.82
+                    bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);break
                 if not target and rr<=x<=960-rr and y>=_siege_floor(r,x)-rr and vy>0 and ground_left>0:
                     ground_left-=1;px=x;py=_siege_floor(r,x)-rr-.2;vy=-max(135,vy*.76);vx*=.86;bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 wall=x<=rr or x>=960-rr
                 if wall and ground_left>0:
                     ground_left-=1;px=max(rr+.1,min(960-rr-.1,x));py=y;vx=(abs(vx) if x<=rr else -abs(vx))*.82
                     bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);break
-                if target or y>=_siege_floor(r,max(0,min(960,x)))-rr or wall:
+                if target or (naval and (y<=rr or y>=416-rr)) or y>=_siege_floor(r,max(0,min(960,x)))-rr or wall:
                     px,py=max(rr,min(960-rr,x)),y
                     if split_now('hit',px,py,vx,vy) and config['parentEnd']!='continue':
                         finish_main(px,py,target,config['parentEnd']=='explode');break
@@ -2537,7 +2541,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
             ox,oy=f['x'],f['y'];f['x']+=f['vx']*dt;f['y']+=f['vy']*dt
             a1,b1=_siege_path_offset(age,counts,negatives);a0,b0=_siege_path_offset(age-dt,counts,negatives)
             f['x']+=a1-a0;f['y']+=b1-b0;f['travel']=f.get('travel',0)+math.hypot(f['x']-ox,f['y']-oy)
-            f['vy']+=((_siege_gravity({},negatives) if f.get('dived') and config.get('simple') else _siege_gravity((motion_child if f.get('kind')=='split' else motion_root) if manual else counts,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0))*dt;f['vx']+=wind*dt
+            f['vy']+=(0. if naval else ((_siege_gravity({},negatives) if f.get('dived') and config.get('simple') else _siege_gravity((motion_child if f.get('kind')=='split' else motion_root) if manual else counts,negatives))-(_siege_v20_fart(t) if negatives.get('fart') else 0)))*dt;f['vx']+=wind*dt
             if 'orbit' in f:
                 if impact is None and main_stop is None:
                     ang=f['orbit']+age*5;f['x']=px+math.cos(ang)*(radius+22);f['y']=py+math.sin(ang)*(radius+22);f['vx']=vx-math.sin(ang)*(radius+22)*5;f['vy']=vy+math.cos(ang)*(radius+22)*5
@@ -2551,7 +2555,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     f['x'],f['y']=contact;f['vy']=-f['vy']*.88;f['vx']*=.97;bounces.append([round(contact[0],1),round(contact[1],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 collect(x,y,fr,t)
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
-                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and not _siege_oneway_pass(b,f['vx']) and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
+                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and (naval or (b['side']==side and t-f.get('bornAt',0)<.12))) and b['id'] not in f['passed'] and not _siege_oneway_pass(b,f['vx']) and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and target.get('special')=='spring':
                     f['x'],f['y'],f['vx'],f['vy']=_siege_spring_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fr,copy_rng)
                     _siege_spring_hit(target)
@@ -2570,13 +2574,16 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                 if target and f.get('kind')=='repeat' and split_now('hit',x,y,f['vx'],f['vy'],f) and config['parentEnd']!='continue':finish_fragment(f,x,y,target,config['parentEnd']=='explode');break
                 if target and f['groundLeft']>0:
                     f['groundLeft']-=1;incident=(f['vx'],f['vy']);f['x'],f['y'],f['vx'],f['vy']=_siege_box_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fragment_radius);bounces.append([round(f['x'],1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f,target,incident);break
+                if naval and not target and (y<=fr or y>=416-fr) and f['groundLeft']>0:
+                    f['groundLeft']-=1;f['x']=x;f['y']=max(fr+.1,min(416-fr-.1,y));f['vy']=(abs(f['vy']) if y<=fr else -abs(f['vy']))*.82
+                    bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 if not target and fr<=x<=960-fr and y>=_siege_floor(r,x)-fr and f['vy']>0 and f['groundLeft']>0:
                     f['groundLeft']-=1;f['x']=x;f['y']=_siege_floor(r,x)-fr-.2;f['vy']=-max(135,f['vy']*.76);f['vx']*=.86;bounces.append([round(x,1),round(f['y'],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 wall=x<=fr or x>=960-fr
                 if wall and f['groundLeft']>0:
                     f['groundLeft']-=1;f['x']=max(fr+.1,min(960-fr-.1,x));f['y']=y;f['vx']=(abs(f['vx']) if x<=fr else -abs(f['vx']))*.82
                     bounces.append([round(f['x'],1),round(y,1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
-                if target or y>=_siege_floor(r,max(0,min(960,x)))-fr or wall:
+                if target or (naval and (y<=fr or y>=416-fr)) or y>=_siege_floor(r,max(0,min(960,x)))-fr or wall:
                     cx=max(fr,min(960-fr,x))
                     if f.get('kind')=='repeat' and split_now('hit',cx,y,f['vx'],f['vy'],f) and config['parentEnd']!='continue':
                         finish_fragment(f,cx,y,target,config['parentEnd']=='explode');break
@@ -3164,7 +3171,7 @@ def _siege_bot(r,live=None):
 def _siege_public(r,key,last):
     _siege_migrate_catalog(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
-    v={'rulesVersion':r.get('rulesVersion',23),'theme':r.get('theme','classic'),'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'compoundRecipes':r.get('compoundRecipes',[None,None]),'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in range(r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
+    v={'rulesVersion':r.get('rulesVersion',23),'naval':bool(r.get('naval')),'moveRadius':r.get('moveRadius',0),'navalMove':r.get('navalMove'),'theme':r.get('theme','classic'),'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'compoundRecipes':r.get('compoundRecipes',[None,None]),'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in range(r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
     if r.get('scenarioActive'):
         v.update(trial=False,scenarioActive=True,scenarioName=r['scenarioName'],scenarioPending=len(r['scenarioPending']),scenarioSource=r['scenarioSource'])
     if r.get('terrain'):v['terrain']=r['terrain']
