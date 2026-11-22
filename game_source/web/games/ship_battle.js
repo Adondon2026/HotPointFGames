@@ -7,7 +7,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),TAU=Math.PI*2;
 const values=[-35,-24,-12,0,12,24,35],commands=values.map(v=>v*Math.PI/180);
 let viewport={w:innerWidth,h:innerHeight,dpr:1},cam={x:230,y:375,z:1.05};
 let snapshot=null,displayShips=null,updatedAt=0,inflight=false,rudderIndex=3;
-let desired={rudder:0,aimx:1364,aimy:375,fire:false},lastFrame=0,lastPoll=0,flashUntil=0,aimTouched=false,returning=false;
+let desired={rudder:0,aimx:1364,aimy:375,fire:false},firePulse=false,lastFrame=0,lastPoll=0,flashUntil=0,aimTouched=false,returning=false;
 let tipTimer=0;
 const map={w:1440,h:750},labels={heavy:'巨',split:'裂',blast:'爆',bounce:'弹'},colors={heavy:'#f0b777',split:'#c7a6eb',blast:'#f38f77',bounce:'#85d8c8',normal:'#e2e9d9'};
 function resize(){viewport.w=canvas.clientWidth||innerWidth;viewport.h=canvas.clientHeight||innerHeight;viewport.dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(viewport.w*viewport.dpr);canvas.height=Math.round(viewport.h*viewport.dpr);}
