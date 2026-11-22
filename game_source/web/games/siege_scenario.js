@@ -94,7 +94,7 @@ const palette=scNode('div','scpalette');for(const [type,k,name] of resources){co
 if(sceneBrush){const g=scGroup(body),line=scNode('div','scline');line.append(scNode('span','',scBrushName()+' · 连续布置'),scButton('参数',()=>{sceneAdvanced=!sceneAdvanced;scRenderPanel()},sceneAdvanced?'active':''),scButton('收起',()=>scDismiss(false)));g.append(line);if(sceneAdvanced){if(sceneBrush.type==='zombie')scReward(g,sceneBrush,fn=>fn());else if(sceneBrush.type==='item')scNumber(g,'数量',sceneBrush.amount,1,scCap(sceneBrush.kind),n=>sceneBrush.amount=n);else if(['wood','stone','barrel','spring','oneway','ladder'].includes(sceneBrush.type)){scNumber(g,'宽度',sceneBrush.w,12,240,n=>sceneBrush.w=n);scNumber(g,'高度',sceneBrush.h,12,sceneBrush.type==='ladder'?320:160,n=>sceneBrush.h=n)}}}
 }else if(scenePanel==='object'&&scenePick){const e=scenePick,o=e.obj,change=fn=>scChange(fn);title.textContent=e.type==='zombie'?scZombie(o.kind):e.type==='item'?scBuff(o.kind):sceneTypes[e.type];
 if(e.type==='zombie'){scReward(body,o,change)}else if(e.type==='item'){scSelect(body,'增益',o.kind,scenarioBuffKeys.map(k=>[k,scBuff(k)]),v=>{change(()=>{o.kind=v;o.amount=1});scRenderPanel()});scNumber(body,'数量',o.amount,1,scCap(o.kind),n=>change(()=>o.amount=n))}else if(e.list===sceneDraft.blocks){scNumber(body,'宽度',o.w,12,240,n=>change(()=>{o.w=n;scMove(e,o.x,o.y)}));scNumber(body,'高度',o.h,12,e.type==='ladder'?320:160,n=>change(()=>{o.h=n;scMove(e,o.x,o.y)}));body.append(scNode('small','scsecondary','也可直接拖动战场中的四角调整尺寸'))}
-const a=scActions(body);a.append(scButton(sceneAdvanced?'收起坐标':'精确坐标',()=>{sceneAdvanced=!sceneAdvanced;scRenderPanel()}));if(e.list){a.append(scButton('复制',()=>{if(e.list.length>=scLimit(e.type))return scHint('对象已达上限');change(()=>{const obj=scClone(o);e.list.push(obj);scenePick={...e,obj};scMove(scenePick,obj.x+40,obj.y)});scRenderPanel()}),scButton('删除',()=>{change(()=>e.list.splice(e.list.indexOf(o),1));scenePick=null;scDismiss(true)},'scdanger'))}
+const a=scActions(body);a.append(scButton(sceneAdvanced?'收起坐标':'精确坐标',()=>{sceneAdvanced=!sceneAdvanced;scRenderPanel()}));if(e.list){a.append(scButton('复制',()=>{if(e.list.length>=scLimit(e.type))return scHint('对象已达上限');change(()=>{const obj=scCopySpot(e);if(obj){e.list.push(obj);scenePick={...e,obj}}});scRenderPanel()}),scButton('删除',()=>{change(()=>e.list.splice(e.list.indexOf(o),1));scenePick=null;scDismiss(true)},'scdanger'))}
 if(sceneAdvanced){const g=scGroup(body);scNumber(g,'X',o.x,e.type==='zombie'?-240:25,e.type==='zombie'?1200:935,n=>change(()=>scMove(e,n,o.y)));scNumber(g,'Y',o.y,24,392,n=>change(()=>scMove(e,o.x,n)));if(e.type==='zombie')scSelect(g,'种类',o.kind,Object.keys(scDims).map(k=>[k,scZombie(k)]),v=>{change(()=>{o.kind=v;scMove(e,o.x,o.y)});scRenderPanel()})}
 }else if(scenePanel==='settings'){title.textContent='关卡设置';scNumber(body,'炮弹数量（0 为无限）',sceneDraft.ammo,0,100,n=>scChange(()=>sceneDraft.ammo=n));const row=scRow(body,'初始增益');row.append(scButton(Object.keys(sceneDraft.stock).length?'已配置 '+Object.keys(sceneDraft.stock).length+' 类':'未配置',()=>scPanelSet('stock')));body.append(scNode('small','scsecondary','胜利：清除所有已安排僵尸，并保护子刊。挑战模式不自动补给。'))
 }else if(scenePanel==='stock'){title.textContent='初始增益';scTabs(body,['全部','弹药','技能','机制','效果'],sceneBuffCat,k=>{sceneBuffCat=k;scRenderPanel()});for(const k of scenarioBuffKeys.filter(k=>sceneBuffCat==='全部'||siegeV24Group(k)===sceneBuffCat)){const row=scNode('div','scstockrow'),name=scNode('span');name.innerHTML=siegeIcon(k,18)+' ';name.append(document.createTextNode(scBuff(k)));const count=scNode('span','',String(sceneDraft.stock[k]||0));const set=delta=>{const n=clamp((sceneDraft.stock[k]||0)+delta,0,scCap(k));scChange(()=>{if(n)sceneDraft.stock[k]=n;else delete sceneDraft.stock[k]});count.textContent=n;minus.disabled=n===0;plus.disabled=n===scCap(k)};const minus=scButton('−',()=>set(-1)),plus=scButton('+',()=>set(1));minus.disabled=!sceneDraft.stock[k];plus.disabled=(sceneDraft.stock[k]||0)>=scCap(k);minus.setAttribute('aria-label','减少'+scBuff(k));plus.setAttribute('aria-label','增加'+scBuff(k));row.append(name,minus,count,plus);body.append(row)}body.prepend(scButton('返回关卡设置',()=>scPanelSet('settings')))
@@ -116,13 +116,13 @@ sc('scBtn-add').onclick=()=>{if(scenePanel==='add'||sceneBrush){scenePick=null;s
 sc('scBtn-map').onclick=()=>{scDismiss(true);scenePick=null;scFull()};
 sc('scBtn-settings').onclick=()=>{scenePick=null;sceneBrush=null;scenePanel==='settings'?scDismiss(true):scPanelSet('settings')};
 sc('scBtn-folder').onclick=()=>{scenePick=null;sceneBrush=null;scenePanel==='library'?scDismiss(true):scPanelSet('library')};
-async function scRun(free=false){if(requesting||playing||room?.busy)return;requesting=true;sc('scPlay').disabled=true;scSaveDraft();try{const d=await req(free?'trialReset':'scenarioLoad',free?{mode:'standard'}:{scene:sceneDraft});scClose();selection={};shotConfig=defaultShotConfig();stockKey='';notice='';apply(d);cameraSnap(home(0))}catch(e){scHint(e.message,true)}finally{requesting=false;sc('scPlay').disabled=false;update()}}
+async function scRun(free=false){if(requesting||playing||room?.busy)return;if(!free&&scFirstOverlap()){scHint('请先处理重叠的对象，再试玩',true);return}requesting=true;sc('scPlay').disabled=true;scSaveDraft();try{const d=await req(free?'trialReset':'scenarioLoad',free?{mode:'standard'}:{scene:sceneDraft});scClose();selection={};shotConfig=defaultShotConfig();stockKey='';notice='';apply(d);cameraSnap(home(0))}catch(e){scHint(e.message,true)}finally{requesting=false;sc('scPlay').disabled=false;update()}}
 sc('scPlay').onclick=()=>scRun();
 function scPickAt(x,y){const pad=9/scView().z*(window.devicePixelRatio||1);return scEntries().reverse().find(e=>{const [w,h]=scSize(e);return Math.abs(x-e.obj.x)<=w/2+pad&&Math.abs(y-e.obj.y)<=h/2+pad})||null}
 function scHandleAt(x,y){if(!scenePick||scenePick.list!==sceneDraft.blocks)return null;const o=scenePick.obj,[w,h]=scSize(scenePick),tol=16/scView().z*(window.devicePixelRatio||1);for(const [sx,sy] of [[-1,-1],[1,-1],[-1,1],[1,1]])if(Math.hypot(x-o.x-sx*w/2,y-o.y-sy*h/2)<tol)return {sx,sy,ax:o.x-sx*w/2,ay:o.y-sy*h/2};return null}
-function scPlace(x,y){const b=sceneBrush;if(!b)return;if(b.type==='cannon'||b.type==='core'){scChange(()=>scMove({type:b.type,obj:sceneDraft[b.type]},x,y));return}const list=b.type==='zombie'?sceneDraft.zombies:b.type==='item'?sceneDraft.items:sceneDraft.blocks;if(list.length>=scLimit(b.type))return scHint('对象已达上限');const obj=b.type==='zombie'?{kind:b.kind,x,y,round:b.round,drop:scClone(b.drop)}:b.type==='item'?{kind:b.kind,x,y,amount:b.amount}:{kind:b.kind,x,y,w:b.w,h:b.h};scChange(()=>{const e={type:b.type,obj,list};scMove(e,x,y);list.push(obj)});scHint(scBrushName()+' · 点击空地连续布置',true)}
+function scPlace(x,y){const b=sceneBrush;if(!b)return;if(b.type==='cannon'||b.type==='core'){scChange(()=>scMove({type:b.type,obj:sceneDraft[b.type]},x,y));return}const list=b.type==='zombie'?sceneDraft.zombies:b.type==='item'?sceneDraft.items:sceneDraft.blocks;if(list.length>=scLimit(b.type))return scHint('对象已达上限');const obj=b.type==='zombie'?{kind:b.kind,x,y,round:b.round,drop:scClone(b.drop)}:b.type==='item'?{kind:b.kind,x,y,amount:b.amount}:{kind:b.kind,x,y,w:b.w,h:b.h};const e={type:b.type,obj,list};if(!scCanOccupy(e)){scHint('此处已有物体，请选择空位');return}scChange(()=>{list.push(obj)});scHint(scBrushName()+' · 点击空地连续布置',true)}
 function scStart(px,py){const [x,y]=scPoint(px,py),handle=!sceneBrush&&scHandleAt(x,y),hit=!sceneBrush&&scPickAt(x,y);sceneGesture={kind:handle?'size':hit?'object':'pan',hit:handle?scenePick:hit,handle,px,py,cx:scCamera.x,cy:scCamera.y,x,y,before:scSnap(),moved:false};if(sceneGesture.hit){const o=sceneGesture.hit.obj;sceneGesture.dx=o.x-x;sceneGesture.dy=o.y-y}}
-function scMotion(px,py){const g=sceneGesture;if(!g||g.kind==='pinch')return;const dx=px-g.px,dy=py-g.py;if(!g.moved&&Math.hypot(dx,dy)<7)return;g.moved=true;const [x,y]=scPoint(px,py);if(g.kind==='object'){scenePick=g.hit;scMove(g.hit,x+g.dx,y+g.dy)}else if(g.kind==='size'){const o=g.hit.obj,a=g.handle;const bx=clamp(x,a.sx<0?Math.max(0,a.ax-240):a.ax+12,a.sx<0?a.ax-12:Math.min(960,a.ax+240)),by=clamp(y,a.sy<0?Math.max(0,a.ay-160):a.ay+12,a.sy<0?a.ay-12:Math.min(416,a.ay+160));o.w=Math.round(Math.abs(bx-a.ax));o.h=Math.round(Math.abs(by-a.ay));o.x=(bx+a.ax)/2;o.y=(by+a.ay)/2;scMove(g.hit,o.x,o.y)}else{const r=canvas.getBoundingClientRect(),v=scView();scCamera.x=g.cx-dx*v.w/r.width;scCamera.y=g.cy-dy*v.h/r.height;scBound()}}
+function scMotion(px,py){const g=sceneGesture;if(!g||g.kind==='pinch')return;const dx=px-g.px,dy=py-g.py;if(!g.moved&&Math.hypot(dx,dy)<7)return;g.moved=true;const [x,y]=scPoint(px,py);if(g.kind==='object'){scenePick=g.hit;scMove(g.hit,x+g.dx,y+g.dy)}else if(g.kind==='size'){const o=g.hit.obj,a=g.handle;const maxH=g.hit.type==='ladder'?320:160;const bx=clamp(x,a.sx<0?Math.max(0,a.ax-240):a.ax+12,a.sx<0?a.ax-12:Math.min(960,a.ax+240)),by=clamp(y,a.sy<0?Math.max(0,a.ay-maxH):a.ay+12,a.sy<0?a.ay-12:Math.min(416,a.ay+maxH));o.w=Math.round(Math.abs(bx-a.ax));o.h=Math.round(Math.abs(by-a.ay));o.x=(bx+a.ax)/2;o.y=(by+a.ay)/2;scMove(g.hit,o.x,o.y)}else{const r=canvas.getBoundingClientRect(),v=scView();scCamera.x=g.cx-dx*v.w/r.width;scCamera.y=g.cy-dy*v.h/r.height;scBound()}}
 function scEnd(px,py,cancel=false){const g=sceneGesture;sceneGesture=null;if(!g||g.kind==='pinch')return;if(cancel){if(g.moved&&g.kind!=='pan'){sceneDraft=JSON.parse(g.before);scenePick=null;scDismiss(false)}return}
 if(g.moved){if(g.kind==='object'||g.kind==='size'){scHistory(g.before);if(scenePanel==='object')scRenderPanel()}return}
 if(sceneBrush){const [x,y]=scPoint(px,py);scPlace(x,y);if(scenePanel==='add')scDismiss(false);return}
@@ -133,3 +133,152 @@ function scPinchMove(a,b){const g=sceneGesture;if(g?.kind!=='pinch')return;const
 for(const type of ['touchstart','touchmove','touchend','touchcancel'])canvas.addEventListener(type,e=>{if(!scenarioEditing)return;e.preventDefault();e.stopImmediatePropagation();const t=e.touches;if(t.length>=2){if(sceneGesture?.kind!=='pinch')scPinchStart(t[0],t[1]);else scPinchMove(t[0],t[1]);return}if(sceneGesture?.kind==='pinch'){if(!t.length)sceneGesture=null;return}const a=(t[0]||e.changedTouches[0]);if(!a)return;if(type==='touchstart')scStart(a.clientX,a.clientY);else if(type==='touchmove')scMotion(a.clientX,a.clientY);else scEnd(a.clientX,a.clientY,type==='touchcancel')},{capture:true,passive:false});
 for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(type,e=>{if(!scenarioEditing||e.pointerType==='touch')return;e.stopImmediatePropagation();e.preventDefault();if(type==='pointerdown'){if(e.button!==0)return;scStart(e.clientX,e.clientY);try{canvas.setPointerCapture(e.pointerId)}catch(_){}}else if(type==='pointermove')scMotion(e.clientX,e.clientY);else scEnd(e.clientX,e.clientY,type!=='pointerup')},true);
 canvas.addEventListener('wheel',e=>{if(!scenarioEditing)return;e.preventDefault();const a=scPoint(e.clientX,e.clientY);scCamera.w=clamp(scCamera.w*Math.exp(e.deltaY*.001),120,Math.max(1440,canvas.width/Math.max(1,canvas.height)*510));const b=scPoint(e.clientX,e.clientY);scCamera.x+=a[0]-b[0];scCamera.y+=a[1]-b[1];scBound()},{passive:false});
+
+
+// Geometry and touch tools shared by all authored scenario objects.
+function scOverlap(a,b){
+ const [w,h]=scSize(a),[ww,hh]=scSize(b);
+ return Math.abs(a.obj.x-b.obj.x)*2<w+ww-.0001&&Math.abs(a.obj.y-b.obj.y)*2<h+hh-.0001;
+}
+function scFirstOverlap(){
+ const arr=scEntries();
+ for(let i=0;i<arr.length;i++)for(let k=0;k<i;k++)if(scOverlap(arr[i],arr[k]))return [arr[k],arr[i]];
+ return null;
+}
+function scCanOccupy(entry,ignore=new Set()){
+ return scEntries().every(e=>e.obj===entry.obj||ignore.has(e.obj)||!scOverlap(entry,e));
+}
+function scBoundsOK(e){
+ const o=e.obj,[w,h]=scSize(e),ex=e.type==='zombie';
+ return o.x>= (ex?-240:Math.max(25,w/2))-.001
+   &&o.x<= (ex?1200:Math.min(935,960-w/2))+.001
+   &&o.y>=Math.max(24,h/2)-.001
+   &&o.y<=Math.min(e.list===sceneDraft.blocks?416:392,416-h/2)+.001;
+}
+function scCopySpot(e){
+ const [w,h]=scSize(e);
+ for(const [dx,dy] of [[w+8,0],[-w-8,0],[0,-h-8],[0,h+8],[w+8,-h-8],[-w-8,-h-8],[w*2+12,0]]){
+  const obj=scClone(e.obj);obj.x=Math.round(obj.x+dx);obj.y=Math.round(obj.y+dy);
+  const candidate={type:e.type,obj,list:e.list};
+  if(scBoundsOK(candidate)&&scCanOccupy(candidate))return obj;
+ }
+ scHint('附近没有足够空间复制，请先移动其他对象');
+ return null;
+}
+// Avoid the native Android 100-option dropdown for spawn rounds.
+function scStepNumber(parent,label,value,min,max,onChange){
+ const row=scRow(parent,label),control=scNode('div','scstep');
+ const minus=scButton('−',()=>set(Number(input.value)-1));
+ const input=scNode('input');input.type='number';input.inputMode='numeric';input.min=min;input.max=max;input.value=value;input.setAttribute('aria-label',label);
+ const plus=scButton('+',()=>set(Number(input.value)+1));
+ const hint=scNode('span','scbadge',value===0?'开局':'');
+ const set=n=>{n=clamp(Number.isFinite(n)?Math.round(n):min,min,max);input.value=n;minus.disabled=n===min;plus.disabled=n===max;hint.textContent=n===0?'开局':'第 '+n+' 轮后';onChange(n)};
+ input.onchange=()=>set(Number(input.value));minus.disabled=value<=min;plus.disabled=value>=max;
+ hint.textContent=value===0?'开局':'第 '+value+' 轮后';
+ control.append(minus,input,plus,hint);row.append(control);return input;
+}
+// Repeated drag, resize, paste and coordinate edits share the same collision rule.
+const scPreviousMotion=scMotion;
+scMotion=function(px,py){
+ const g=sceneGesture,old=g?.kind==='size'?{...g.hit.obj}:null;
+ scPreviousMotion(px,py);
+ if(old&&(!scBoundsOK(g.hit)||!scCanOccupy(g.hit))){
+  Object.assign(g.hit.obj,old);
+  scHint('调整尺寸会与其他物体重叠');
+ }
+};
+const scPreviousPanel=scRenderPanel;
+scRenderPanel=function(){
+ if(scenePanel!=='multi'){scPreviousPanel();return}
+ const panel=sc('scPanel'),body=sc('scPanelBody');
+ panel.classList.toggle('hidden',!scenarioEditing||!sceneSelection.length);
+ body.replaceChildren();if(!sceneSelection.length)return;
+ sc('scPanelTitle').textContent='已框选 '+sceneSelection.length+' 个对象';
+ const info=scNode('div','scsecondary','拖动任一选中对象，可整体移动。支持统一复制与删除。');
+ body.append(info);
+ const actions=scActions(body);
+ actions.append(scButton('复制所选',scCopySelection),scButton('删除所选',scDeleteSelection,'scdanger'),scButton('取消选择',()=>{
+  sceneSelection=[];sceneSelectMode=false;scenePanel='';scRenderPanel();scChrome()
+ }));
+};
+function scDeleteSelection(){
+ const deletable=sceneSelection.filter(e=>e.list);
+ if(!deletable.length)return scHint('炮台和子刊不可删除');
+ scChange(()=>{for(const e of deletable){const i=e.list.indexOf(e.obj);if(i>=0)e.list.splice(i,1)}});
+ sceneSelection=[];scenePanel='';scRenderPanel();scChrome();
+}
+function scCopySelection(){
+ const originals=sceneSelection.filter(e=>e.list);
+ if(!originals.length)return scHint('没有可复制对象');
+ if(originals.some(e=>e.list.length+originals.filter(o=>o.list===e.list).length>scLimit(e.type)))
+  return scHint('所选对象数量超过关卡上限');
+ const offsets=[[80,0],[-80,0],[0,-80],[0,80],[160,0],[-160,0],[0,-160],[0,160]];
+ for(const [dx,dy] of offsets){
+  const copies=originals.map(e=>({type:e.type,list:e.list,obj:{...scClone(e.obj),x:Math.round(e.obj.x+dx),y:Math.round(e.obj.y+dy)}}));
+  if(!copies.every(c=>scBoundsOK(c)&&scCanOccupy(c)))continue;
+  if(copies.some((c,i)=>copies.slice(0,i).some(d=>scOverlap(c,d))))continue;
+  scChange(()=>{for(const c of copies)c.list.push(c.obj)});
+  sceneSelection=copies;scenePanel='multi';scRenderPanel();scChrome();scHint('已复制 '+copies.length+' 个对象');return;
+ }
+ scHint('找不到不重叠的复制位置，请先腾出空间');
+}
+const scPreviousStart=scStart,scPreviousEnd=scEnd;
+scStart=function(px,py){
+ if(!sceneSelectMode||sceneBrush){scPreviousStart(px,py);return}
+ const [x,y]=scPoint(px,py),hit=scPickAt(x,y);
+ if(hit&&sceneSelection.some(e=>e.obj===hit.obj)){
+  sceneGesture={kind:'group',px,py,x,y,before:scSnap(),moved:false,
+   original:sceneSelection.map(e=>({e,x:e.obj.x,y:e.obj.y}))};
+ }else{
+  sceneGesture={kind:'marquee',px,py,x,y,before:scSnap(),moved:false};
+  sceneMarquee={x,y,x2:x,y2:y};
+ }
+};
+scMotion=function(px,py){
+ const g=sceneGesture;
+ if(g?.kind==='marquee'){const [x,y]=scPoint(px,py);sceneMarquee={x:g.x,y:g.y,x2:x,y2:y};g.moved=Math.hypot(px-g.px,py-g.py)>7;return}
+ if(g?.kind==='group'){
+  if(Math.hypot(px-g.px,py-g.py)<7&&!g.moved)return;
+  g.moved=true;const [x,y]=scPoint(px,py),dx=Math.round(x-g.x),dy=Math.round(y-g.y);
+  const before=g.original.map(({e})=>[e.obj,e.obj.x,e.obj.y]);
+  for(const {e,x:ox,y:oy} of g.original){e.obj.x=ox+dx;e.obj.y=oy+dy}
+  if(!g.original.every(({e})=>scBoundsOK(e))||scFirstOverlap()){
+   for(const [o,ox,oy] of before){o.x=ox;o.y=oy}scHint('所选物体无法移动到此处')
+  }
+  return;
+ }
+ const before=g?.kind==='size'?{...g.hit.obj}:null;
+ scPreviousMotion(px,py);
+ if(before&&(!scBoundsOK(g.hit)||!scCanOccupy(g.hit))){
+  Object.assign(g.hit.obj,before);
+  scHint('此尺寸会与其他物体重叠');
+ }
+};
+scEnd=function(px,py,cancel=false){
+ const g=sceneGesture;
+ if(g?.kind==='marquee'){
+  sceneGesture=null;sceneMarquee=null;
+  if(cancel)return;
+  if(!g.moved){
+   const [x,y]=scPoint(px,py),hit=scPickAt(x,y);
+   sceneSelection=hit?[hit]:[];
+  }else{
+   const [x,y]=scPoint(px,py),minX=Math.min(g.x,x),maxX=Math.max(g.x,x),minY=Math.min(g.y,y),maxY=Math.max(g.y,y);
+   sceneSelection=scEntries().filter(e=>{
+    const [w,h]=scSize(e),o=e.obj;
+    return o.x+w/2>=minX&&o.x-w/2<=maxX&&o.y+h/2>=minY&&o.y-h/2<=maxY
+   });
+  }
+  scenePick=null;scenePanel=sceneSelection.length?'multi':'';scRenderPanel();scChrome();
+  scHint(sceneSelection.length?'已选择 '+sceneSelection.length+' 个对象':'没有选中对象');return;
+ }
+ if(g?.kind==='group'){
+  sceneGesture=null;
+  if(cancel){
+   for(const {e,x,y} of g.original){e.obj.x=x;e.obj.y=y}
+  }else if(g.moved)scHistory(g.before);
+  else scPanelSet('multi');
+  return;
+ }
+ scPreviousEnd(px,py,cancel)
+};
