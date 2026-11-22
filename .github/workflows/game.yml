@@ -89,6 +89,7 @@ jobs:
           python game_source/tests/test_siege_scenario_ui.py
           python game_source/tests/test_ship_dock_ui.py
           python game_source/tests/test_ship_duel_ui.py
+          python game_source/tests/test_quiet_ui.py
       - name: Generate update manifest
         run: |
           TAG="game-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
