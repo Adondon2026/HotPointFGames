@@ -56,7 +56,7 @@ try:
             expect(page.locator("#create")).to_be_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 2")
             assert page.evaluate("""() => {
-                const ch=s=>[...s.matchAll(/\\d+/g)].slice(0,3).map(x=>Number(x[0]));
+                const ch=s=>[...s.matchAll(/[0-9]+/g)].slice(0,3).map(x=>Number(x[0]));
                 const cs=getComputedStyle(document.body);
                 return Math.max(...ch(cs.backgroundColor))<65 && Math.min(...ch(cs.color))>170;
             }""")
@@ -67,7 +67,7 @@ try:
             expect(page.locator("#modeSiege")).to_be_visible(timeout=12000)
             assert page.locator("#liteLibrary .mode").first.get_attribute("id") == "modeSiege"
             assert page.evaluate("""() => {
-                const ch=s=>[...s.matchAll(/\\d+/g)].slice(0,3).map(x=>Number(x[0]));
+                const ch=s=>[...s.matchAll(/[0-9]+/g)].slice(0,3).map(x=>Number(x[0]));
                 const cs=getComputedStyle(document.body);
                 return Math.max(...ch(cs.backgroundColor))<65 && Math.min(...ch(cs.color))>170;
             }""")
