@@ -3231,9 +3231,11 @@ def _siege_scenario_validate(raw):
     def integer(v,lo,hi):
         if type(v) is not int:raise ValueError('场景需要整数')
         return number(v,lo,hi)
-    def point(obj,exterior=False):
+    def point(obj,exterior=False,block=False):
         if not isinstance(obj,dict):raise ValueError('对象无效')
-        return dict(x=number(obj.get('x'),-240 if exterior else 25,1200 if exterior else 935),y=number(obj.get('y'),24,392))
+        # A block's centre may sit below y=392 while its bottom remains at the
+        # floor (y=416). Validate its full bounds after reading its dimensions.
+        return dict(x=number(obj.get('x'),-240 if exterior else 25,1200 if exterior else 935),y=number(obj.get('y'),24,416 if block else 392))
     def buff(obj):
         if not isinstance(obj,dict):raise ValueError('增益无效')
         k=obj.get('kind')
@@ -3246,7 +3248,7 @@ def _siege_scenario_validate(raw):
     out=dict(version=1,name=str(raw.get('name','自定义挑战'))[:40],ammo=integer(raw.get('ammo',0),0,100),
              cannon=point(raw.get('cannon')),core=point(raw.get('core')),blocks=[],zombies=[],items=[],stock={})
     for obj in rows('blocks',100):
-        v=point(obj);k=obj.get('kind')
+        v=point(obj,block=True);k=obj.get('kind')
         if type(k) is not str or k not in ('wood','stone','barrel'):raise ValueError('建筑类型无效')
         v.update(kind=k,w=number(obj.get('w',48),12,240),h=number(obj.get('h',24),12,160))
         if v['x']-v['w']/2<0 or v['x']+v['w']/2>960 or v['y']-v['h']/2<0 or v['y']+v['h']/2>416:raise ValueError('建筑超出地图')

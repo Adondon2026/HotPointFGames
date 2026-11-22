@@ -39,7 +39,8 @@ try:
             assert page.evaluate("""()=>{const p=document.querySelector('#scPanel').getBoundingClientRect(),f=document.querySelector('#field').getBoundingClientRect();return p.width<=f.width&&p.height<f.height*.8&&f.height>=innerHeight-2}""")
         page.locator('#scPanelClose').tap()
         page.locator('#scPlay').tap()
-        expect(page.locator('#scenarioEditor')).to_be_hidden(timeout=15000)
+        try:expect(page.locator('#scenarioEditor')).to_be_hidden(timeout=15000)
+        except AssertionError as e:raise AssertionError(f"Play failed: {page.locator('#scHint').inner_text()} / browser errors: {errors}") from e
         page.wait_for_function('room.scenarioActive===true')
         expect(page.locator('#scenarioToggle')).to_have_text('布置')
         assert not errors,errors

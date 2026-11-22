@@ -21,6 +21,12 @@ g._siege_scenario_spawn_due(r,1);assert len(r['scenarioPending'])==1
 g._siege_scenario_spawn_due(r,2);assert not r['scenarioPending']
 z=next(b for b in r['bodies'] if b['kind']=='zombie' and b['hp']>0);assert z['x']==1000
 z['hp']=0;g._siege_zombie_drops(r);assert r['buffs'][0]['gunteleport']==1
+ground=dict(kind='stone',x=700,y=398,w=120,h=36)
+validated=g._siege_scenario_validate({**scene,'blocks':[ground]})
+assert validated['blocks'][0]['y']==398
+try:g._siege_scenario_validate({**scene,'blocks':[{**ground,'y':399}]})
+except ValueError:pass
+else:raise AssertionError('out-of-world building unexpectedly accepted')
 g._siege_scenario_load(r,scene)
 g._siege_fire(r,45,50,{})
 assert r['shots'][0]==1 and r['zombie']['round']==2 and r['buffs'][0]['big']==0
