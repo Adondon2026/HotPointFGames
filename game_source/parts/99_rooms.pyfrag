@@ -296,6 +296,7 @@ def _room_route(self,post=False):
     self.connection.settimeout(8)
     parsed=urlparse(self.path);path=parsed.path;match=re.fullmatch(r'/r/([A-Fa-f0-9]{6})(/.*)?',path)
     if not post and path=='/':return self.reply(HUB_PAGE,200,'text/html; charset=utf-8')
+    if not post and path=='/trial/ship':return self.reply(SHIP_DOCK_PAGE,200,'text/html; charset=utf-8')
     # Private trial routes share one handler; legacy trial links remain valid.
     if not post and (path=='/trial/siege' or (path=='/siege' and parse_qs(parsed.query).get('trial')==['1'])):
         return self.reply(SIEGE_PAGE,200,'text/html; charset=utf-8')
