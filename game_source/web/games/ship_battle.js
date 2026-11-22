@@ -73,7 +73,7 @@ async function send(type='control'){
  try{
   const response=await fetch(room+'/api/ship',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request),signal:controller.signal,cache:'no-store'});
   const data=await response.json();if(!data.ok){if(data.roomEnded){location.replace(room+'/');return;}notify(data.error||'连接中断',2200);return;}
-  snapshot=data;updatedAt=performance.now();if(!displayShips)displayShips=data.ships.map(s=>({...s}));
+  if(!snapshot&&data.seat===1&&!aimTouched){desired.aimx=76;desired.aimy=375;}snapshot=data;updatedAt=performance.now();if(!displayShips)displayShips=data.ships.map(s=>({...s}));
   updateUI();
  }catch(e){if(!document.hidden)notify('等待连接恢复…',800);}
  finally{clearTimeout(timer);inflight=false;}
