@@ -736,7 +736,7 @@ def _siege_engineer_build_ladder(r,z,obstacle):
     height=ground-top
     if height<55 or height>320:return None
     direction=1 if obstacle['x']>=z['x'] else -1
-    x=obstacle['x']-direction*(obstacle['w']/2+15)
+    x=obstacle['x']-direction*(obstacle['w']/2+z['w']/2+5)
     if not 14<=x<=946 or abs(x-z['x'])>90:return None
     w=28;h=height;y=ground-h/2
     if any(b['hp']>0 and b is not z and b is not obstacle and b['kind'] in ('wood','stone','core','barrel','tnt','tnt_wait')
@@ -840,7 +840,7 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
                             and (b['x']-z['x'])*d>=-18 and abs(b['x']-z['x'])<260]
                 if candidates:
                     ladder_target=min(candidates,key=lambda b:abs(b['x']-z['x']))
-                    if abs(z['x']-ladder_target['x'])<=max(4,speed/12):
+                    if abs(z['x']-ladder_target['x'])<=max(8,(z['w']+ladder_target['w'])/3,speed/12):
                         z['x']=ladder_target['x']
                         z['y']=max(ladder_target['y']-ladder_target['h']/2-z['h']/2,z['y']-speed/12)
                         z['vx']=z['vy']=0.
