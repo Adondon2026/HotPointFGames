@@ -60,7 +60,10 @@ for _ in range(3):
     if any(b.get('engineerLadder') for b in r['bodies']):break
     g._siege_zombie_round(r,0.,[],lambda t,shot:[],[],None)
 assert any(b.get('engineerLadder') and b['hp']>0 for b in r['bodies']),'engineer did not build ladder'
-y=eng['y']
-for _ in range(4):g._siege_zombie_round(r,0.,[],lambda t,shot:[],[],None)
-assert eng['y']<y,'zombies did not climb ladder'
+y=eng['y'];ys=[round(y,2)]
+for _ in range(4):
+    g._siege_zombie_round(r,0.,[],lambda t,shot:[],[],None)
+    ys.append(round(eng['y'],2))
+print('ENGINEER_LADDER_TRACE',ys,[(b['x'],b['y'],b['w'],b['h'],b['hp']) for b in r['bodies'] if b.get('special')=='ladder'],flush=True)
+assert min(ys)<min(y,390)-5,'zombies did not climb ladder'
 print('scenario regression passed')
