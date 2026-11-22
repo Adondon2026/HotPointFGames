@@ -60,11 +60,13 @@ try:
             expect(page.locator("#joinCard")).to_be_hidden()
             expect(page.locator("#modeSiege")).to_be_visible(timeout=12000)
             assert page.locator("#liteLibrary .mode").first.get_attribute("id") == "modeSiege"
+            print("ROOM BEFORE", width, page.evaluate("""() => ({mode:state?.mode,phase:state?.phase,chosen:state?.modeSelected,game:document.querySelector('#liteGameName')?.textContent,view:document.body.dataset.view})"""), errors, flush=True)
             page.locator("#modeSiege").tap()
             page.wait_for_function("state && state.mode==='siege' && state.modeSelected!==false")
             expect(page.locator("#liteLibrary")).to_be_hidden()
             expect(page.locator("#liteCurrent")).to_be_visible()
             expect(page.locator("#liteChangeGame")).to_be_visible()
+            print("ROOM AFTER", width, page.evaluate("""() => ({mode:state?.mode,phase:state?.phase,chosen:state?.modeSelected,game:document.querySelector('#liteGameName')?.textContent,view:document.body.dataset.view})"""), errors, flush=True)
             expect(page.locator("#liteGameName")).to_have_text("保卫子刊", timeout=6000)
             page.locator("#liteChangeGame").tap()
             expect(page.locator("#liteLibrary")).to_be_visible()
