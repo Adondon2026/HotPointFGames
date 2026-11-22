@@ -403,7 +403,7 @@ _SIEGE_ZOMBIE_TYPES={
     'dancer':(34,46,75,65,9),
     'guard':(44,54,150,65,13),
     'siegecar':(62,44,135,76,13),
-    'engineer':(62,44,135,76,13), # compatibility with saved matches
+    'engineer':(32,44,76,90,8), # ladder-building support zombie
 }
 # Progression is shared by field pickups, resupply, and enemy drops.
 _SIEGE_ZOMBIE_DIFFICULTIES={
@@ -727,6 +727,27 @@ def _siege_siegecar_plan(r,z,core):
     piercing=rank==3 and goal is core and hit is not None and hit is not core and clear_to_core
     return dict(origin=start,target=hit,point=point,ground=ground,damage=damage,penetration=piercing)
 
+def _siege_engineer_build_ladder(r,z,obstacle):
+    """Build a destructible vertical ladder beside a high barrier, at most once
+    per cooldown. Ladders are climbable, not impenetrable terrain."""
+    if obstacle['hp']<=0 or obstacle['kind'] not in ('wood','stone'):return None
+    top=obstacle['y']-obstacle['h']/2
+    ground=_siege_floor_body(r,obstacle['x'],28)
+    height=ground-top
+    if height<55 or height>320:return None
+    direction=1 if obstacle['x']>=z['x'] else -1
+    x=obstacle['x']-direction*(obstacle['w']/2+15)
+    if not 14<=x<=946 or abs(x-z['x'])>90:return None
+    w=28;h=height;y=ground-h/2
+    if any(b['hp']>0 and b is not z and b is not obstacle and b['kind'] in ('wood','stone','core','barrel','tnt','tnt_wait')
+           and abs(x-b['x'])*2<w+b['w']-1 and abs(y-b['y'])*2<h+b['h']-1
+           for b in r['bodies']):return None
+    if sum(b.get('engineerLadder',False) and b['hp']>0 for b in r['bodies'])>=10:return None
+    b=dict(id=r['nextBodyId'],side=2,kind='wood',special='ladder',engineerLadder=True,
+           x=x,y=y,w=w,h=h,hp=55.,max=55.,vx=0.,vy=0.,fixed=True)
+    r['nextBodyId']+=1;r['bodies'].append(b)
+    return b
+
 def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     # Fixed one-second enemy action, recorded at normal simulation time.
     # The enemy phase is independent of the previous shot's debris.
@@ -812,7 +833,20 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
             _,_,_,speed,damage=_SIEGE_ZOMBIE_TYPES[z['zombieType']]
             _,speed_scale,damage_scale,_=_siege_zombie_difficulty(r);speed*=speed_scale;damage*=damage_scale
             d=1 if core['x']>z['x'] else -1
-            if z['zombieType'] in ('siegecar','engineer'):
+            ladder_target=None
+            if z['zombieType']!='flyer' and core['y']+core['h']/2 < z['y']+z['h']/2-18:
+                candidates=[b for b in bodies if b['hp']>0 and b.get('special')=='ladder'
+                            and b['y']-b['h']/2+3 < z['y']+z['h']/2
+                            and (b['x']-z['x'])*d>=-18 and abs(b['x']-z['x'])<260]
+                if candidates:
+                    ladder_target=min(candidates,key=lambda b:abs(b['x']-z['x']))
+                    if abs(z['x']-ladder_target['x'])<=max(4,speed/12):
+                        z['x']=ladder_target['x']
+                        z['y']=max(ladder_target['y']-ladder_target['h']/2-z['h']/2,z['y']-speed/12)
+                        z['vx']=z['vy']=0.
+                        continue
+                    d=1 if ladder_target['x']>z['x'] else -1
+            if z['zombieType']=='siegecar':
                 if step==2:
                     plan=_siege_siegecar_plan(r,z,core)
                     if plan:
@@ -844,7 +878,7 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
             # Ground enemies that cannot reach an elevated core attack accessible
             # load-bearing blocks. Moving towards a support also handles offset stacks.
             support_target=None
-            if not flying and core['y']+core['h']/2<z['y']-z['h']/2+12:
+            if not flying and not ladder_target and core['y']+core['h']/2<z['y']-z['h']/2+12:
                 supports=_siege_zombie_supports(r,core)
                 reachable=[b for b in supports if abs(z['y']-b['y'])<=(z['h']+b['h'])/2+12 and b['kind']!='cannon']
                 if reachable:
@@ -856,8 +890,15 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
             if not flying and not target:
                 obstacles=[b for b in bodies if b['hp']>0 and b['kind'] in ('wood','stone','barrel','tnt','tnt_wait')
                            and (b['x']-z['x'])*d>=-3
-                           and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2]
+                           and abs(nx-b['x'])<(z['w']+b['w'])/2+2 and abs(z['y']-b['y'])<(z['h']+b['h'])/2
+                           and b.get('special')!='ladder']
                 if obstacles:target=min(obstacles,key=lambda b:abs(b['x']-z['x']))
+                if z['zombieType']=='engineer' and target and step==2 and not ladder_target and state['round']>=z.get('nextLadderRound',0):
+                    ladder=_siege_engineer_build_ladder(r,z,target)
+                    if ladder:
+                        z['nextLadderRound']=state['round']+3
+                        events.append(['ladderBuilt',round(t,3),z['id'],ladder['id'],round(ladder['x'],1),round(ladder['y'],1)])
+                        target=None
                 if target and target is not support_target and (z['zombieType']=='climber' and target['h']<=44 or z['zombieType']=='pole' and target['h']<=82 and not z.get('vaulted')):
                     top=target['y']-target['h']/2-z['h']/2
                     if not any(b is not target and b['hp']>0 and b['kind'] in ('wood','stone') and abs(nx-b['x'])<(z['w']+b['w'])/2 and abs(top-b['y'])<(z['h']+b['h'])/2 for b in bodies):
@@ -3223,6 +3264,20 @@ def siege_request(data):
 
 
 # Data-only challenge scenarios, isolated to private trial arenas.
+def _siege_scenario_check_overlap(scene):
+    """Authored objects cannot occupy the same space; touching edges is valid."""
+    entries=[(scene['cannon']['x'],scene['cannon']['y'],46,48,'炮台'),
+             (scene['core']['x'],scene['core']['y'],50,52,'子刊')]
+    for b in scene['blocks']:entries.append((b['x'],b['y'],b['w'],b['h'],'建筑'))
+    for z in scene['zombies']:
+        w,h,*_=_SIEGE_ZOMBIE_TYPES[z['kind']]
+        entries.append((z['x'],z['y'],w,h,'僵尸'))
+    for item in scene['items']:entries.append((item['x'],item['y'],30,30,'增益'))
+    for i,(x,y,w,h,label) in enumerate(entries):
+        for xx,yy,ww,hh,other in entries[:i]:
+            if abs(x-xx)*2<w+ww-1e-6 and abs(y-yy)*2<h+hh-1e-6:
+                raise ValueError(f'{label}与{other}位置重叠，请调整布置')
+
 def _siege_scenario_validate(raw):
     if not isinstance(raw,dict) or raw.get('version')!=1:raise ValueError('场景版本无效')
     def number(v,lo,hi):
@@ -3249,13 +3304,13 @@ def _siege_scenario_validate(raw):
              cannon=point(raw.get('cannon')),core=point(raw.get('core')),blocks=[],zombies=[],items=[],stock={})
     for obj in rows('blocks',100):
         v=point(obj,block=True);k=obj.get('kind')
-        if type(k) is not str or k not in ('wood','stone','barrel'):raise ValueError('建筑类型无效')
-        v.update(kind=k,w=number(obj.get('w',48),12,240),h=number(obj.get('h',24),12,160))
+        if type(k) is not str or k not in ('wood','stone','barrel','spring','oneway','ladder'):raise ValueError('建筑类型无效')
+        v.update(kind=k,w=number(obj.get('w',48),12,240),h=number(obj.get('h',24),12,320 if k=='ladder' else 160))
         if v['x']-v['w']/2<0 or v['x']+v['w']/2>960 or v['y']-v['h']/2<0 or v['y']+v['h']/2>416:raise ValueError('建筑超出地图')
         out['blocks'].append(v)
     for obj in rows('zombies',54):
         v=point(obj,True);k=obj.get('kind')
-        if type(k) is not str or k not in _SIEGE_ZOMBIE_TYPES or k=='engineer':raise ValueError('僵尸类型无效')
+        if type(k) is not str or k not in _SIEGE_ZOMBIE_TYPES:raise ValueError('僵尸类型无效')
         drop=obj.get('drop',{'mode':'random'})
         if not isinstance(drop,dict) or drop.get('mode') not in ('random','none','fixed'):raise ValueError('掉落配置无效')
         v.update(kind=k,round=integer(obj.get('round',0),0,100),
@@ -3267,6 +3322,7 @@ def _siege_scenario_validate(raw):
     if not isinstance(inv,dict) or len(inv)>len(_SIEGE_V24_KEYS):raise ValueError('库存无效')
     for k,n in inv.items():
         v=buff(dict(kind=k,amount=n));out['stock'][k]=v['amount']
+    _siege_scenario_check_overlap(out)
     return out
 
 def _siege_scenario_spawn_due(r,round_no):
@@ -3301,8 +3357,12 @@ def _siege_scenario_load(r,raw):
     r['launchers']=[[g['x'],min(g['y'],392)-24],[850,368]]
     _siege_install_cannons(r)
     for obj in scene['blocks']:
-        hp={'wood':45,'stone':90,'barrel':35}[obj['kind']]
-        r['bodies'].append(dict(id=r['nextBodyId'],side=0,hp=hp,max=hp,vx=0.,vy=0.,**obj));r['nextBodyId']+=1
+        k=obj['kind'];hp={'wood':45,'stone':90,'barrel':35,'spring':72,'oneway':80,'ladder':55}[k]
+        b=dict(id=r['nextBodyId'],side=0,hp=hp,max=hp,vx=0.,vy=0.,**obj)
+        if k=='spring':b.update(kind='stone',special='spring',springHits=4)
+        elif k=='oneway':b.update(kind='stone',special='oneway',onewayHits=4,passDir=1)
+        elif k=='ladder':b.update(kind='wood',special='ladder',fixed=True)
+        r['bodies'].append(b);r['nextBodyId']+=1
     for obj in scene['items']:
         r['items'].append(dict(id=r['nextItemId'],r=15,zone='air',**obj));r['nextItemId']+=1
     _siege_scenario_spawn_due(r,0)
