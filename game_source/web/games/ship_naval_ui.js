@@ -1,6 +1,6 @@
 // Naval mode is a thin presentation layer over the Siege battlefield.
 // The same canvas, input/panning, replay, HUD, effects, items and networking are retained.
-let navalMoveMode=false,navalTouch=null,navalMoveId=-1,navalMoveStart=0;
+let navalMoveMode=false,navalTouch=null,navalMoveId=-1,navalMoveStart=0,navalInitialAim='';
 const navalTools=document.createElement('div');
 navalTools.id='navalTools';navalTools.className='hidden';
 navalTools.innerHTML='<button type="button" id="navalShoot" aria-pressed="true">开炮</button><button type="button" id="navalMove" aria-pressed="false">移动</button><span id="navalHint">本回合选择一项行动</span>';
@@ -49,6 +49,7 @@ async function navalAttemptMove(pt){
 }
 const navalOriginalUpdate=update;
 update=function(){
+ if(room?.naval&&navalInitialAim!==room.code){navalInitialAim=room.code;angle=0;power=70;}
  navalOriginalUpdate();
  if(room?.naval&&room.phase!=='play')navalMoveMode=false;
  navalModeView();
