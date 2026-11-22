@@ -50,11 +50,14 @@ try:
             page = ctx.new_page()
             errors = []
             page.on("pageerror", lambda err: errors.append(str(err)))
+            page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
             page.goto(url + "/")
             expect(page.locator(".room-heading")).to_be_visible()
             expect(page.locator("#create")).to_be_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 2")
             page.goto(url + f"/r/{code}/")
+            expect(page.locator("#lobbyCard")).to_be_visible(timeout=12000)
+            expect(page.locator("#joinCard")).to_be_hidden()
             expect(page.locator("#modeSiege")).to_be_visible(timeout=12000)
             assert page.locator("#liteLibrary .mode").first.get_attribute("id") == "modeSiege"
             page.locator("#modeSiege").tap()
