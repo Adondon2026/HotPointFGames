@@ -67,7 +67,7 @@ def build_release():
         read("parts/games/doudizhu_actions.pyfrag"),
         read("parts/games/chuanma_actions.pyfrag"),
         read("parts/games/draw_guess_actions.pyfrag"),
-        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + "\n" + read("parts/96_bots.pyfrag") + "\n" + read("parts/97_table_events.pyfrag") + "\n" + army_engine() + "\n" + read("parts/98_army.pyfrag") + "\n" + read("parts/98_siege.pyfrag") + "\n" + read("parts/99_rooms.pyfrag") + '\nif __name__ == "__main__":', 1),
+        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + "\n" + read("parts/96_bots.pyfrag") + "\n" + read("parts/97_table_events.pyfrag") + "\n" + army_engine() + "\n" + read("parts/98_army.pyfrag") + "\n" + read("parts/98_siege.pyfrag") + "\n" + read("parts/98_ship_battle.pyfrag") + "\n" + read("parts/99_rooms.pyfrag") + '\nif __name__ == "__main__":', 1),
     ]
     release = "".join(chunks)
     compile(release, "game_hall_lan_v6_2.py", "exec")
