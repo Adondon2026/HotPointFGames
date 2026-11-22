@@ -133,7 +133,7 @@ def _ship_public(rt,pid):
     return {'ok':True,'seat':seat,'names':rt['names'],
             'ships':[{k:round(v,3) if isinstance(v,float) else v for k,v in s.items() if k in ('x','y','a','r','rudder','hp','deaths','aimx','aimy')} for s in rt['ships']],
             'bases':[round(n,2) for n in rt['bases']],
-            'shots':[{k:round(p[k],2) if isinstance(p[k],float) else p[k] for k in ('x','y','kind','from')} for p in rt['shots']],
+            'shots':[{k:round(p[k],2) if isinstance(p[k],float) else p[k] for k in ('x','y','vx','vy','kind','from')} for p in rt['shots']],
             'buffs':[{'x':b['x'],'y':b['y'],'kind':b['kind'],'active':rt['t']>=b['until']} for b in rt['buffs']],
             'rocks':[list(x) for x in _SHIP_ROCKS],
             'winner':rt['winner'],'seq':rt['seq'],'cooldown':max(0.,round(rt['ships'][seat]['shotAt']+.78-rt['t'],2)),
