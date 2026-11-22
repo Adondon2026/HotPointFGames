@@ -2462,7 +2462,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     px,py=contact;vy=-vy*.88;vx*=.97;bounces.append([round(px,1),round(py,1),round(t,3),-1]);bounce_effect(px,py,vx,vy);frames.append(snap(t,[round(px,1),round(py,1)]));break
                 collect(x,y,rr,t)
                 if root_counts.get('firetrail'):ignite_at(x,y,rr+5+2*root_counts['firetrail'],root_counts['firetrail'])
-                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t<.12) and b['id'] not in passed and not _siege_oneway_pass(b,vx) and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
+                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and (naval or (b['side']==side and t<.12))) and b['id'] not in passed and not _siege_oneway_pass(b,vx) and abs(x-b['x'])<=b['w']/2+rr and abs(y-b['y'])<=b['h']/2+rr),None)
                 if target and target.get('special')=='spring':
                     px,py,vx,vy=_siege_spring_bounce(target,oldx,oldy,x,y,vx,vy,rr,copy_rng)
                     _siege_spring_hit(target)
@@ -2555,7 +2555,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
                     f['x'],f['y']=contact;f['vy']=-f['vy']*.88;f['vx']*=.97;bounces.append([round(contact[0],1),round(contact[1],1),round(t,3),f['id']]);bounce_effect(f['x'],f['y'],f['vx'],f['vy'],f);break
                 collect(x,y,fr,t)
                 if counts.get('firetrail'):ignite_at(x,y,fr+5+2*counts['firetrail'],counts['firetrail'])
-                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and b['side']==side and t-f.get('bornAt',0)<.12) and b['id'] not in f['passed'] and not _siege_oneway_pass(b,f['vx']) and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
+                target=next((b for b in bodies if b['hp']>0 and not (b['kind']=='cannon' and (naval or (b['side']==side and t-f.get('bornAt',0)<.12))) and b['id'] not in f['passed'] and not _siege_oneway_pass(b,f['vx']) and abs(x-b['x'])<=b['w']/2+fr and abs(y-b['y'])<=b['h']/2+fr),None)
                 if target and target.get('special')=='spring':
                     f['x'],f['y'],f['vx'],f['vy']=_siege_spring_bounce(target,ox,oy,x,y,f['vx'],f['vy'],fr,copy_rng)
                     _siege_spring_hit(target)
