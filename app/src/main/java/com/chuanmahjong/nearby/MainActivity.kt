@@ -49,7 +49,7 @@ class MainActivity : Activity() {
     private var checkingUpdate = false
     private var availableUpdate: GameUpdates.Available? = null
     private var versionLabel = ""
-    private var updateMessage = "检查更新需要联网，联机游戏可离线"
+    private var updateMessage = ""
 
     companion object {
         private const val PICK_GAME = 6201
@@ -109,13 +109,6 @@ class MainActivity : Activity() {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }, matchWrap(bottom = 8))
 
-        content.addView(TextView(this).apply {
-            text = "手动打开手机热点，然后启动服务器。朋友连接热点后扫码进入。"
-            textSize = 16f
-            setTextColor(Color.DKGRAY)
-            gravity = Gravity.CENTER
-        }, matchWrap(bottom = 18))
-
         statusText = TextView(this).apply {
             textSize = 20f
             gravity = Gravity.CENTER
@@ -143,17 +136,32 @@ class MainActivity : Activity() {
             }
         }
         content.addView(startStopButton, matchWrap(bottom = 14))
+        // Administration is rare; keep it available without competing with start / enter.
+        val advancedTools = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        val advancedToggle = Button(this).apply {
+            text = "更多设置"
+            setOnClickListener {
+                val open = advancedTools.visibility == View.GONE
+                advancedTools.visibility = if (open) View.VISIBLE else View.GONE
+                text = if (open) "收起设置" else "更多设置"
+            }
+        }
+        content.addView(advancedToggle, matchWrap(bottom = 4))
+        content.addView(advancedTools, matchWrap(bottom = 12))
 
         relayStatus = TextView(this)
-        content.addView(Button(this).apply {
+        advancedTools.addView(Button(this).apply {
             text = "开启 / 关闭远程开房"
             setOnClickListener { toggleRelay() }
         }, matchWrap(bottom = 4))
-        content.addView(Button(this).apply {
+        advancedTools.addView(Button(this).apply {
             text = "服务器设置"
             setOnClickListener { configureRelay() }
         }, matchWrap(bottom = 4))
-        content.addView(Button(this).apply {
+        advancedTools.addView(Button(this).apply {
             text = "分享远程邀请"
             setOnClickListener {
                 val url = GameRelay.invitation
@@ -164,8 +172,8 @@ class MainActivity : Activity() {
                 else relayStatus.text = GameRelay.status.ifBlank { "请先连接中继" }
             }
         }, matchWrap(bottom = 4))
-        content.addView(relayStatus, matchWrap(bottom = 10))
-        content.addView(Button(this).apply {
+        advancedTools.addView(relayStatus, matchWrap(bottom = 10))
+        advancedTools.addView(Button(this).apply {
             text = "云账号"
             setOnClickListener { cloudAccount() }
         }, matchWrap(bottom = 10))
@@ -257,7 +265,7 @@ class MainActivity : Activity() {
             text = "导入新版游戏文件"
             setOnClickListener { chooseGameFile() }
         }
-        content.addView(importButton, matchWrap(bottom = 6))
+        advancedTools.addView(importButton, matchWrap(bottom = 6))
 
         restoreButton = Button(this).apply {
             text = "恢复内置游戏"
@@ -270,7 +278,7 @@ class MainActivity : Activity() {
                     .show()
             }
         }
-        content.addView(restoreButton, matchWrap())
+        advancedTools.addView(restoreButton, matchWrap())
 
         setContentView(ScrollView(this).apply {
             isFillViewport = true
@@ -451,8 +459,9 @@ class MainActivity : Activity() {
         enterButton.isEnabled = state.running
         val stopped = !state.running && !state.desired && !importing
         val imported = File(filesDir, "gamehall_import.py").isFile
-        gameSourceText.text = "游戏版本：" + versionLabel.ifBlank { if (imported) "本地导入版" else "APP 内置版" }
+        gameSourceText.text = "版本 " + versionLabel.ifBlank { if (imported) "本地导入版" else "内置版" }
         updateStatus.text = updateMessage
+        updateStatus.visibility = if (updateMessage.isBlank()) View.GONE else View.VISIBLE
         updateButton.text = when {
             importing -> "正在更新…"
             checkingUpdate -> "正在检查…"

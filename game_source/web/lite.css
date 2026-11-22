@@ -277,14 +277,14 @@ body[data-view="lobby"] #liteCurrent{
   background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:none;
 }
 body[data-view="lobby"] #liteCurrent.hidden{display:none!important}
-body[data-view="lobby"] #liteCurrentLabel{display:block}
+body[data-view="lobby"] #liteCurrentLabel{display:none}
 body[data-view="lobby"] .lite-current-top{display:flex;align-items:start;justify-content:space-between;gap:12px}
 body[data-view="lobby"] .lite-current-top>div{min-width:0}
 body[data-view="lobby"] #liteGameName{
   margin:5px 0 6px;font-size:24px;font-weight:400;line-height:1.3;letter-spacing:-.025em;
 }
 body[data-view="lobby"] #liteRoomHint{font-size:13px;color:var(--muted);line-height:1.5}
-body[data-view="lobby"] #liteConfigSummary{font-size:12px;color:var(--muted);margin-top:11px}
+body[data-view="lobby"] #liteConfigSummary{display:none}
 body[data-view="lobby"] #liteChangeGame{
   flex:none;min-height:42px;padding:8px 11px;background:transparent;
   border:1px solid var(--line);border-radius:9px;color:#C5D9C5;font-size:13px;
@@ -334,7 +334,7 @@ body[data-view="lobby"] #liteGameSearch,body[data-view="join"] #liteGameSearch{
   background:#2A3E31;color:#DAE4D1;font-size:18px;font-weight:400;
 }
 #liteLibrary .mode-name{font-size:14px;font-weight:500;white-space:nowrap}
-#liteLibrary .mode-desc{display:block;color:var(--muted);font-size:11px;line-height:1.3}
+#liteLibrary .mode-desc{display:none}
 #liteLibrary .mode.active{background:#2B4133;border-color:#779C7A;box-shadow:none}
 #liteLibrary .mode[data-ineligible="true"]{opacity:.55}
 #liteLibrary .lite-carousel-nav{display:none!important}
@@ -372,6 +372,7 @@ body[data-view="lobby"] #liteActionDock{
 body[data-view="lobby"] #liteActionDock .lite-status{
   color:var(--muted);font-size:13px;margin-bottom:9px;
 }
+body[data-view="lobby"] #liteActionDock .lite-status:empty{display:none}
 body[data-view="lobby"] #liteActionDock .lite-actions{width:100%;max-width:none}
 body[data-view="lobby"] #liteActionDock .full,body[data-view="lobby"] #liteSolo{
   min-height:48px;background:#A9CBA7;color:#142419;
@@ -432,3 +433,14 @@ body[data-view="join"] #joinCard .lite-signed{
   body[data-view="lobby"] #liteChangeGame{padding:8px;font-size:12px}
   #liteLibrary .mode-name{font-size:12px}
 }
+
+/* Copy budget: one visible line per purpose; instructions remain in Rules/Settings. */
+body[data-view="lobby"] #liteBotHint,
+body[data-view="lobby"] #liteChoiceHint,
+body[data-view="join"] #liteChoiceHint{display:none}
+body[data-view="lobby"] #liteRoomHint:empty{display:none}
+body[data-view="lobby"] .lite-room-head h1{
+  font-size:clamp(23px,5.5vw,30px);font-weight:300;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+}
+body[data-view="join"] .lite-hero h1{margin-bottom:16px}

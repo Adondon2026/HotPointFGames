@@ -54,6 +54,9 @@ try:
             page.goto(url + "/")
             expect(page.locator(".room-heading")).to_be_visible()
             expect(page.locator("#create")).to_be_visible()
+            expect(page.locator("header h1")).to_have_text("游戏大厅")
+            assert page.locator("header .muted").count() == 0
+            assert page.locator("header .kicker").count() == 0
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 2")
             assert page.evaluate("""() => {
                 const ch=s=>[...s.matchAll(/[0-9]+/g)].slice(0,3).map(x=>Number(x[0]));
@@ -66,6 +69,9 @@ try:
             expect(page.locator("#joinCard")).to_be_hidden()
             expect(page.locator("#modeSiege")).to_be_visible(timeout=12000)
             assert page.locator("#liteLibrary .mode").first.get_attribute("id") == "modeSiege"
+            expect(page.locator("#liteRoomTitle")).to_have_text("房间 " + code)
+            expect(page.locator("#liteBotHint")).to_be_hidden()
+            assert page.locator("#liteConfigSummary").is_hidden()
             assert page.evaluate("""() => {
                 const ch=s=>[...s.matchAll(/[0-9]+/g)].slice(0,3).map(x=>Number(x[0]));
                 const cs=getComputedStyle(document.body);
@@ -80,6 +86,8 @@ try:
             expect(page.locator("#liteChangeGame")).to_be_visible()
             print("ROOM AFTER", width, page.evaluate("""() => ({mode:state?.mode,phase:state?.phase,chosen:state?.modeSelected,game:document.querySelector('#liteGameName')?.textContent,view:document.body.dataset.view})"""), errors, flush=True)
             expect(page.locator("#liteGameName")).to_have_text("保卫子刊", timeout=6000)
+            expect(page.locator("#liteRoomHint")).to_have_text("2 人对战／1～3 人合作")
+            assert page.locator("#liteConfigSummary").is_hidden()
             page.locator("#liteChangeGame").tap()
             expect(page.locator("#liteLibrary")).to_be_visible()
             assert page.locator("#liteLibrary .mode").count() == 7
@@ -111,6 +119,7 @@ try:
             page.goto(url + "/quiet-siege-test")
             page.wait_for_function('typeof apply === "function"')
             page.evaluate("d=>{apply(d);overview=null;update()}", data)
+            expect(page.locator("#stockBtn")).to_be_visible()
             expect(page.locator("#angleSlider")).to_be_hidden()
             expect(page.locator("#powerSlider")).to_be_hidden()
             page.locator("#angleValue").tap()
@@ -145,14 +154,30 @@ try:
                     const r = document.querySelector(id).getBoundingClientRect();
                     return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};
                 };
+                const slots = [...document.querySelectorAll('#controls .adjust')]
+                  .map(el=>{const r=el.getBoundingClientRect();
+                    return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};});
                 return {controls:box('#controls'),angle:box('#angleSlider'),
-                        power:box('#powerSlider'),fire:box('#fire')};
+                        power:box('#powerSlider'),fire:box('#fire'),
+                        stock:box('#stockBtn'),slots,
+                        seatBg:getComputedStyle(document.querySelector('#hud #left')).backgroundColor,
+                        turnBg:getComputedStyle(document.querySelector('#turn')).backgroundColor};
             }""")
             assert geometry["controls"]["bottom"] <= height + 2, (width, height, geometry)
             assert geometry["controls"]["x"] >= -2, (width, height, geometry)
             assert geometry["fire"]["right"] <= width + 2, (width, height, geometry)
             assert geometry["angle"]["right"] < geometry["fire"]["x"], (width, height, geometry)
             assert geometry["angle"]["y"] >= -2, (width, height, geometry)
+            # All four actions share one height and equally distributed widths.
+            row = [*geometry["slots"], geometry["stock"], geometry["fire"]]
+            assert len(row) == 4, (width, height, geometry)
+            assert max(x["height"] for x in row) - min(x["height"] for x in row) <= 1.1, (width, height, geometry)
+            assert max(x["width"] for x in row) - min(x["width"] for x in row) <= 1.1, (width, height, geometry)
+            assert max(x["y"] for x in row) - min(x["y"] for x in row) <= 1.1, (width, height, geometry)
+            assert all(x["width"] >= 50 for x in row), (width, height, geometry)
+            # Player names and round label do not have separate dark overlays.
+            assert geometry["seatBg"].replace(" ", "") in ("rgba(0,0,0,0)", "transparent"), geometry
+            assert geometry["turnBg"].replace(" ", "") in ("rgba(0,0,0,0)", "transparent"), geometry
             assert page.evaluate("getComputedStyle(document.querySelector('#game #controls .aim-value span')).fontWeight==='400'")
             page.locator("#angleValue").tap()
             expect(page.locator("#angleSlider")).to_be_hidden()
