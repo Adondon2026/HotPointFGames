@@ -33,7 +33,7 @@ $('dial').addEventListener('pointerdown',e=>{
  chooseRudder(k);
 });
 $('dial').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();chooseRudder(rudderIndex+(e.key==='ArrowLeft'?-1:1));}if(e.key==='Home'){e.preventDefault();chooseRudder(3);}});
-function holdStart(e){if(snapshot?.winner!==null&&snapshot?.winner!==undefined)return;e.preventDefault();desired.fire=true;$('fire').classList.add('pressed');if(e.pointerId!==undefined)try{$('fire').setPointerCapture(e.pointerId);}catch(_){}send('control');}
+function holdStart(e){if(snapshot?.winner!==null&&snapshot?.winner!==undefined)return;e.preventDefault();desired.fire=true;firePulse=true;$('fire').classList.add('pressed');if(e.pointerId!==undefined)try{$('fire').setPointerCapture(e.pointerId);}catch(_){}send('control');}
 function holdEnd(e){desired.fire=false;$('fire').classList.remove('pressed');}
 $('fire').addEventListener('pointerdown',holdStart);for(const type of ['pointerup','pointercancel','lostpointercapture'])$('fire').addEventListener(type,holdEnd);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)holdEnd();});
