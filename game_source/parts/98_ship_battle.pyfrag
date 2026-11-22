@@ -1,0 +1,167 @@
+# Real-time naval duel. Kept independent of the turn-based siege engine.
+import math
+_SHIP_W=1440
+_SHIP_H=750
+_SHIP_ROCKS=((590,216,49),(726,542,58),(842,296,50))
+_SHIP_BUFFS=(('heavy',440,190),('split',605,393),('blast',790,180),('bounce',940,520),('heavy',1050,370))
+_SHIP_BUFF_LABEL={'heavy':'巨型','split':'分裂','blast':'爆破','bounce':'弹跳'}
+_SHIP_COLORS={'heavy':'#edb56f','split':'#cba4ed','blast':'#f18c78','bounce':'#8ad6ca'}
+def _ship_clamp(v,a,b):return max(a,min(b,v))
+def _ship_diff(a,b):return math.atan2(math.sin(a-b),math.cos(a-b))
+def _ship_new(seats):
+    now=time.time()
+    return {'seats':[p['id'] for p in seats],
+            'names':[p['name'] for p in seats],
+            'ships':[{'x':230 if i==0 else 1210,'y':375,'a':0 if i==0 else math.pi,'r':0.,
+                      'rudder':0.,'hp':100.,'aimx':720.,'aimy':375.,'fire':False,'shotAt':0.,
+                      'respawn':0.,'deaths':0} for i in range(2)],
+            'bases':[240.,240.],
+            'shots':[],
+            'buffs':[{'kind':kind,'x':x,'y':y,'until':0.} for kind,x,y in _SHIP_BUFFS],
+            'winner':None,'seq':0,'t':now,'last':now,'started':now}
+def _ship_runtime():
+    rt=_ROOM_ACTIVE['runtime'].get('shipBattle')
+    if rt is None:
+        seats=sorted(STATE['players'],key=lambda p:p['id']!=STATE['hostPlayerId'])
+        if len(seats)!=2:return None
+        rt=_ship_new(seats);_ROOM_ACTIVE['runtime']['shipBattle']=rt
+    return rt
+def _ship_hit(rt,owner,x,y,damage,radius=0.,pierce=False):
+    enemy=1-owner
+    base_x=76 if enemy==0 else _SHIP_W-76
+    if math.hypot(x-base_x,y-375)<55+radius:
+        rt['bases'][enemy]=max(0.,rt['bases'][enemy]-damage)
+        if rt['bases'][enemy]<=0:rt['winner']=owner
+        return True
+    target=rt['ships'][enemy]
+    if target['hp']>0 and math.hypot(x-target['x'],y-target['y'])<25+radius:
+        target['hp']=max(0.,target['hp']-damage)
+        if target['hp']<=0:
+            target['respawn']=rt['t']+2.6;target['deaths']+=1;target['fire']=False
+        return True
+    return False
+def _ship_shot(rt,i,angle,eff='normal',x=None,y=None):
+    s=rt['ships'][i]
+    if len(rt['shots'])>=90:return
+    a=angle
+    rt['shots'].append({'x':s['x']+math.cos(a)*27 if x is None else x,
+                        'y':s['y']+math.sin(a)*27 if y is None else y,
+                        'vx':math.cos(a)*390.,'vy':math.sin(a)*390.,
+                        'from':i,'age':0.,'kind':eff,'used':[],
+                        'bounces':1 if eff=='bounce' else 0})
+def _ship_bot(rt,dt):
+    i=next((j for j,pid in enumerate(rt['seats']) if any(p['id']==pid and p.get('isBot') for p in STATE['players'])),None)
+    if i is None:return
+    s=rt['ships'][i]
+    if s['hp']<=0:return
+    enemy=1-i
+    destx=140 if enemy==0 else _SHIP_W-140
+    # Small deterministic lane offset to avoid reef traffic.
+    desty=375+(120 if i else -120)
+    if abs(s['x']-720)<310:desty=360+(170 if i else -170)
+    heading=math.atan2(desty-s['y'],destx-s['x'])
+    s['rudder']=_ship_clamp(_ship_diff(heading,s['a'])*1.8,-.61,.61)
+    target=rt['ships'][enemy]
+    aimx=target['x'] if target['hp']>0 and math.hypot(s['x']-target['x'],s['y']-target['y'])<390 else 76 if enemy==0 else _SHIP_W-76
+    aimy=target['y'] if aimx==target['x'] else 375
+    s['aimx']=aimx;s['aimy']=aimy;s['fire']=True
+def _ship_step(rt,dt):
+    rt['t']+=dt
+    _ship_bot(rt,dt)
+    for i,s in enumerate(rt['ships']):
+        if s['hp']<=0:
+            if rt['t']>=s['respawn']:
+                s.update(x=230 if i==0 else 1210,y=375+(24 if i else -24),a=0 if i==0 else math.pi,r=0.,hp=100.,rudder=0.,fire=False)
+            continue
+        target_r=.96*(s['rudder']/.61)
+        s['r']+=(target_r-s['r'])*min(1.,dt*2.0)
+        s['a']+=s['r']*dt
+        v=72.
+        nx=s['x']+math.cos(s['a'])*v*dt;ny=s['y']+math.sin(s['a'])*v*dt
+        nx=_ship_clamp(nx,95.,_SHIP_W-95.);ny=_ship_clamp(ny,36.,_SHIP_H-36.)
+        for ox,oy,rr in _SHIP_ROCKS:
+            dd=math.hypot(nx-ox,ny-oy)
+            if dd<rr+21:
+                if dd<.01:dd=.01
+                nx=ox+(nx-ox)/dd*(rr+21);ny=oy+(ny-oy)/dd*(rr+21)
+        s['x']=nx;s['y']=ny
+        if s['fire'] and rt['t']-s['shotAt']>.78:
+            ang=math.atan2(s['aimy']-s['y'],s['aimx']-s['x'])
+            _ship_shot(rt,i,ang);s['shotAt']=rt['t']
+    keep=[];spawn=[]
+    for p in rt['shots']:
+        p['age']+=dt
+        if p['age']>3.65:continue
+        p['x']+=p['vx']*dt;p['y']+=p['vy']*dt
+        outside=p['x']<0 or p['x']>_SHIP_W or p['y']<0 or p['y']>_SHIP_H
+        rock=any(math.hypot(p['x']-x,p['y']-y)<rr for x,y,rr in _SHIP_ROCKS)
+        if outside or rock:
+            if p['bounces']>0:
+                p['bounces']-=1
+                if outside:
+                    if p['x']<0 or p['x']>_SHIP_W:p['vx']*=-1
+                    if p['y']<0 or p['y']>_SHIP_H:p['vy']*=-1
+                else:p['vx']*=-1;p['vy']*=-1
+                p['x']=_ship_clamp(p['x'],5.,_SHIP_W-5.);p['y']=_ship_clamp(p['y'],5.,_SHIP_H-5.)
+            else:continue
+        for j,b in enumerate(rt['buffs']):
+            if rt['t']<b['until'] or j in p['used'] or len(p['used'])>=2:continue
+            if math.hypot(p['x']-b['x'],p['y']-b['y'])>25:continue
+            p['used'].append(j);b['until']=rt['t']+8.5
+            p['kind']=b['kind']
+            if b['kind']=='bounce':p['bounces']+=1
+            if b['kind']=='split':
+                for a in (-.22,.22):
+                    speed=math.hypot(p['vx'],p['vy'])
+                    ang=math.atan2(p['vy'],p['vx'])+a
+                    if len(rt['shots'])+len(spawn)<90:spawn.append({**p,'vx':math.cos(ang)*speed,'vy':math.sin(ang)*speed,'used':list(p['used']),'bounces':0,'kind':'split'})
+        amount={'normal':11.,'heavy':24.,'split':9.,'blast':17.,'bounce':12.}[p['kind']]
+        radius=37. if p['kind']=='blast' else 8. if p['kind']=='heavy' else 0.
+        if _ship_hit(rt,p['from'],p['x'],p['y'],amount,radius):continue
+        keep.append(p)
+    rt['shots']=(keep+spawn)[:90]
+    rt['seq']+=1
+def _ship_tick(rt):
+    now=time.time()
+    # Never simulate a large offline gap; input clients naturally drive a short real-time loop.
+    elapsed=_ship_clamp(now-rt['last'],0.,.18);rt['last']=now
+    if rt['winner'] is not None:return
+    while elapsed>.000001:
+        step=min(.025,elapsed);_ship_step(rt,step);elapsed-=step
+def _ship_public(rt,pid):
+    seat=rt['seats'].index(pid)
+    return {'ok':True,'seat':seat,'names':rt['names'],
+            'ships':[{k:round(v,3) if isinstance(v,float) else v for k,v in s.items() if k in ('x','y','a','r','rudder','hp','deaths','aimx','aimy')} for s in rt['ships']],
+            'bases':[round(n,2) for n in rt['bases']],
+            'shots':[{k:round(p[k],2) if isinstance(p[k],float) else p[k] for k in ('x','y','vx','vy','kind','from')} for p in rt['shots']],
+            'buffs':[{'x':b['x'],'y':b['y'],'kind':b['kind'],'active':rt['t']>=b['until']} for b in rt['buffs']],
+            'rocks':[list(x) for x in _SHIP_ROCKS],
+            'winner':rt['winner'],'seq':rt['seq'],'cooldown':max(0.,round(rt['ships'][seat]['shotAt']+.78-rt['t'],2)),
+            'host':pid==STATE['hostPlayerId'],'elapsed':round(rt['t']-rt['started'],1)}
+def _ship_request(data):
+    pid=TOKENS.get(str(data.get('token','')))
+    if not pid or not player_by_id(pid):return {'ok':False,'error':'请先加入房间'}
+    if STATE['mode']!='ship' or STATE['phase']!='ship_play':return {'ok':False,'error':'对局已结束','roomEnded':True}
+    rt=_ship_runtime()
+    if rt is None or pid not in rt['seats']:return {'ok':False,'error':'未分配船位'}
+    kind=data.get('type','state');seat=rt['seats'].index(pid)
+    if kind=='return':
+        if pid!=STATE['hostPlayerId']:return {'ok':False,'error':'只有房主能返回房间'}
+        _ROOM_ACTIVE['runtime'].pop('shipBattle',None);STATE.update(phase='lobby',winnerId=None,turnPlayerId=None,roundNo=0)
+        bump();return {'ok':True,'returned':True}
+    if kind=='rematch':
+        if pid!=STATE['hostPlayerId'] or rt['winner'] is None:return {'ok':False,'error':'等待房主重赛'}
+        _ROOM_ACTIVE['runtime']['shipBattle']=_ship_new(sorted(STATE['players'],key=lambda p:p['id']!=STATE['hostPlayerId']))
+        rt=_ROOM_ACTIVE['runtime']['shipBattle']
+    elif kind=='control':
+        if rt['winner'] is None:
+            s=rt['ships'][seat]
+            if type(data.get('rudder')) in (int,float) and math.isfinite(data['rudder']):
+                s['rudder']=_ship_clamp(float(data['rudder']),-.61,.61)
+            if all(type(data.get(k)) in (int,float) and math.isfinite(data[k]) for k in ('aimx','aimy')):
+                s['aimx']=_ship_clamp(float(data['aimx']),0.,_SHIP_W)
+                s['aimy']=_ship_clamp(float(data['aimy']),0.,_SHIP_H)
+            if type(data.get('fire')) is bool:s['fire']=data['fire']
+    elif kind!='state':return {'ok':False,'error':'未知操作'}
+    _ship_tick(rt)
+    return _ship_public(rt,pid)

@@ -53,6 +53,7 @@ def build_release():
         "HUB_PAGE = " + repr(read("web/hub.html")) + "\n\n",
         "SIEGE_PAGE = " + repr(read("web/games/siege.html").replace("/* SCENARIO_EDITOR */", read("web/games/siege_scenario.js")).replace("<script>", "<script>\n" + read("web/games/siege_catalog.js") + "\n" + read("web/games/siege_audio.js") + "\n", 1)) + "\n\n",
         "SHIP_DOCK_PAGE = " + repr(read("web/games/ship_dock.html").replace("/* SHIP_DOCK_SCRIPT */", read("web/games/ship_dock.js"))) + "\n\n",
+        "SHIP_BATTLE_PAGE = " + repr(read("web/games/ship_battle.html").replace("/* SHIP_BATTLE_SCRIPT */", read("web/games/ship_battle.js"))) + "\n\n",
         read("parts/01_draw_constants.pyfrag"),
         read("parts/games/doudizhu_backend.pyfrag"),
         read("parts/games/chuanma_backend.pyfrag"),
@@ -66,7 +67,7 @@ def build_release():
         read("parts/games/doudizhu_actions.pyfrag"),
         read("parts/games/chuanma_actions.pyfrag"),
         read("parts/games/draw_guess_actions.pyfrag"),
-        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + "\n" + read("parts/96_bots.pyfrag") + "\n" + read("parts/97_table_events.pyfrag") + "\n" + army_engine() + "\n" + read("parts/98_army.pyfrag") + "\n" + read("parts/98_siege.pyfrag") + "\n" + read("parts/99_rooms.pyfrag") + '\nif __name__ == "__main__":', 1),
+        read("parts/99_server_common_suffix.pyfrag").replace('if __name__ == "__main__":', read("parts/95_lite.pyfrag") + "\n" + read("parts/96_bots.pyfrag") + "\n" + read("parts/97_table_events.pyfrag") + "\n" + army_engine() + "\n" + read("parts/98_army.pyfrag") + "\n" + read("parts/98_siege.pyfrag") + "\n" + read("parts/98_ship_battle.pyfrag") + "\n" + read("parts/99_rooms.pyfrag") + '\nif __name__ == "__main__":', 1),
     ]
     release = "".join(chunks)
     compile(release, "game_hall_lan_v6_2.py", "exec")

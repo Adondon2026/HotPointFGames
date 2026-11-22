@@ -39,9 +39,9 @@ def flush_state():
             tmp=ROOMS_FILE.with_suffix('.tmp');tmp.write_text(payload,encoding='utf-8');tmp.replace(ROOMS_FILE)
     except Exception as e:print('房间保存失败:',e)
 
-_ROOM_MODES=('cards','dice','draw','ddz','chuanma','army','siege')
+_ROOM_MODES=('cards','dice','draw','ddz','chuanma','army','siege','ship')
 def _room_list():
-    return [{'code':k,'mode':r['state']['mode'] if r.get('selected',True) else None,'phase':r['state']['phase'],'host':next((p['name'] for p in r['state']['players'] if p['id']==r['state']['hostPlayerId']),'等待加入'), 'count':sum(not p.get('isBot') for p in r['state']['players']),'capacity':4} for k,r in ROOMS.items() if r['state']['players']]
+    return [{'code':k,'mode':r['state']['mode'] if r.get('selected',True) else None,'phase':r['state']['phase'],'host':next((p['name'] for p in r['state']['players'] if p['id']==r['state']['hostPlayerId']),'等待加入'), 'count':sum(not p.get('isBot') for p in r['state']['players']),'capacity':2 if r['state']['mode'] in ('ship','army') else 4} for k,r in ROOMS.items() if r['state']['players']]
 
 def _room_pref_key(player,record):
     if player.get('accountId'):return 'account:'+player['accountId']
@@ -144,6 +144,26 @@ def _room_action(self,player,action,data):
     if action=='dissolve':
         if player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可解散房间'},403
         _settle_match();ROOMS.pop(_ROOM_ACTIVE['code'],None);save_state();return {'dissolved':True},200
+    if action=='set_mode' and data.get('mode')=='ship':
+        if STATE['phase']!='lobby' or player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可选择游戏'},403
+        STATE['mode']='ship';_ROOM_ACTIVE['selected']=True
+        for p in STATE['players']:p['ready']=bool(p.get('isBot'))
+        bump();return {},200
+    if STATE['mode']=='ship':
+        if action in ('start','solo_start'):
+            if player['id']!=STATE['hostPlayerId'] or STATE['phase']!='lobby':return {'error':'仅房主可以开局'},403
+            humans=[p for p in STATE['players'] if not p.get('isBot')]
+            if action=='solo_start' and len(STATE['players'])==1 and len(humans)==1:
+                add_local_bot();STATE['players'][-1]['autoBot']=True
+            if len(STATE['players'])!=2:return {'error':'海战需要两人，或单人添加机器人'},409
+            if any(not is_connected(p) for p in STATE['players'] if not p.get('isBot')):return {'error':'等待另一位玩家重新连接'},409
+            _ROOM_ACTIVE['runtime']['shipBattle']=_ship_new(sorted(STATE['players'],key=lambda p:p['id']!=STATE['hostPlayerId']))
+            STATE.update(phase='ship_play',matchId=secrets.token_hex(16),winnerId=None,turnPlayerId=None,roundNo=1)
+            bump();return {},200
+        if action=='reset' and STATE['phase']=='ship_play':
+            if player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可以结束对局'},403
+            _ROOM_ACTIVE['runtime'].pop('shipBattle',None);STATE.update(phase='lobby',winnerId=None,turnPlayerId=None,roundNo=0)
+            bump();return {},200
     if action=='set_mode' and data.get('mode')=='siege':
         if STATE['phase']!='lobby' or player['id']!=STATE['hostPlayerId']:return {'error':'仅房主可在房间选择游戏'},403
         STATE['mode']='siege';_ROOM_ACTIVE['selected']=True;trim_bots_for_mode('siege')
@@ -197,6 +217,8 @@ def public_state(player_id,draw_since=-1,draw_revision=-1):
     if _ROOM_ACTIVE:
         v['roomCode']=_ROOM_ACTIVE['code'];v['modeSelected']=_ROOM_ACTIVE.get('selected',True)
         if not v['modeSelected']:v['canStart']=False
+        if STATE['mode']=='ship':
+            v['canStart']=(player_id==STATE['hostPlayerId'] and STATE['phase']=='lobby' and len(STATE['players'])==2 and all(is_connected(p) for p in STATE['players'] if not p.get('isBot')))
         if STATE['mode']=='siege':
             n=len(STATE['players']);coop=STATE['settings'].get('siegeTheme')=='zombie' and STATE['settings'].get('siegeRulesVersion')==24
             v['canStart']=(player_id==STATE['hostPlayerId'] and STATE['phase']=='lobby'
@@ -347,6 +369,14 @@ def _room_route(self,post=False):
                     try:
                         if not 0<int(self.headers.get('Content-Length','0'))<=262144:raise ValueError()
                     except ValueError:return self.reply({'ok':False,'error':'请求无效'},400)
+                if post and sub=='/api/ship':
+                    try:
+                        if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()
+                        data=self.read_json()
+                        if not isinstance(data,dict):raise ValueError()
+                        return self.reply(_ship_request(data))
+                    except (ValueError,TypeError,KeyError,AttributeError):return self.reply({'ok':False,'error':'操作无效'},400)
+                if not post and sub=='/ship':return self.reply(SHIP_BATTLE_PAGE,200,'text/html; charset=utf-8')
                 if post and sub=='/api/siege':
                     try:
                         if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()
