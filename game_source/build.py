@@ -53,7 +53,6 @@ def build_release():
         "HUB_PAGE = " + repr(read("web/hub.html")) + "\n\n",
         "SIEGE_PAGE = " + repr(read("web/games/siege.html").replace("/* SCENARIO_EDITOR */", read("web/games/siege_scenario.js") + "\n" + read("web/games/ship_naval_ui.js")).replace("<script>", "<script>\n" + read("web/games/siege_catalog.js") + "\n" + read("web/games/siege_audio.js") + "\n", 1)) + "\n\n",
         "SHIP_DOCK_PAGE = " + repr(read("web/games/ship_dock.html").replace("/* SHIP_DOCK_SCRIPT */", read("web/games/ship_dock.js"))) + "\n\n",
-        "SHIP_BATTLE_PAGE = " + repr(read("web/games/ship_battle.html").replace("/* SHIP_BATTLE_SCRIPT */", read("web/games/ship_battle.js"))) + "\n\n",
         read("parts/01_draw_constants.pyfrag"),
         read("parts/games/doudizhu_backend.pyfrag"),
         read("parts/games/chuanma_backend.pyfrag"),
