@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#102c34">
+<title>最后一百米 · HotPointFGames</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#102c34;color:#e9f2eb;font-family:system-ui,-apple-system,'Microsoft YaHei',sans-serif;touch-action:manipulation}button,select{font:inherit}a{color:#b6d9d2;text-decoration:none}
+main{max-width:680px;margin:auto;padding:10px 12px calc(12px + env(safe-area-inset-bottom))}.top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}.top strong{font-size:17px;letter-spacing:.03em}.muted{font-size:11px;color:#9dbab7}.tiny{font-size:12px;padding:7px 9px;border:1px solid #45676a;border-radius:10px;background:#173e45;color:#d9eee7;cursor:pointer}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-bottom:8px}.stat{background:#19404a;padding:7px 5px;border-radius:9px;min-width:0;text-align:center}.stat b{display:block;font-size:15px;font-variant-numeric:tabular-nums}.stat small{display:block;color:#92b7b9;font-size:10px;white-space:nowrap}
+.stage{position:relative;display:flex;justify-content:center;overflow:hidden;border:2px solid #42676b;background:#0b3c53;border-radius:11px}canvas{display:block;width:min(100%,min(48vh,480px));height:auto;max-height:58vh;aspect-ratio:400/680;image-rendering:pixelated;touch-action:none}.message{position:absolute;left:10px;right:10px;bottom:10px;min-height:28px;text-align:center;font-weight:600;letter-spacing:.02em;color:#e4efe2;text-shadow:0 2px 6px #001a23;pointer-events:none;font-size:12px}.message.good{color:#ffe6a2}.controls{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}.panel{background:#173a43;border:1px solid #335c63;padding:10px;border-radius:11px;min-width:0}.panel-head{display:flex;justify-content:space-between;gap:5px;align-items:center;font-size:12px;color:#b9cfcd}.panel-head b{color:#eff8e8;font-variant-numeric:tabular-nums}.buttons{display:flex;gap:6px;margin-top:8px}.buttons button{flex:1;min-width:0;min-height:45px;border-radius:9px;border:1px solid #52727a;background:#28505a;color:#edf7ef;font-size:14px;touch-action:manipulation}.buttons button:active{background:#477981}.buttons .center{flex:.75;font-size:12px}.bottom{display:flex;align-items:center;justify-content:space-between;margin-top:9px;color:#a8c1bd;font-size:11px;gap:6px}.bottom select{max-width:155px;background:#183f47;color:#e4f1e8;border:1px solid #426268;border-radius:7px;padding:7px}.note{line-height:1.4;flex:1}
+@media(min-width:680px){.stage canvas{max-height:54vh}.controls{max-width:520px;margin:9px auto 0}}@media(max-height:760px){main{padding-top:6px}.top{margin-bottom:6px}.stats{margin-bottom:6px}.stat{padding:5px 3px}.stage canvas{max-height:48vh}.panel{padding:7px}.buttons{margin-top:5px}.buttons button{min-height:41px}}
+</style></head><body><main>
+<div class="top"><a href="/" class="tiny" aria-label="返回游戏厅">‹ 游戏厅</a><div style="text-align:center"><strong>最后一百米</strong><div class="muted">像素港口 · 单人试航</div></div><button class="tiny" id="reset">重新开始</button></div>
+<div class="stats" aria-live="polite"><div class="stat"><b id="speed">0.0</b><small>航速 / 节</small></div><div class="stat"><b id="distance">--</b><small>距泊位 / 米</small></div><div class="stat"><b id="angle">000°</b><small>航向</small></div><div class="stat"><b id="damage">0</b><small>碰撞次数</small></div></div>
+<div class="stage"><canvas id="sea" width="400" height="680" aria-label="俯视船舶港口模拟画面"></canvas><div id="msg" class="message">目标：驶入黄色泊位，摆正船身，然后停车</div></div>
+<div class="controls"><section class="panel"><div class="panel-head"><span>舵角</span><b id="rudderVal">正舵 0°</b></div><div class="buttons"><button id="left" aria-label="左转舵十度">◀ 左舵</button><button id="mid" class="center">正舵</button><button id="right" aria-label="右转舵十度">右舵 ▶</button></div></section><section class="panel"><div class="panel-head"><span>车钟</span><b id="throttleVal">停车</b></div><div class="buttons"><button id="decrease" aria-label="减小推进档位">−</button><button id="stop" class="center">停车</button><button id="increase" aria-label="增大推进档位">＋</button></div></section></div>
+<div class="bottom"><label>海况 <select id="level"><option value="0">晴空港 · 入门</option><option value="1">侧风港 · 进阶</option><option value="2">横流港 · 挑战</option></select></label><span class="note">倒车减速；舵效随船速变化。靠泊需低速、对准航向。</span></div>
+</main>
+<script>
+(()=>{'use strict';
+const cvs=document.getElementById('sea'),g=cvs.getContext('2d');g.imageSmoothingEnabled=false;
+const el=id=>document.getElementById(id),W=400,H=680;
+const levels=[{name:'晴空港',wind:0,current:0},{name:'侧风港',wind:2,current:0},{name:'横流港',wind:1.1,current:-2.4}];
+const target={x:265,y:172,a:-Math.PI/2};let boat,level=0,prev=0,lastHit=0,settle=0,won=false,paused=false,trail=[];const telegraph=['倒车二','倒车一','停车','前进一','前进二'];
+function reset(){boat={x:182,y:568,a:-Math.PI/2,v:0,r:0,rudder:0,engine:0,hits:0,t:0};lastHit=-99;settle=0;won=false;paused=false;trail=[];el('msg').className='message';el('msg').textContent='目标：驶入黄色泊位，摆正船身，然后停车';updateUI();}
+function updateUI(){let speed=boat.v*.12,dist=Math.hypot(boat.x-target.x,boat.y-target.y)*.55;el('speed').textContent=Math.abs(speed).toFixed(1)+(speed<-.1?'▼':'');el('distance').textContent=Math.round(dist);el('angle').textContent=String(Math.round(((boat.a+Math.PI/2)*180/Math.PI+3600)%360)).padStart(3,'0')+'°';el('damage').textContent=boat.hits;el('rudderVal').textContent=boat.rudder===0?'正舵 0°':(boat.rudder<0?'左':'右')+Math.abs(boat.rudder)+'°';el('throttleVal').textContent=telegraph[boat.engine+2];}
+function steer(delta){if(won)return;boat.rudder=Math.max(-30,Math.min(30,boat.rudder+delta));updateUI()}function engine(delta){if(won)return;boat.engine=Math.max(-2,Math.min(2,boat.engine+delta));updateUI()}
+el('left').onclick=()=>steer(-10);el('right').onclick=()=>steer(10);el('mid').onclick=()=>{boat.rudder=0;updateUI()};el('decrease').onclick=()=>engine(-1);el('increase').onclick=()=>engine(1);el('stop').onclick=()=>{boat.engine=0;updateUI()};el('reset').onclick=reset;el('level').onchange=e=>{level=+e.target.value;reset()};document.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' ','r'].includes(e.key))e.preventDefault();if(e.key==='ArrowLeft')steer(-10);if(e.key==='ArrowRight')steer(10);if(e.key==='ArrowUp')engine(1);if(e.key==='ArrowDown')engine(-1);if(e.key===' '){boat.engine=0;updateUI()}if(e.key==='r')reset()});
+const rad=a=>a*Math.PI/180;
+function tick(dt){if(won||paused)return;boat.t+=dt;
+const acceleration=boat.engine>=0?boat.engine*12:boat.engine*7.2;boat.v+=(acceleration-.075*boat.v-.00125*boat.v*Math.abs(boat.v))*dt;boat.v=Math.max(-48,Math.min(113,boat.v));
+const desired=rad(boat.rudder)/rad(30)*boat.v/85*.54;boat.r+=(desired-boat.r)*Math.min(1,dt*2.8);boat.a+=boat.r*dt;
+const sea=levels[level];const wind=sea.wind*(1+Math.sin(boat.t*.43)*.15);const current=sea.current;
+boat.x+=(Math.cos(boat.a)*boat.v+wind+current)*dt;boat.y+=(Math.sin(boat.a)*boat.v+Math.sin(boat.t*.17)*sea.wind*.12)*dt;
+if(trail.length===0||Math.hypot(boat.x-trail[trail.length-1].x,boat.y-trail[trail.length-1].y)>5){trail.push({x:boat.x,y:boat.y,t:boat.t});if(trail.length>72)trail.shift()}
+const dx=Math.cos(boat.a)*35,dy=Math.sin(boat.a)*35,px=-Math.sin(boat.a)*10,py=Math.cos(boat.a)*10;
+const pts=[[boat.x+dx+px,boat.y+dy+py],[boat.x+dx-px,boat.y+dy-py],[boat.x-dx+px,boat.y-dy+py],[boat.x-dx-px,boat.y-dy-py]];
+let coll=false,nx=0,ny=0;for(const [x,y] of pts){if(x<13){coll=true;nx+=1}if(y<15){coll=true;ny+=1}if(x>388){coll=true;nx-=1}if(y>668){coll=true;ny-=1}if(x>338&&y<434){coll=true;nx-=1}}
+for(const b of [{x:94,y:370},{x:94,y:210},{x:331,y:485}]){if(Math.hypot(boat.x-b.x,boat.y-b.y)<41){coll=true;nx+=boat.x-b.x;ny+=boat.y-b.y}}
+if(coll){if(boat.t-lastHit>1.1){boat.hits++;lastHit=boat.t;el('msg').textContent='注意船体碰撞！提前倒车并调整舵角';}let norm=Math.hypot(nx,ny)||1;boat.x+=nx/norm*4;boat.y+=ny/norm*4;boat.v*=.48;boat.r*=.5;}
+const da=Math.atan2(Math.sin(boat.a-target.a),Math.cos(boat.a-target.a));const dist=Math.hypot(boat.x-target.x,boat.y-target.y);
+if(dist<18&&Math.abs(da)<rad(12)&&Math.abs(boat.v)<8)settle+=dt;else settle=0;
+if(settle>1.25){won=true;boat.engine=0;let score=Math.max(1,3-Math.min(2,boat.hits)-(boat.t>85?1:0));el('msg').className='message good';el('msg').textContent='靠泊成功！'+('★'.repeat(score))+' · 用时 '+Math.round(boat.t)+' 秒';}
+if(!won&&boat.t>7&&dist<72&&Math.abs(boat.v)>23){el('msg').textContent='临近泊位：提前倒车减速，切勿高速冲刺';}
+}
+function rect(x,y,w,h,c){g.fillStyle=c;g.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h))}
+function line(x1,y1,x2,y2,c,width=1){g.strokeStyle=c;g.lineWidth=width;g.beginPath();g.moveTo(Math.round(x1),Math.round(y1));g.lineTo(Math.round(x2),Math.round(y2));g.stroke()}
+function draw(){rect(0,0,W,H,'#15516a');for(let y=12;y<H;y+=24)for(let x=8;x<W;x+=32){let off=Math.sin((x+y)*.09+boat.t*.55)*3;rect(x+off,y,9,2,((x+y)%3===0)?'#286d83':'#1d5b73');}
+rect(338,0,62,434,'#777e79');rect(342,0,4,434,'#ead7a2');for(let y=12;y<430;y+=31){rect(346,y,54,2,'#636967');rect(343,y+8,5,11,'#d9bb6d')}rect(365,50,29,35,'#495e60');rect(355,55,20,4,'#e0b35f');rect(358,275,34,26,'#49666a');rect(350,283,26,4,'#e0b35f');for(let y=104;y<377;y+=78)rect(334,y,5,16,'#273d47');
+g.save();g.translate(target.x,target.y);g.rotate(target.a+Math.PI/2);g.strokeStyle='#f2d487';g.lineWidth=3;g.setLineDash([10,7]);g.strokeRect(-25,-49,50,98);g.setLineDash([]);g.fillStyle='#f2d487';g.font='bold 12px monospace';g.textAlign='center';g.fillText('泊位 A1',0,-59);g.restore();
+for(const b of [{x:94,y:370},{x:94,y:210},{x:331,y:485}]){rect(b.x-5,b.y-5,10,10,'#efc452');rect(b.x-3,b.y-7,6,4,'#df6260');rect(b.x-2,b.y+3,4,3,'#5b7380')}
+g.fillStyle='#e5edf0';g.font='12px monospace';g.textAlign='left';g.fillText(levels[level].name,13,23);if(level){g.fillStyle='#d2e5df';g.fillText('风流 →',13,42)}
+for(let i=1;i<trail.length;i++){const p=trail[i-1],q=trail[i];line(p.x,p.y,q.x,q.y,'#84acc166',2)}
+g.save();g.translate(boat.x,boat.y);g.rotate(boat.a+Math.PI/2);
+g.fillStyle='#213843';g.beginPath();g.moveTo(-13,33);g.lineTo(13,33);g.lineTo(13,-18);g.lineTo(9,-31);g.lineTo(0,-39);g.lineTo(-9,-31);g.lineTo(-13,-18);g.closePath();g.fill();
+rect(-10,-27,20,56,'#d9d6bb');rect(-9,12,18,15,'#c4bca5');rect(-9,-18,18,9,'#b76758');rect(-9,-7,18,9,'#a6895e');rect(-9,4,18,7,'#71886e');rect(-7,19,14,8,'#e7e2d2');rect(-5,19,10,4,'#5095a7');rect(-3,-34,6,7,'#ecdbb4');rect(-11,29,22,3,'#e9e1cc');
+line(0,31,Math.sin(rad(boat.rudder))*13,31+Math.cos(rad(boat.rudder))*12,'#f1c96e',2);if(boat.v>4){let size=Math.min(19,boat.v*.16);rect(-size/2,36,size,2,'#add2d9');rect(-size*.35,43,size*.7,2,'#70b5c6')}g.restore();
+rect(351,447,38,38,'#103545');g.strokeStyle='#7898a5';g.strokeRect(351.5,447.5,37,37);g.fillStyle='#e4ead7';g.textAlign='center';g.font='11px monospace';g.fillText('N',370,461);line(370,474,370,461,'#f0d394',2);
+}
+function loop(ts){if(!prev)prev=ts;let dt=Math.min(.06,(ts-prev)/1000);prev=ts;if(!document.hidden)tick(dt);draw();if((Math.floor(ts/100)|0)%2===0)updateUI();requestAnimationFrame(loop)}
+reset();requestAnimationFrame(loop);
+})();
+</script></body></html>
