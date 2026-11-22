@@ -196,7 +196,7 @@ const liteCatalogue={
  Army:{mode:'army',summary:'双人暗棋',keywords:'军棋 陆战棋 军旗 暗棋 army junqi'},
  Chuanma:{mode:'chuanma',summary:'换三张 · 血战',keywords:'四川麻将 川麻 麻将 血战 mahjong'},
  Siege:{mode:'siege',summary:'弹射 · 堡垒破坏',keywords:'保卫子刊 拆家大战 炮击 炮弹 堡垒 弹射 愤怒的小鸟 siege artillery'},
- Ship:{mode:'ship',summary:'实时双舰 · 海上炮弹增益',keywords:'保卫子滩 海战 船舶 舰船 实时 战舰 naval ship artillery'}
+ Ship:{mode:'ship',summary:'回合制 · 炮击或移动',keywords:'保卫子滩 海战 船舶 舰船 实时 战舰 naval ship artillery'}
 };
 const siegeCard=document.createElement('a');siegeCard.id='modeSiege';siegeCard.className='mode';siegeCard.href='#';siegeCard.innerHTML='<div class="mode-emoji" aria-hidden="true">拆</div><div><div class="mode-name">保卫子刊</div><div class="mode-desc">双人对战 · 三人合作</div></div>';grid.appendChild(siegeCard);
 const shipCard=document.createElement('a');shipCard.id='modeShip';shipCard.className='mode';shipCard.href='#';shipCard.innerHTML='<div class="mode-emoji" aria-hidden="true">舰</div><div><div class="mode-name">保卫子滩 · 海战</div><div class="mode-desc">实时双舰 · 海上炮弹增益</div></div>';grid.appendChild(shipCard);
