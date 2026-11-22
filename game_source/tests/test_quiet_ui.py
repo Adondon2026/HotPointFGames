@@ -55,11 +55,23 @@ try:
             expect(page.locator(".room-heading")).to_be_visible()
             expect(page.locator("#create")).to_be_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 2")
+            assert page.evaluate("""() => {
+                const ch=s=>[...s.matchAll(/\\d+/g)].slice(0,3).map(x=>Number(x[0]));
+                const cs=getComputedStyle(document.body);
+                return Math.max(...ch(cs.backgroundColor))<65 && Math.min(...ch(cs.color))>170;
+            }""")
+            assert page.evaluate("getComputedStyle(document.querySelector('h1')).fontWeight==='300'")
             page.goto(url + f"/r/{code}/")
             expect(page.locator("#lobbyCard")).to_be_visible(timeout=12000)
             expect(page.locator("#joinCard")).to_be_hidden()
             expect(page.locator("#modeSiege")).to_be_visible(timeout=12000)
             assert page.locator("#liteLibrary .mode").first.get_attribute("id") == "modeSiege"
+            assert page.evaluate("""() => {
+                const ch=s=>[...s.matchAll(/\\d+/g)].slice(0,3).map(x=>Number(x[0]));
+                const cs=getComputedStyle(document.body);
+                return Math.max(...ch(cs.backgroundColor))<65 && Math.min(...ch(cs.color))>170;
+            }""")
+            assert page.evaluate("getComputedStyle(document.querySelector('.lite-room-head h1')).fontWeight==='300'")
             print("ROOM BEFORE", width, page.evaluate("""() => ({mode:state?.mode,phase:state?.phase,chosen:state?.modeSelected,game:document.querySelector('#liteGameName')?.textContent,view:document.body.dataset.view})"""), errors, flush=True)
             page.locator("#modeSiege").tap()
             page.wait_for_function("state && state.mode==='siege' && state.modeSelected!==false")
@@ -99,8 +111,12 @@ try:
             page.goto(url + "/quiet-siege-test")
             page.wait_for_function('typeof apply === "function"')
             page.evaluate("d=>{apply(d);overview=null;update()}", data)
+            expect(page.locator("#angleSlider")).to_be_hidden()
+            expect(page.locator("#powerSlider")).to_be_hidden()
+            page.locator("#angleValue").tap()
             expect(page.locator("#angleSlider")).to_be_visible()
-            expect(page.locator("#powerSlider")).to_be_visible()
+            expect(page.locator("#powerSlider")).to_be_hidden()
+            expect(page.locator("#angleValue")).to_have_attribute("aria-expanded", "true")
             assert page.evaluate(
                 "getComputedStyle(document.querySelector('#angleStepper')).flexDirection==='column'"
             )
@@ -110,11 +126,20 @@ try:
             assert page.evaluate("angle===62 && document.querySelector('#av').textContent==='62°'")
             page.locator("#angleUp").tap()
             assert page.evaluate("angle===63")
+            page.locator("#angleValue").tap()
+            expect(page.locator("#angleSlider")).to_be_hidden()
+            page.locator("#powerValue").tap()
+            expect(page.locator("#powerSlider")).to_be_visible()
+            expect(page.locator("#angleSlider")).to_be_hidden()
             page.locator("#powerSlider").evaluate(
                 "(el)=>{el.value='82';el.dispatchEvent(new Event('input',{bubbles:true}))}"
             )
             page.locator("#powerDown").tap()
             assert page.evaluate("power===81")
+            page.locator("#powerValue").tap()
+            expect(page.locator("#powerSlider")).to_be_hidden()
+            page.locator("#angleValue").tap()
+            expect(page.locator("#angleSlider")).to_be_visible()
             geometry = page.evaluate("""() => {
                 const box = id => {
                     const r = document.querySelector(id).getBoundingClientRect();
@@ -127,10 +152,14 @@ try:
             assert geometry["controls"]["x"] >= -2, (width, height, geometry)
             assert geometry["fire"]["right"] <= width + 2, (width, height, geometry)
             assert geometry["angle"]["right"] < geometry["fire"]["x"], (width, height, geometry)
+            assert geometry["angle"]["y"] >= -2, (width, height, geometry)
+            assert page.evaluate("getComputedStyle(document.querySelector('#game #controls .aim-value span')).fontWeight==='400'")
+            page.locator("#angleValue").tap()
+            expect(page.locator("#angleSlider")).to_be_hidden()
             assert not errs, (width, height, errs)
             ctx.close()
         browser.close()
 finally:
     server.shutdown()
     server.server_close()
-print("Quiet hall/room and Siege vertical sliders: three mobile viewports PASS")
+print("Dark hall/room and contextual Siege fine adjustment: three mobile viewports PASS")
