@@ -214,6 +214,7 @@ def _siege_items(count=_SIEGE_DEFAULT_ITEMS,field=None,bodies=None,allowed=None)
     return items
 
 def _siege_refill(r):
+    if r.get('scenarioActive'):return []
     # Only consumed slots refill. Untouched floating items keep their identity across shots and waves.
     turn=sum(r['shots']);waiting=r.setdefault('respawns',[]);new=[]
     allowed=_siege_allowed(r)
@@ -280,7 +281,7 @@ def _siege_normalize_buffs(r):
         for i,b in enumerate(r['buffs']):
             raw=recipes[i];raw=[raw] if isinstance(raw,str) else raw if isinstance(raw,list) else []
             raw=[k for k in raw if k in _SIEGE_COMPOUND_RECIPES];n=b.get('compound',0)
-            recipes[i]=[k for k in _SIEGE_COMPOUND_RECIPES for _ in range(3)] if r.get('trial') and i==0 else (raw+['burst']*n)[:n]
+            recipes[i]=[k for k in _SIEGE_COMPOUND_RECIPES for _ in range(3)] if r.get('trial') and not r.get('scenarioActive') and i==0 else (raw+['burst']*n)[:n]
     for it in (*r.get('items',[]),*r.get('respawns',[])):
         if it.get('kind')=='vision':it['kind']='power'
         if it.get('kind') in (*_SIEGE_SINGLE_ITEMS,*_SIEGE_NEGATIVE):it['amount']=1
@@ -466,7 +467,7 @@ def _siege_zombie_reward_sides(r,owner=0):
     owner=owner if isinstance(owner,int) and 0<=owner<seats else 0
     return [owner]+[i for i in range(seats) if i!=owner]
 
-def _siege_zombie_reward(r,enemy,owner=0,x=None,y=None,at=0.,pickups=None):
+def _siege_zombie_reward(r,enemy,owner=0,x=None,y=None,at=0.,pickups=None,drop=None):
     """Credit earned zombie loot directly; do not create a shootable world item.
 
     This is the game-wide earned-reward path. Existing fixed battlefield
@@ -483,9 +484,11 @@ def _siege_zombie_reward(r,enemy,owner=0,x=None,y=None,at=0.,pickups=None):
     if not eligible:return []
     # Reuse the authoritative draw (with its variety and rarity weights).
     # The optional stock filter avoids wasting kills on already-full items.
-    k=_siege_zombie_draw(r,enemy,available_keys=eligible)
-    if k is None:return []
-    amount=max(_siege_zombie_buff_profile(r)['pickupLayers'],_siege_zombie_difficulty(r)[3])
+    if drop and drop.get('mode')=='none':return []
+    fixed=drop and drop.get('mode')=='fixed'
+    k=drop['kind'] if fixed else _siege_zombie_draw(r,enemy,available_keys=eligible)
+    if k is None or k not in eligible:return []
+    amount=drop['amount'] if fixed else max(_siege_zombie_buff_profile(r)['pickupLayers'],_siege_zombie_difficulty(r)[3])
     left=min(_siege_cap(r,k),amount)
     awarded=[]
     for side in sides:
@@ -511,8 +514,9 @@ def _siege_zombie_drops(r,owner=0,at=0.,pickups=None):
         if b['kind']=='zombie' and b['hp']<=0 and not b.get('rewarded'):
             b['rewarded']=True
             _siege_zombie_reward(r,b['zombieType'],
-                b.get('lastHitSide',owner),b['x'],b['y']-b['h']/2,at,pickups)
+                b.get('lastHitSide',owner),b['x'],b['y']-b['h']/2,at,pickups,b.get('scenarioDrop'))
 def _siege_zombie_supply(r):
+    if r.get('scenarioActive'):return
     picks=_siege_zombie_buff_profile(r)['supplies']
     for side,inv in enumerate(r['buffs'][:1] if r.get('zombieSolo') else r['buffs']):
         for _ in range(picks):
@@ -732,7 +736,12 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     t=max(t,1.)
     for _ in range(6):t+=.08;frames.append(snap(t,None))
     start=t;events.append(['zombiePhase',round(start,3)])
-    if state.get('endless'):
+    if r.get('scenarioActive'):
+        _siege_scenario_spawn_due(r,state['round']-1)
+        if not r['scenarioPending'] and not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):
+            state['won']=True;return t+.5
+        frames.append(snap(t,None))
+    elif state.get('endless'):
         # Enemy movement/attacks happen every complete team cycle, but fresh
         # reinforcements arrive only after three completed team cycles.
         # The initial tier-1 wave is already on the map at round 1.
@@ -892,6 +901,7 @@ def _siege_zombie_round(r,t,frames,snap,events,physics=None):
     for b in bodies:
         if b['kind']=='zombie' and b.get('sunderRounds',0)>0:b['sunderRounds']-=1
     r['armed']=[{} for _ in r['buffs']]
+    if r.get('scenarioActive') and not r['scenarioPending'] and not any(b['kind']=='zombie' and b['hp']>0 for b in bodies):state['won']=True
     _siege_zombie_supply(r)
     return t
 
@@ -1402,6 +1412,9 @@ def _siege_trial_stock(r):
     if _siege_v24(r):r['compoundRecipes']=[[k for k in _SIEGE_COMPOUND_RECIPES for _ in range(3)],[]]
 
 def _siege_trial_reset(r,mode=None):
+    if r.pop('scenarioActive',False):
+        r.pop('scenarioPending',None);r.pop('scenarioName',None);r.pop('zombie',None);r.pop('terrain',None)
+        r['zombieSolo']=False;r['zombiePlayerCount']=2;r['theme']='classic';r['allowedBuffs']=list(_SIEGE_V24_KEYS)
     if mode is not None:
         if mode not in (*_SIEGE_FIELDS,*_SIEGE_NEW_FIELDS,'classic'):raise ValueError('试验地图无效')
         r['mode']=mode
@@ -1476,7 +1489,7 @@ def _siege_trial_fire(r,angle,power,selection,force=False,config=None):
     for _ in _siege_trial_steps(r,angle,power,selection,force,config):pass
 
 def _siege_fire(r,angle,power,selection=None,force=False,config=None):
-    if r.get('trial'):return _siege_trial_fire(r,angle,power,selection or {},force,config)
+    if r.get('trial') and not r.get('scenarioActive'):return _siege_trial_fire(r,angle,power,selection or {},force,config)
     for _ in _siege_fire_steps(r,angle,power,selection,force=force,config=config):pass
 
 def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=False,config=None,control=None):
@@ -1485,7 +1498,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     if v24:
         split_trigger=config['triggers'].get('splitshot','launch')
         config.update(unified=True,simple=True,manual=False,autoHomingV24=True,delayedSplit=False,triggers={'splitshot':split_trigger} if split_trigger in ('launch','contact') else {},splitPattern='fan',burstMode='serial',build='attack')
-    unified=config['unified'];trial=bool(r.get('trial'));trial_damage=0.
+    unified=config['unified'];trial=bool(r.get('trial') and not r.get('scenarioActive'));trial_damage=0.
     # Integrate projectile and rigid rectangular blocks with fixed 1/60 s steps.
     side=r['turn'] if side is None else side; direction=_siege_direction(r,side); motion_start=max(0,(live['clock'] if live is not None else time.time())-r.get('motionEpoch',time.time()));sx,sy=_siege_launcher(side,r,motion_start);wind=r.get('windPair',0)*direction if live is not None else r.get('wind',0)
     r.setdefault('negativePending',[{} for _ in r['buffs']]);r.setdefault('clones',[]);r.setdefault('mines',[])
@@ -2715,7 +2728,7 @@ def _siege_fire_steps(r,angle,power,selection=None,side=None,live=None,force=Fal
     if trial:
         r['turn']=0;r['phase']='play';r['winner']=None;r['trialDamage']=round(trial_damage,1)
     elif r.get('theme')=='zombie':
-        if cores[0]<=0 or r['zombie']['won']:r['phase']='over';r['winner']=None
+        if cores[0]<=0 or r['zombie']['won'] or (r.get('scenarioActive') and ammo and r['shots'][0]>=ammo):r['phase']='over';r['winner']=None
         else:r['turn']=0 if r.get('zombieSolo') else (side+1)%r.get('zombiePlayerCount',2)
     elif min(cores)<=0 or (ammo and all(n>=ammo for n in r['shots'])):
         r['phase']='over';r['winner']=None if abs(cores[0]-cores[1])<.01 else int(cores[1]>cores[0])
@@ -2771,7 +2784,7 @@ def _siege_v24_skill(r,side,k,target,now):
 def _siege_manual_start(r,side,a,p,selection,force,config,now):
     if id(r) in _SIEGE_MANUAL_ROUNDS:raise ValueError('上一炮尚未结束')
     control={}
-    gen=_siege_trial_steps(r,a,p,selection or {},force,config,control) if r.get('trial') else _siege_fire_steps(r,a,p,selection,side=side,force=force,config=config,control=control)
+    gen=_siege_trial_steps(r,a,p,selection or {},force,config,control) if r.get('trial') and not r.get('scenarioActive') else _siege_fire_steps(r,a,p,selection,side=side,force=force,config=config,control=control)
     sample=next(gen)
     _SIEGE_MANUAL_ROUNDS[id(r)]={'room':r,'wall':now,'credit':0.,'active':{side:{'gen':gen,'sample':sample,'control':control}},'side':side,'slowUntil':0.,'slowRate':1.}
     r['event']=None
@@ -3109,6 +3122,8 @@ def _siege_public(r,key,last):
     _siege_migrate_catalog(r)
     seat=next(i for i,p in enumerate(r['players']) if p['key']==key)
     v={'rulesVersion':r.get('rulesVersion',23),'theme':r.get('theme','classic'),'ok':True,'code':r['code'],'seat':seat,'players':[p['name'] for p in r['players']],'phase':r['phase'],'turn':r['turn'],'shots':r['shots'],'winner':r['winner'],'rev':r['rev'],'bodies':[{k:v for k,v in b.items() if k not in ('vx','vy')} for b in r['bodies']],'cores':[_siege_core(r['bodies'],i) for i in (0,1)],'event':r['event'] if last!=r['rev'] else None,'busy':time.time()<r['until'],'bot':r['bot'],'trial':bool(r.get('trial')),'trialDamage':r.get('trialDamage',0),'items':r['items'],'buffs':r['buffs'],'compoundRecipes':r.get('compoundRecipes',[None,None]),'ammo':r.get('ammo',_SIEGE_MAX_SHOTS),'offset':r.get('offset',0),'layout':r.get('layout','tower'),'mode':r.get('mode','classic'),'wind':r.get('wind',0),'windLevel':r.get('windLevel','off'),'launchers':[_siege_launcher(i,r,0) if not r.get('gunMotion') else list(r['launchers'][i]) for i in range(r.get('zombiePlayerCount',2) if r.get('theme')=='zombie' else 2)],'gunMotion':r.get('gunMotion',[]),'rise':r.get('rise',0),'field':r.get('field',r.get('mode','classic')),'fieldLabel':r.get('fieldLabel','战场'),'respawns':r.get('respawns',[]),'motionTime':max(0,time.time()-r.get('motionEpoch',time.time())),'buffMode':r.get('buffMode','auto'),'combatMode':r.get('combatMode','turn'),'reloadSeconds':r.get('reloadSeconds',5),'armed':r.get('armed',[{},{}]),'negativePending':r.get('negativePending',[{},{}]),'clones':r.get('clones',[]),'mines':r.get('mines',[]),'stackMax':_SIEGE_STACK_MAX,'stackCaps':_siege_caps(r),'fortStrength':r.get('fortStrength','normal'),'reflectors':r.get('reflectors',[]),'allowedBuffs':list(_siege_allowed(r))}
+    if r.get('scenarioActive'):
+        v.update(trial=False,scenarioActive=True,scenarioName=r['scenarioName'],scenarioPending=len(r['scenarioPending']))
     if r.get('terrain'):v['terrain']=r['terrain']
     if r.get('theme')=='zombie':v['zombie']={**r['zombie'],'solo':bool(r.get('zombieSolo')),'bothSides':bool(r.get('zombieBothSides')),'remaining':sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])}
     if r.get('trial'):v['zombieCatalog']={k:dict(hp=stats[2],speed=stats[3],damage=stats[4]) for k,stats in _SIEGE_ZOMBIE_TYPES.items() if k!='engineer'};v['trialZombieLimit']=_SIEGE_TRIAL_ZOMBIE_LIMIT
@@ -3166,7 +3181,11 @@ def siege_request(data):
             if _siege_has_controls(r,sel,seat,cfg):_siege_manual_start(r,seat,a,p,sel,force,cfg,now)
             else:_siege_fire(r,a,p,sel,force,cfg)
         except ValueError as e:return {"ok":False,"error":str(e)}
-    elif kind=='trialPreview' and r.get('trial') and seat==0:
+    elif kind=='scenarioLoad' and r.get('trial') and seat==0:
+        if now<r['until']:return {'ok':False,'error':'请等待当前炮击结束'}
+        try:_siege_scenario_load(r,data.get('scene'))
+        except ValueError as e:return {'ok':False,'error':str(e)}
+    elif kind=='trialPreview' and r.get('trial') and not r.get('scenarioActive') and seat==0:
         if now<r['until']:return {'ok':False,'error':'请等待本炮结束'}
         a,p=data.get('angle'),data.get('power')
         if type(a) not in (int,float) or type(p) not in (int,float) or not (0<=a<360 and 15<=p<=100):return {'ok':False,'error':'角度或力度无效'}
@@ -3181,11 +3200,11 @@ def siege_request(data):
             return {'ok':True,'paths':[v for v in paths.values() if len(v)>1],'impact':ev['impact'],'damage':ev['trialDamage'],'duration':ev['duration']}
         except ValueError as e:return {'ok':False,'error':str(e)}
         finally:random.setstate(rng)
-    elif kind=='trialSummon' and r.get('trial') and seat==0:
+    elif kind=='trialSummon' and r.get('trial') and not r.get('scenarioActive') and seat==0:
         if now<r['until']:return {'ok':False,'error':'请等待当前炮击结束'}
         try:_siege_trial_summon(r,data.get('zombieType'),data.get('count',1))
         except ValueError as e:return {'ok':False,'error':str(e)}
-    elif kind=='trialClearZombies' and r.get('trial') and seat==0:
+    elif kind=='trialClearZombies' and r.get('trial') and not r.get('scenarioActive') and seat==0:
         if now<r['until']:return {'ok':False,'error':'请等待当前炮击结束'}
         r['bodies']=[b for b in r['bodies'] if not (b['kind']=='zombie' and b.get('trialSpecimen'))]
         r['event']=None;r['rev']+=1
@@ -3199,6 +3218,88 @@ def siege_request(data):
     elif kind not in ('state','join'):return {'ok':False,'error':'未知操作'}
     if id(r) not in _SIEGE_MANUAL_ROUNDS and r['bot'] and not r.get('trial') and r['phase']=='play' and r['turn']==1 and now>=r['until']+.65:_siege_bot(r)
     return _siege_public(r,key,data.get('last',-1))
+
+
+# Data-only challenge scenarios, isolated to private trial arenas.
+def _siege_scenario_validate(raw):
+    if not isinstance(raw,dict) or raw.get('version')!=1:raise ValueError('场景版本无效')
+    def number(v,lo,hi):
+        if type(v) not in (int,float) or not math.isfinite(v) or not lo<=v<=hi:raise ValueError('场景数值超出范围')
+        return v
+    def integer(v,lo,hi):
+        if type(v) is not int:raise ValueError('场景需要整数')
+        return number(v,lo,hi)
+    def point(obj,exterior=False):
+        if not isinstance(obj,dict):raise ValueError('对象无效')
+        return dict(x=number(obj.get('x'),-240 if exterior else 25,1200 if exterior else 935),y=number(obj.get('y'),24,392))
+    def buff(obj):
+        if not isinstance(obj,dict):raise ValueError('增益无效')
+        k=obj.get('kind')
+        if type(k) is not str or k not in _SIEGE_V24_KEYS or k in _SIEGE_NEGATIVE or k=='compound':raise ValueError('增益类型无效')
+        return dict(kind=k,amount=integer(obj.get('amount',1),1,_SIEGE_V24_CAPS[k]))
+    def rows(key,limit):
+        v=raw.get(key,[])
+        if not isinstance(v,list) or len(v)>limit:raise ValueError('场景对象超出上限')
+        return v
+    out=dict(version=1,name=str(raw.get('name','自定义挑战'))[:40],ammo=integer(raw.get('ammo',0),0,100),
+             cannon=point(raw.get('cannon')),core=point(raw.get('core')),blocks=[],zombies=[],items=[],stock={})
+    for obj in rows('blocks',100):
+        v=point(obj);k=obj.get('kind')
+        if k not in ('wood','stone','barrel'):raise ValueError('建筑类型无效')
+        v.update(kind=k,w=number(obj.get('w',48),12,240),h=number(obj.get('h',24),12,160))
+        if v['x']-v['w']/2<0 or v['x']+v['w']/2>960 or v['y']-v['h']/2<0 or v['y']+v['h']/2>416:raise ValueError('建筑超出地图')
+        out['blocks'].append(v)
+    for obj in rows('zombies',54):
+        v=point(obj,True);k=obj.get('kind')
+        if type(k) is not str or k not in _SIEGE_ZOMBIE_TYPES or k=='engineer':raise ValueError('僵尸类型无效')
+        drop=obj.get('drop',{'mode':'random'})
+        if not isinstance(drop,dict) or drop.get('mode') not in ('random','none','fixed'):raise ValueError('掉落配置无效')
+        v.update(kind=k,round=integer(obj.get('round',0),0,100),
+                 drop=dict(mode=drop['mode'],**(buff(drop) if drop['mode']=='fixed' else {})))
+        out['zombies'].append(v)
+    if not out['zombies']:raise ValueError('至少放置一只僵尸')
+    for obj in rows('items',50):out['items'].append(dict(**point(obj),**buff(obj)))
+    inv=raw.get('stock',{})
+    if not isinstance(inv,dict) or len(inv)>len(_SIEGE_V24_KEYS):raise ValueError('库存无效')
+    for k,n in inv.items():
+        v=buff(dict(kind=k,amount=n));out['stock'][k]=v['amount']
+    return out
+
+def _siege_scenario_spawn_due(r,round_no):
+    for obj in r['scenarioPending'][:]:
+        if obj['round']>round_no:continue
+        r['scenarioPending'].remove(obj)
+        k=obj['kind'];w,h,hp,_,_=_SIEGE_ZOMBIE_TYPES[k]
+        x,y=obj['x'],obj['y']
+        y=min(y,_siege_floor_body(r,x,w)-h/2)
+        r['bodies'].append(dict(id=r['nextBodyId'],side=2,kind='zombie',zombieType=k,x=x,y=y,w=w,h=h,
+                                hp=hp,max=hp,vx=0.,vy=0.,fixed=True,scenarioDrop=obj['drop']))
+        r['nextBodyId']+=1;r['zombie']['spawned']+=1
+
+def _siege_scenario_load(r,raw):
+    scene=_siege_scenario_validate(raw)
+    r.update(scenarioActive=True,scenarioName=scene['name'],scenarioPending=scene['zombies'],
+             theme='zombie',zombieSolo=True,zombiePlayerCount=2,zombieBothSides=False,zombieDifficulty='medium',
+             zombieBuffIntensity='normal',zombieRewardHistory=[],field='scenario',fieldLabel=scene['name'],
+             mode='classic',combatMode='turn',buffMode='stock',ammo=scene['ammo'],turn=0,shots=[0,0],
+             phase='play',winner=None,rev=r['rev']+1,event=None,until=0.,wind=0,windPair=0,windLevel='off',
+             rise=0,offset=0,gunShift=0,terrain=[(0,416),(960,416)],reflectors=[],gunMotion=[],
+             motionEpoch=time.time(),nextBodyId=100,nextItemId=1000,items=[],respawns=[],clones=[],mines=[],
+             armed=[{},{}],negativePending=[{},{}],compoundRecipes=[[],[]],gunGravity=[False,False],gunFallV=[0.,0.],
+             zombie=dict(wave=1,totalWaves=1,round=1,kills=0,spawned=0,won=False,endless=False,difficulty='medium'))
+    r['allowedBuffs']=[k for k in _SIEGE_V24_KEYS if k not in _SIEGE_NEGATIVE and k!='compound']
+    r['buffs']=[{k:0 for k in _SIEGE_ITEMS} for _ in range(2)]
+    r['buffs'][0].update(scene['stock'])
+    c=scene['core'];g=scene['cannon']
+    r['bodies']=[dict(id=0,side=0,kind='core',shared=True,x=c['x'],y=min(c['y'],390),w=50,h=52,hp=100,max=100,vx=0.,vy=0.)]
+    r['launchers']=[[g['x'],min(g['y'],392)-24],[850,368]]
+    _siege_install_cannons(r)
+    for obj in scene['blocks']:
+        hp={'wood':45,'stone':90,'barrel':35}[obj['kind']]
+        r['bodies'].append(dict(id=r['nextBodyId'],side=0,hp=hp,max=hp,vx=0.,vy=0.,**obj));r['nextBodyId']+=1
+    for obj in scene['items']:
+        r['items'].append(dict(id=r['nextItemId'],r=15,zone='air',**obj));r['nextItemId']+=1
+    _siege_scenario_spawn_due(r,0)
 
 _siege_get_base=Handler.do_GET
 _siege_post_base=Handler.do_POST

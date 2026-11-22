@@ -301,10 +301,12 @@ def _room_route(self,post=False):
         return self.reply(SIEGE_PAGE,200,'text/html; charset=utf-8')
     if post and path in ('/trial/api/siege','/api/siege-trial'):
         try:
-            if not 0<int(self.headers.get('Content-Length','0'))<=4096:raise ValueError()
+            length=int(self.headers.get('Content-Length','0'))
+            if not 0<length<=65536:raise ValueError()
             data=self.read_json()
             if not isinstance(data,dict):raise ValueError()
             kind=data.get('type');key=str(data.get('key',''));code=str(data.get('code','')).upper()
+            if length>4096 and kind!='scenarioLoad':raise ValueError()
             if len(key)!=48 or any(c not in '0123456789abcdef' for c in key):return self.reply({'ok':False,'error':'会话无效，请刷新'},400)
             with LOCK:
                 if kind=='create':
@@ -315,7 +317,7 @@ def _room_route(self,post=False):
                             _SIEGE_MANUAL_ROUNDS.pop(id(old),None);_siege_v24_setup(old);_siege_trial_reset(old,old.get('field','standard'))
                         old['touched']=time.time();return self.reply(_siege_public(old,key,-1))
                     data={**data,'trial':True}
-                elif kind in ('state','fire','maneuver','skill','trialPreview','trialReset','trialSummon','trialClearZombies','leave'):
+                elif kind in ('state','fire','maneuver','skill','trialPreview','trialReset','trialSummon','trialClearZombies','scenarioLoad','leave'):
                     arena=_SIEGE_ROOMS.get(code)
                     if not arena or not arena.get('trial') or arena['players'][0]['key']!=key:
                         return self.reply({'ok':False,'error':'试验场不存在或会话已失效'},403)
