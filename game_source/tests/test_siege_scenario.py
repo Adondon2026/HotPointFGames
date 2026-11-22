@@ -21,5 +21,9 @@ g._siege_scenario_spawn_due(r,1);assert len(r['scenarioPending'])==1
 g._siege_scenario_spawn_due(r,2);assert not r['scenarioPending']
 z=next(b for b in r['bodies'] if b['kind']=='zombie' and b['hp']>0);assert z['x']==1000
 z['hp']=0;g._siege_zombie_drops(r);assert r['buffs'][0]['gunteleport']==1
+g._siege_scenario_load(r,scene)
+g._siege_fire(r,45,50,{})
+assert r['shots'][0]==1 and r['zombie']['round']==2 and r['buffs'][0]['big']==0
+assert r['scenarioPending'] and r['scenarioSource']['zombies'][1]['round']==2
 g._siege_trial_reset(r,'standard');assert not r.get('scenarioActive') and r['theme']=='classic' and r['trial']
 print('scenario regression passed')

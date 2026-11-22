@@ -57,6 +57,8 @@ jobs:
           python game_source/tests/test_siege_zombie_buff_strength.py
           python game_source/tests/test_siege_oneway_boundary.py
           python game_source/tests/test_siege_zombie_auto_loot.py
+          python game_source/tests/test_siege_scenario.py
+          node --check game_source/web/games/siege_scenario.js
           python game_source/tests/test_siege_zombie_air_slots.py
           python game_source/tests/test_siege_v12.py
           python game_source/tests/test_siege_v13.py
