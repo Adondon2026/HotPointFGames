@@ -207,35 +207,39 @@ body.in-battle{overflow:hidden;overscroll-behavior:none}body.in-battle main{max-
 }
 
 
-/* Compact dark HUD: aiming on the field is primary; fine adjustment is contextual.
-   A single selected value opens its own vertical slider and ±1 controls. */
+
+/* One aligned control rail. Four actions share the same track and outer height.
+   Aiming is direct on the battlefield; fine adjustment remains opt-in. */
 #game #controls{
-  left:max(8px,env(safe-area-inset-left));
-  right:max(8px,env(safe-area-inset-right));
+  left:50%;right:auto;transform:translateX(-50%);
   bottom:max(8px,env(safe-area-inset-bottom));
-  width:auto;max-width:none;display:flex;flex-flow:row nowrap;
-  align-items:flex-end;justify-content:flex-start;gap:7px;
-  margin:0;padding:0;border:0;border-radius:0;box-shadow:none;
-  background:none;pointer-events:none;
+  width:min(448px,calc(100% - 16px));max-width:448px;
+  display:flex;flex-flow:row nowrap;align-items:stretch;justify-content:space-between;
+  gap:7px;margin:0;padding:0;background:none;border:0;border-radius:0;
+  box-shadow:none;pointer-events:none;
 }
 #game #controls.passive{display:none}
 #game #controls .adjust{
-  position:relative;flex:0 0 66px;width:66px;min-width:66px;
-  display:block;padding:0;border:1px solid rgba(223,234,218,.22);
-  background:rgba(23,41,35,.81);border-radius:10px;
+  position:relative;flex:1 1 0;width:auto;min-width:0;
+  height:48px;min-height:48px;box-sizing:border-box;
+  padding:0;display:block;background:rgba(23,41,35,.84);
+  border:1px solid rgba(223,234,218,.25);border-radius:10px;
   backdrop-filter:blur(5px);pointer-events:auto;
 }
-#game #controls .aim-value{
-  width:100%;min-width:0;height:46px;min-height:46px;padding:0 4px;
-  display:flex;flex-direction:column;justify-content:center;align-items:center;
-  gap:4px;background:transparent;border:0;border-radius:9px;
+#game #controls .adjust .aim-value{
+  display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;
+  width:100%;height:100%;min-height:0;box-sizing:border-box;
+  padding:0 4px;background:transparent;border:0;border-radius:9px;
   color:#F1F2E9;box-shadow:none;font-weight:400;
 }
 #game #controls .aim-value span{font-size:10px;font-weight:400;line-height:1;color:#BCCBBE}
-#game #controls .aim-value b{font-size:16px;font-weight:500;line-height:1.05;white-space:nowrap;color:#F3F0E7}
+#game #controls .aim-value b{
+  font-size:16px;font-weight:500;line-height:1.05;white-space:nowrap;color:#F3F0E7;
+  font-variant-numeric:tabular-nums;
+}
 #game #controls .aim-value[aria-expanded=true]{
   background:rgba(196,218,194,.15);
-  box-shadow:inset 0 0 0 1px rgba(218,237,213,.20);
+  box-shadow:inset 0 0 0 1px rgba(218,237,213,.18);
 }
 #game #controls .stepper{
   position:absolute;bottom:calc(100% + 9px);left:50%;
@@ -248,10 +252,9 @@ body.in-battle{overflow:hidden;overscroll-behavior:none}body.in-battle main{max-
 #game #controls .stepper.hidden{display:none!important}
 #game #controls .stepper button{
   display:grid;place-items:center;width:44px;height:42px;min-height:42px;
-  padding:0;border:0;border-radius:8px;
-  color:#F2F1E7;background:rgba(240,247,238,.07);
-  font-size:16px;line-height:1;font-weight:400;
-  box-shadow:none;touch-action:none;
+  padding:0;border:0;border-radius:8px;color:#F2F1E7;
+  background:rgba(240,247,238,.07);font-size:16px;line-height:1;
+  font-weight:400;box-shadow:none;touch-action:none;
 }
 #game #controls .stepper button:active{background:rgba(240,247,238,.20)}
 #game #controls .stepper button:disabled{opacity:.38}
@@ -265,33 +268,42 @@ body.in-battle{overflow:hidden;overscroll-behavior:none}body.in-battle main{max-
 #game #controls .stepper input[type=range]:focus-visible{
   outline:2px solid #C8E2C6;outline-offset:2px;
 }
+#game #controls #stockBtn,
+#game #controls #fire,
+#game.sync-mode #controls #fire{
+  order:initial;flex:1 1 0;align-self:stretch;
+  min-width:0;max-width:none;width:auto;
+  height:48px;min-height:48px;margin:0;padding:0 4px;box-sizing:border-box;
+  border-radius:10px;box-shadow:none;pointer-events:auto;
+}
 #game #controls #stockBtn{
-  align-self:flex-end;flex:0 0 auto;
-  min-width:58px;width:58px;height:48px;min-height:48px;padding:0;
-  background:rgba(23,41,35,.81);border:1px solid rgba(223,234,218,.22);
-  border-radius:10px;color:#E9ECE3;font-size:12px;font-weight:400;
-  pointer-events:auto;
+  background:rgba(23,41,35,.84);border:1px solid rgba(223,234,218,.25);
+  color:#E9ECE3;font-size:13px;font-weight:400;
 }
 #game #controls #fire,#game.sync-mode #controls #fire{
-  order:initial;flex:0 0 auto;align-self:flex-end;margin-left:auto;
-  min-width:82px;max-width:114px;width:auto;
-  min-height:48px;height:48px;padding:0 12px;
-  border-radius:10px;border:1px solid #BF7466;
-  background:#A94741;color:#FFF6EB;
-  font-size:14px;font-weight:500;box-shadow:none;pointer-events:auto;
+  border:1px solid #BF7466;background:#A94741;color:#FFF6EB;
+  font-size:14px;font-weight:500;
 }
 #game #controls #fire:active{background:#943C37}
-#game #controls #fire:disabled{background:#5D4944;color:#D8C9C1;border-color:#795953;opacity:.72}
-#game #controls.locked{max-width:none}
-#game #controls.locked #fire{margin-left:auto}
-#game #hud .seat{background:rgba(23,41,35,.73);border-color:rgba(227,236,220,.24);box-shadow:none}
+#game #controls #fire:disabled{
+  background:#5D4944;color:#D8C9C1;border-color:#795953;opacity:.72;
+}
+#game #controls.locked{width:auto;max-width:160px}
+#game #controls.locked #fire{min-width:88px}
+#game #controls #fire.finishing-stock{background:#315C4D;border-color:#91B5A1;color:#F4EDDA}
+/* The HUD is already one translucent surface. Player slots and turn text
+   should NOT draw another darker tile over it. */
+#game #hud .seat{
+  background:transparent;border:0;box-shadow:none;backdrop-filter:none;
+  border-radius:0;padding:0;color:#F4F0E6;
+}
 #game #hud .seat b{font-weight:500}
-#game #turn{background:rgba(23,41,35,.80);font-weight:500}
+#game #turn{background:transparent;border:0;box-shadow:none;font-weight:500}
 #game #stockPanel{border-color:rgba(227,236,220,.36)}
 @media(orientation:landscape) and (max-height:440px){
   #game #controls{bottom:max(4px,env(safe-area-inset-bottom));gap:6px}
-  #game #controls .adjust{flex-basis:61px;min-width:61px;width:61px}
-  #game #controls .aim-value{height:42px;min-height:42px}
+  #game #controls .adjust{height:44px;min-height:44px}
+  #game #controls .adjust .aim-value{height:100%;min-height:0}
   #game #controls .aim-value b{font-size:14px}
   #game #controls .stepper{padding:5px 4px}
   #game #controls .stepper input[type=range]{height:56px;min-height:56px;margin:1px auto}
@@ -301,11 +313,11 @@ body.in-battle{overflow:hidden;overscroll-behavior:none}body.in-battle main{max-
   }
 }
 @media(max-width:350px){
-  #game #controls{gap:6px;left:5px;right:5px}
-  #game #controls .adjust{flex:0 0 60px;min-width:60px;width:60px}
-  #game #controls #stockBtn{width:53px;min-width:53px}
-  #game #controls #fire,#game.sync-mode #controls #fire{min-width:72px;padding:0 8px}
+  #game #controls{gap:6px;width:calc(100% - 12px)}
+  #game #controls .aim-value b{font-size:14px}
+  #game #controls #fire,#game.sync-mode #controls #fire{font-size:13px}
 }
+
 </style></head><body><main><header><a href="/">‹ 游戏厅</a><h1>保卫子刊</h1><small>双人对战／三人合作 · v0.24</small></header><section id="lobby"><h2>堡垒攻防</h2><p>调节角度、力度，发射炮弹。命中堡垒或争抢空中的道具，炮弹数量可设置，默认无限。道具每局随机分布，一发可拾取多个；同类增加次数，异类同时生效。</p><label for="name">昵称</label><input id="name" type="text" maxlength="12" placeholder="你的昵称"><details id="siegeStandaloneSelect"><summary>可出现的增益（点击展开勾选）</summary><p style="font-size:12px">房主可以单独关闭任意增益；全部关闭即不出现道具。</p><div id="siegeStandaloneBuffChoices" class="siege-buff-grid"></div><div class="siege-buff-actions"><button type="button" id="siegeStandaloneAll">全部开启</button><button type="button" id="siegeStandaloneNone">全部关闭</button><button type="button" id="siegeStandaloneBack">收起增益选项 ↑</button></div></details><div class="row"><button id="solo" class="primary">单人练习</button><button id="host">创建好友房</button></div><button id="trialStart" style="width:100%;margin-top:8px">自由炮击试验场 · 无限道具</button><hr style="border:0;border-top:1px solid #4c6258;margin:18px 0"><label for="code">好友房间码</label><input id="code" type="text" maxlength="6" placeholder="输入 6 位房间码"><button id="join" style="width:100%">加入好友房</button><button id="resume" class="hidden" style="width:100%;margin-top:8px">继续上次对局</button><div id="err" role="status"></div></section><section id="game" class="hidden"><div id="hud"><div class="seat" id="left"><b id="n0">玩家 A</b><div class="hp"><i id="hp0"></i></div><small id="s0"></small><span class="buff" id="buff0"></span><span class="negative-state hidden" id="neg0" role="status"></span></div><div id="turn"></div><div id="coopCore" class="hidden"><b id="coopCoreText">共享子刊 100</b><div class="hp"><i id="coopCoreHp"></i></div></div><div class="seat" id="right"><b id="n1">玩家 B</b><div class="hp"><i id="hp1"></i></div><small id="s1"></small><span class="buff" id="buff1"></span><span class="negative-state hidden" id="neg1" role="status"></span></div><div class="seat hidden" id="third"><b id="n2">玩家 C</b><div class="hp"><i id="hp2"></i></div><small id="s2"></small><span class="buff" id="buff2"></span><span class="negative-state hidden" id="neg2" role="status"></span></div><div class="hud-actions"><button id="scenarioToggle" class="hud-icon hidden" style="width:44px;font-size:12px" aria-label="场景编辑">关卡</button><button id="trialBestiaryToggle" class="hud-icon hidden" aria-label="打开丧尸图鉴" aria-expanded="false">图鉴</button><button id="mapToggle" class="hud-icon" aria-label="全局地图" aria-expanded="false"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 15 5-5 4 4 3-3 4 4"/></svg></button><button id="menuToggle" class="hud-icon" aria-label="房间菜单" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h14"/></svg></button></div></div><aside id="trialBestiary" class="hidden" aria-label="丧尸图鉴与试验场召唤"><div class="bestiary-head"><h3>丧尸图鉴</h3><button id="trialBestiaryClose" aria-label="关闭丧尸图鉴">关闭</button></div><p>在地图右侧召唤训练靶标，使用真实生命值、抗性和受击规则。靶标不会主动移动或攻击，主动技能请在合作模式体验。</p><div id="trialZombieGrid" class="bestiary-grid"></div><div class="bestiary-foot"><span id="trialZombieCount"></span><button id="trialZombieClear">清空丧尸</button></div></aside><div id="stage"><canvas id="field" width="640" height="500" aria-label="炮击战场"></canvas></div><aside id="minimap" class="hidden"><canvas id="mapCanvas" width="320" height="194" aria-label="全局小地图，点击或拖动切换视野"></canvas></aside><div id="controls"><div class="adjust"><button id="angleValue" class="aim-value" aria-expanded="false" aria-label="微调角度"><span>角度</span><b id="av">42°</b></button><div id="angleStepper" class="stepper hidden"><button id="angleUp" aria-label="增大角度">+</button><input id="angleSlider" type="range" min="0" max="359" step="1" value="42" aria-label="角度滑动调节" aria-orientation="vertical"><button id="angleDown" aria-label="减小角度">−</button></div></div><div class="adjust"><button id="powerValue" class="aim-value" aria-expanded="false" aria-label="微调力度"><span>力度</span><b id="pv">65</b></button><div id="powerStepper" class="stepper hidden"><button id="powerUp" aria-label="增大力度">+</button><input id="powerSlider" type="range" min="15" max="100" step="1" value="65" aria-label="力度滑动调节" aria-orientation="vertical"><button id="powerDown" aria-label="减小力度">−</button></div></div><button id="stockBtn" class="hidden">增益</button><button id="fire" class="primary">开炮</button></div><div id="manualControls" class="hidden"><div id="manualHint"></div><div id="manualActions"></div></div><aside id="stockPanel" class="hidden"><div class="stock-head"><h3>本轮增益</h3><button id="stockClear">清空</button></div><small id="stockHelp">选择本轮使用的增益。</small><div id="stockSummary"></div><div id="stockCats" class="stock-cats"></div><div id="stockPaneBody"><div id="stockModeRail" aria-label="选中增益的发射方式"></div><div id="stockRows"></div></div><div id="stockOptions"></div><div id="trialControls" class="hidden"><button id="trialPreview">预演弹道</button><button id="trialReset">复原靶场</button></div></aside><div id="windInfo" aria-label="当前风力"></div><div id="status" role="status" aria-live="polite"></div><div id="result" class="hidden"><h2 id="resultText"></h2><p id="resultPoints" class="muted" style="font-size:13px"></p><div class="row"><button id="again" class="primary">再来一局</button><button id="back">返回房间</button></div></div><div id="roomInfo" class="hidden"><span id="roomCode"></span><div id="roomDetail" class="room-detail"></div><div id="trialMenu" class="hidden"><label>地图规模<select id="trialSize"><option value="small">小型</option><option value="medium" selected>中型</option><option value="large">大型</option></select></label><label>试验地图<select id="trialMap"><option value="standard">标准对射</option><option value="close">近距突击</option><option value="far">远距高抛</option><option value="peaks">露顶堡垒</option><option value="obstacle">双层穿透堡</option><option value="fragments">悬重堡垒</option><option value="overtop">反射要塞</option><option value="sky">空中城堡</option><option value="floating">浮岛对决</option><option value="floatingcenter">浮空夹击</option><option value="movingwall">移动屏障</option></select></label><button id="trialMenuReset">复原 / 切换地图</button></div><a id="trialLink" href="/trial/siege" style="display:block;color:#d8e6ca;font-size:12px;margin:8px 0">自由炮击试验场</a><div class="row" style="margin:6px 0"><button id="stockSave">保存组合</button><button id="stockLoad">读取组合</button></div><small id="stockPresetStatus" aria-live="polite"></small><button id="homeCam" aria-label="回到自己的炮台">回炮台</button><div class="display-settings"><label for="hudOpacity">界面不透明度 <output id="hudOpacityValue"></output></label><input id="hudOpacity" type="range" min="45" max="100" step="5" aria-label="界面不透明度"><label for="mapOpacity">地图不透明度 <output id="mapOpacityValue"></output></label><input id="mapOpacity" type="range" min="35" max="100" step="5" aria-label="地图不透明度"><button id="resetDisplay">恢复默认</button></div><div class="display-settings"><label for="siegeMusic">背景音乐</label><select id="siegeMusic"><option value="ocean">海浪琶音</option><option value="arcade">轻快像素</option><option value="off">关闭</option></select><label for="siegeMusicVolume">音乐音量 <output id="siegeMusicVolumeValue">100%</output></label><input id="siegeMusicVolume" type="range" min="0" max="200" step="5" aria-label="音乐音量"><label for="siegeEffects">炮击音效 <input type="checkbox" id="siegeEffects"></label></div><button id="copy" style="font-size:12px;padding:5px 9px">邀请</button><button id="leave" style="font-size:12px;padding:5px 9px">返回房间</button></div></section></main><script>
 const roomPrefix=location.pathname.match(/^\/r\/[A-Fa-f0-9]{6}/)?.[0]||"";const roomToken=localStorage.getItem("gh_token"+roomPrefix)||"";const trialPage=location.pathname==='/trial/siege'||(!roomPrefix&&new URLSearchParams(location.search).get('trial')==='1');
 const fromRoom=new URLSearchParams(location.search).get('from')||'';
