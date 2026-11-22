@@ -32,4 +32,35 @@ g._siege_fire(r,45,50,{})
 assert r['shots'][0]==1 and r['zombie']['round']==2 and r['buffs'][0]['big']==0
 assert r['scenarioPending'] and r['scenarioSource']['zombies'][1]['round']==2
 g._siege_trial_reset(r,'standard');assert not r.get('scenarioActive') and r['theme']=='classic' and r['trial']
+
+# Editor and server agree that rectangular objects may touch but not interpenetrate.
+special=[dict(kind='spring',x=490,y=395,w=42,h=28),
+         dict(kind='oneway',x=540,y=375,w=24,h=72,passDir=-1),
+         dict(kind='ladder',x=590,y=326,w=28,h=180)]
+s={**scene,'blocks':special}
+g._siege_scenario_load(r,s)
+assert [b.get('special') for b in r['bodies'] if b.get('special')] == ['spring','oneway','ladder']
+assert [b['passDir'] for b in r['bodies'] if b.get('special')=='oneway']==[-1]
+assert any(b.get('special')=='ladder' and b.get('fixed') for b in r['bodies'])
+assert g._siege_scenario_validate({**scene,'blocks':[dict(kind='wood',x=390,y=390,w=48,h=30)]})
+for overlap in [
+    dict(kind='wood',x=350,y=390,w=40,h=30),  # zombie
+    dict(kind='wood',x=800,y=390,w=45,h=35),  # core
+]:
+    try:g._siege_scenario_validate({**scene,'blocks':[overlap]})
+    except ValueError as e:assert '重叠' in str(e)
+    else:raise AssertionError('overlapping scene accepted')
+# Engineer raises a ladder beside a high barrier, not a siege-car shell.
+challenge={**scene,'core':dict(x=720,y=180),
+           'blocks':[dict(kind='stone',x=460,y=350,w=48,h=130)],
+           'zombies':[dict(kind='engineer',x=390,y=390,round=0,drop=dict(mode='none'))]}
+g._siege_scenario_load(r,challenge)
+eng=next(b for b in r['bodies'] if b.get('zombieType')=='engineer')
+for _ in range(3):
+    if any(b.get('engineerLadder') for b in r['bodies']):break
+    g._siege_zombie_round(r,0.,[],lambda t,shot:[],[],None)
+assert any(b.get('engineerLadder') and b['hp']>0 for b in r['bodies']),'engineer did not build ladder'
+y=eng['y']
+for _ in range(4):g._siege_zombie_round(r,0.,[],lambda t,shot:[],[],None)
+assert eng['y']<y,'zombies did not climb ladder'
 print('scenario regression passed')
