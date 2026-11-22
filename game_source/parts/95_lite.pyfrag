@@ -81,7 +81,7 @@ def account_request(data, ip):
 
 def _settle_match():
     if not STATE.get('matchId') or STATE.get('settledMatchId')==STATE['matchId']: return
-    if STATE.get('mode')=='siege':
+    if STATE.get('mode') in ('siege','ship'):
         r=STATE.get('siege')
         if not r or r.get('phase')!='over':return
         by_id={p['key']:i for i,p in enumerate(r['players'])}
@@ -91,7 +91,7 @@ def _settle_match():
             uid=p.get('accountId');seat=by_id.get(p['id'])
             if not uid or p.get('isBot') or seat is None:continue
             won=bool(r.get('zombie',{}).get('won')) if r.get('theme')=='zombie' else seat==r.get('winner');raw=int(round(_siege_core(r['bodies'],seat)))
-            rows.append((STATE['matchId'],uid,'siege',int(won),0 if practice else 3 if won else 0,raw,int(time.time()),'practice' if practice else 'friends'))
+            rows.append((STATE['matchId'],uid,STATE['mode'],int(won),0 if practice else 3 if won else 0,raw,int(time.time()),'practice' if practice else 'friends'))
         if rows:
             with _db() as db:db.executemany('INSERT OR IGNORE INTO results(match_id,user_id,game,won,points,raw,ended,queue) VALUES(?,?,?,?,?,?,?,?)',rows)
         STATE['settledMatchId']=STATE['matchId'];return
