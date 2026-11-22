@@ -68,7 +68,7 @@ async function send(type='control'){
  if(inflight||returning)return;
  inflight=true;
  const request={type,token};
- if(type==='control')Object.assign(request,desired);
+ if(type==='control')Object.assign(request,desired,{fire:desired.fire||firePulse});
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),2600);
  try{
   const response=await fetch(room+'/api/ship',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request),signal:controller.signal,cache:'no-store'});
