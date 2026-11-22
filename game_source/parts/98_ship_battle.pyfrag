@@ -50,7 +50,7 @@ def _ship_shot(rt,i,angle,eff='normal',x=None,y=None):
                         'from':i,'age':0.,'kind':eff,'used':[],
                         'bounces':1 if eff=='bounce' else 0})
 def _ship_bot(rt,dt):
-    i=next((j for j,p in enumerate(STATE['players']) if p.get('isBot') and p['id']==rt['seats'][j]),None) if len(STATE['players'])==2 else None
+    i=next((j for j,pid in enumerate(rt['seats']) if any(p['id']==pid and p.get('isBot') for p in STATE['players'])),None)
     if i is None:return
     s=rt['ships'][i]
     if s['hp']<=0:return
