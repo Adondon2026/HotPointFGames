@@ -47,6 +47,7 @@ jobs:
           python game_source/tests/test_army_feedback.py
           python game_source/tests/test_siege.py
           python game_source/tests/test_multiroom.py
+          python game_source/tests/test_ship_duel.py
           python game_source/tests/test_siege_dynamic.py
           python game_source/tests/test_siege_balance.py
           python game_source/tests/test_siege_fields.py
