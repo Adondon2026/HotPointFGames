@@ -383,3 +383,46 @@ body[data-view="lobby"] .mode:focus-visible{outline:2px solid #557363;outline-of
   #liteLibrary .mode-name{font-size:12px}
   body[data-view="lobby"] #liteChangeGame{font-size:12px;padding:9px 7px}
 }
+
+/* Joining a room uses the same visual vocabulary as the public hall. */
+body[data-view="join"]{
+  --bg:#F6F5F1;--panel:#FCFBF7;--panel2:#EBEFE8;--line:#DEE2D9;
+  --text:#28332D;--muted:#626F65;--gold:#557363;--green:#466C58;--shadow:none;
+  background:var(--bg);color:var(--text);
+}
+body[data-view="join"] .app{max-width:760px;padding:22px 20px 44px}
+body[data-view="join"] .top{height:42px;margin-bottom:24px}
+body[data-view="join"] .brand{font-size:16px;font-weight:400}
+body[data-view="join"] .icon-btn{border-color:transparent;background:transparent;color:var(--muted);font-weight:400}
+body[data-view="join"] #joinCard{
+  max-width:500px;margin:0 auto;padding:23px 20px 24px;
+  background:var(--panel);border:1px solid var(--line);box-shadow:none;border-radius:13px;
+}
+body[data-view="join"] .lite-hero{margin:0 0 22px}
+body[data-view="join"] .lite-hero h1{font-size:28px;font-weight:400;letter-spacing:-.025em;margin:6px 0 8px}
+body[data-view="join"] .lite-hero p{font-size:14px;color:var(--muted)}
+body[data-view="join"] .lite-kicker{font-size:11px;color:#7C8A7E;letter-spacing:.10em}
+body[data-view="join"] #liteLibrary{margin-bottom:21px}
+body[data-view="join"] .lite-library-head h2{font-weight:500}
+body[data-view="join"] .lite-field{font-size:13px;color:var(--muted)}
+body[data-view="join"] #joinCard input{
+  min-height:46px;background:#fff;border-color:var(--line);color:var(--text);border-radius:10px;
+}
+body[data-view="join"] #joinCard button.green,
+body[data-view="join"] #joinCard #liteResume{
+  min-height:46px;background:#466C58;color:#fff;font-weight:500;border:0;border-radius:10px;
+}
+body[data-view="join"] #joinCard .lite-link,
+body[data-view="join"] #joinCard .secondary{
+  font-weight:400;color:#466C58;background:transparent;border-color:var(--line);
+}
+body[data-view="join"] #joinCard .lite-login-divider button{border:0}
+body[data-view="join"] #joinCard .lite-signed{background:#EFF1EC;border-radius:10px}
+body[data-view="join"] .lite-menu{
+  background:var(--panel);color:var(--text);border-color:var(--line);box-shadow:0 8px 22px #28332D18;
+}
+body[data-view="join"] .lite-menu button{color:var(--text);font-weight:400}
+@media(max-width:380px){
+  body[data-view="join"] .app{padding:18px 13px 38px}
+  body[data-view="join"] #joinCard{padding:19px 13px}
+}
