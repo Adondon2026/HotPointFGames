@@ -3306,6 +3306,7 @@ def _siege_scenario_validate(raw):
         v=point(obj,block=True);k=obj.get('kind')
         if type(k) is not str or k not in ('wood','stone','barrel','spring','oneway','ladder'):raise ValueError('建筑类型无效')
         v.update(kind=k,w=number(obj.get('w',48),12,240),h=number(obj.get('h',24),12,320 if k=='ladder' else 160))
+        if k=='oneway':v['passDir']=integer(obj.get('passDir',1),-1,1) or 1
         if v['x']-v['w']/2<0 or v['x']+v['w']/2>960 or v['y']-v['h']/2<0 or v['y']+v['h']/2>416:raise ValueError('建筑超出地图')
         out['blocks'].append(v)
     for obj in rows('zombies',54):
@@ -3360,7 +3361,7 @@ def _siege_scenario_load(r,raw):
         k=obj['kind'];hp={'wood':45,'stone':90,'barrel':35,'spring':72,'oneway':80,'ladder':55}[k]
         b=dict(id=r['nextBodyId'],side=0,hp=hp,max=hp,vx=0.,vy=0.,**obj)
         if k=='spring':b.update(kind='stone',special='spring',springHits=4)
-        elif k=='oneway':b.update(kind='stone',special='oneway',onewayHits=4,passDir=1)
+        elif k=='oneway':b.update(kind='stone',special='oneway',onewayHits=4,passDir=obj.get('passDir',1))
         elif k=='ladder':b.update(kind='wood',special='ladder',fixed=True)
         r['bodies'].append(b);r['nextBodyId']+=1
     for obj in scene['items']:
