@@ -62,7 +62,7 @@ try:
             expect(page.locator("#liteLibrary")).to_be_hidden()
             expect(page.locator("#liteCurrent")).to_be_visible()
             expect(page.locator("#liteChangeGame")).to_be_visible()
-            assert page.locator("#liteGameName").inner_text() == "保卫子刊"
+            expect(page.locator("#liteGameName")).to_have_text("保卫子刊", timeout=6000)
             page.locator("#liteChangeGame").tap()
             expect(page.locator("#liteLibrary")).to_be_visible()
             assert page.locator("#liteLibrary .mode").count() == 7
