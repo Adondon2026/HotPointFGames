@@ -7,7 +7,7 @@ _NAVAL_PICKUPS=('big','splitshot','repeat','bounce','through','homing','pierce',
 
 def _naval_world(r):
     """Replace only the fortress geometry with a fixed top-down sea layout."""
-    r.update(naval=True,field='naval',fieldLabel='海上对射',mode='classic',wind=0.,windPair=0.,
+    r.update(naval=True,theme='classic',field='naval',fieldLabel='海上对射',mode='classic',wind=0.,windPair=0.,
              windLevel='off',rise=0,offset=0,gunShift=0,terrain=[(0,2500),(960,2500)],
              reflectors=[],gunMotion=[],motionEpoch=time.time(),
              respawns=[],nextItemId=1000,negativePending=[{},{}],armed=[{},{}],
@@ -27,7 +27,7 @@ def _naval_world(r):
     r['nextBodyId']=100
     r['buffs']=_siege_buffs(2);r['compoundRecipes']=[[],[]]
     r['allowedBuffs']=list(_NAVAL_PICKUPS)
-    r['items']=_siege_items(13,allowed=_siege_allowed(r))
+    r['items']=_siege_items(13,field={'offset':0,'rise':0,'pool':('big','splitshot','repeat','bounce','through','homing')},allowed=_siege_allowed(r))
     # The center supply sits on the direct sea lane; every other slot is mirrored.
     if r['items']:r['items'][-1].update(x=480.,y=235.)
     return r
