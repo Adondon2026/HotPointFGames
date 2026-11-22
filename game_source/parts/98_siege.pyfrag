@@ -3128,7 +3128,7 @@ def _siege_public(r,key,last):
         v.update(trial=False,scenarioActive=True,scenarioName=r['scenarioName'],scenarioPending=len(r['scenarioPending']),scenarioSource=r['scenarioSource'])
     if r.get('terrain'):v['terrain']=r['terrain']
     if r.get('theme')=='zombie':v['zombie']={**r['zombie'],'solo':bool(r.get('zombieSolo')),'bothSides':bool(r.get('zombieBothSides')),'remaining':sum(b['kind']=='zombie' and b['hp']>0 for b in r['bodies'])}
-    if r.get('trial'):v['zombieCatalog']={k:dict(hp=stats[2],speed=stats[3],damage=stats[4]) for k,stats in _SIEGE_ZOMBIE_TYPES.items() if k!='engineer'};v['trialZombieLimit']=_SIEGE_TRIAL_ZOMBIE_LIMIT
+    if r.get('trial'):v['zombieCatalog']={k:dict(w=stats[0],h=stats[1],hp=stats[2],speed=stats[3],damage=stats[4]) for k,stats in _SIEGE_ZOMBIE_TYPES.items() if k!='engineer'};v['trialZombieLimit']=_SIEGE_TRIAL_ZOMBIE_LIMIT
     return _siege_manual_view(r,v,time.time())
 
 def siege_request(data):
