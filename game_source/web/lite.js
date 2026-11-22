@@ -199,7 +199,7 @@ const liteCatalogue={
  Ship:{mode:'ship',summary:'回合制 · 炮击或移动',keywords:'保卫子滩 海战 船舶 舰船 实时 战舰 naval ship artillery'}
 };
 const siegeCard=document.createElement('a');siegeCard.id='modeSiege';siegeCard.className='mode';siegeCard.href='#';siegeCard.innerHTML='<div class="mode-emoji" aria-hidden="true">拆</div><div><div class="mode-name">保卫子刊</div><div class="mode-desc">双人对战 · 三人合作</div></div>';grid.appendChild(siegeCard);
-const shipCard=document.createElement('a');shipCard.id='modeShip';shipCard.className='mode';shipCard.href='#';shipCard.innerHTML='<div class="mode-emoji" aria-hidden="true">舰</div><div><div class="mode-name">保卫子滩 · 海战</div><div class="mode-desc">实时双舰 · 海上炮弹增益</div></div>';grid.appendChild(shipCard);
+const shipCard=document.createElement('a');shipCard.id='modeShip';shipCard.className='mode';shipCard.href='#';shipCard.innerHTML='<div class="mode-emoji" aria-hidden="true">舰</div><div><div class="mode-name">保卫子滩 · 海战</div><div class="mode-desc">回合制 · 炮击或移动</div></div>';grid.appendChild(shipCard);
 let litePendingGame=null;
 const liteSearch=$('liteGameSearch'),liteScroll=$('liteGamesScroll'),liteNav=$('liteCarouselNav');
 const liteCards=()=>Array.from(grid.querySelectorAll('.mode'));
