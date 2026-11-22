@@ -1,4 +1,5 @@
 # Real-time naval duel. Kept independent of the turn-based siege engine.
+import math
 _SHIP_W=1440
 _SHIP_H=750
 _SHIP_ROCKS=((590,216,49),(726,542,58),(842,296,50))
